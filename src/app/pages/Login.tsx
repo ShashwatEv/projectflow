@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseclient';
+import { supabase } from '../../lib/supabaseclient'; // Real DB
 
 export default function Login() {
   const navigate = useNavigate();
@@ -23,8 +23,7 @@ export default function Login() {
 
       if (error) throw error;
       
-      // On success, AuthContext detects the change and updates the User state automatically
-      navigate('/dashboard'); 
+      navigate('/'); // Go to home on success
       
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
@@ -35,7 +34,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-300">
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Welcome Back</h1>
           <p className="text-gray-500">Log in to your account</p>
@@ -55,7 +54,7 @@ export default function Login() {
                     placeholder="Email" 
                     value={formData.email} 
                     onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm dark:text-white transition-all"
+                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm dark:text-white"
                 />
             </div>
             
@@ -66,14 +65,14 @@ export default function Login() {
                     placeholder="Password" 
                     value={formData.password} 
                     onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                    className="w-full pl-10 pr-10 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm dark:text-white transition-all"
+                    className="w-full pl-10 pr-10 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm dark:text-white"
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600">
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
             </div>
 
-            <button disabled={isLoading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all flex justify-center items-center gap-2 shadow-lg shadow-indigo-500/30 disabled:opacity-70 disabled:cursor-not-allowed">
+            <button disabled={isLoading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all flex justify-center items-center gap-2">
                 {isLoading ? <Loader2 className="animate-spin" /> : <>Log In <ArrowRight size={18} /></>}
             </button>
         </form>
