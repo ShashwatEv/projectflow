@@ -1,0 +1,9 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* In Tailwind v4 + CSS Variables, we don't strictly need to define a 
+  custom variant if we are relying on the variables to swap values.
+  
+  The theme.css file handles the variable swapping on .dark class.
+*/

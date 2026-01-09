@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* We removed 'tw-animate-css' temporarily because it often causes 
+   conflicts with the new Tailwind v4 alpha/beta versions. 
+   The basic @import "tailwindcss"; is all you need to get started.
+*/
