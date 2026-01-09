@@ -17,7 +17,7 @@ export default function Profile() {
   useEffect(() => {
     const users = getUsers();
     // If ID in URL -> Find that user. Else -> Show Current User.
-    const foundUser = id ? users.find(u => u.id === id) : currentUser;
+    const foundUser = id ? users.find(u => u.id === id) : (currentUser as UserData);
     
     if (foundUser) {
         setProfile(foundUser);
