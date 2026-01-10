@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseclient'; // Real DB
+import { supabase } from '../../lib/supabaseClient'; // Real DB
 
 export default function Login() {
   const navigate = useNavigate();

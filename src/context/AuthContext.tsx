@@ -1,14 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseclient';
+import { supabase } from '../lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
-// Define the shape of a User in your app
-interface UserProfile {
+// ✅ UPDATED: Added missing fields (location, phone, etc.)
+export interface UserProfile {
   id: string;
   name: string;
   email: string;
   avatar: string;
   role?: string;
+  location?: string;
+  phone?: string;
+  bannerUrl?: string; // Optional if you use it
 }
 
 interface AuthContextType {
@@ -26,14 +29,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check for active session on load
+    // 1. Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) fetchProfile(session.user.id);
       else setLoading(false);
     });
 
-    // 2. Listen for login/logout events
+    // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) fetchProfile(session.user.id);
@@ -48,16 +51,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      // Fetch public profile from the 'users' table we just created
+      // Fetch profile data from Supabase
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
         .single();
 
-      if (error) console.error('Error fetching profile:', error);
-      if (data) setUser(data);
-      
+      if (error) {
+        console.error('Error fetching profile:', error);
+      } else if (data) {
+        setUser(data);
+      }
     } catch (error) {
       console.error("Unexpected error:", error);
     } finally {

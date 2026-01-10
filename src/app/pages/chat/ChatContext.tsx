@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { Channel, Message, User, TypingState, UserStatus } from './types';
 import { useAuth } from '../../../context/AuthContext';
-import { supabase } from '../../../lib/supabaseclient';
+import { supabase } from '../../../lib/supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface ChatContextType {

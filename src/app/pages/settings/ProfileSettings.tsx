@@ -1,17 +1,17 @@
 import { useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
-import { updateUser } from '../../../data/mockData'; // Now this works!
+import { supabase } from '../../../lib/supabaseClient'; // <--- CHANGED THIS IMPORT
 import { Save, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function ProfileSettings() {
-  const { user, login } = useAuth(); // We can re-fetch or manually update context if needed
+  const { user } = useAuth(); 
   
   const [formData, setFormData] = useState({
     name: user?.name || '',
-    role: user?.role || '',
-    location: user?.location || '',
+    role: user?.role || '', // Make sure your DB has this column, or remove it if not
+    location: user?.location || '', // Make sure your DB has this column
     email: user?.email || '',
-    phone: user?.phone || '',
+    phone: user?.phone || '', // Make sure your DB has this column
     avatar: user?.avatar || ''
   });
 
@@ -26,23 +26,33 @@ export default function ProfileSettings() {
     try {
       if (!user?.id) return;
       
-      // Update "DB"
-      updateUser({
-        id: user.id,
-        ...formData
-      });
+      // 1. Update Supabase Database instead of mockData
+      // Note: We only update fields that exist in our 'users' table
+      const { error } = await supabase
+        .from('users')
+        .update({
+            name: formData.name,
+            avatar: formData.avatar,
+            // If you added 'role', 'location', 'phone' to your SQL table, include them:
+            // role: formData.role,
+            // location: formData.location, 
+            // phone: formData.phone
+        })
+        .eq('id', user.id);
 
-      // Force a page reload or context update to show new data
-      // In a real app, AuthContext would have an 'updateProfile' method.
-      // For this mock, a reload is the simplest way to refresh all components.
+      if (error) throw error;
+
+      // 2. Success Feedback
+      setIsLoading(false);
+      setSuccess(true);
+      
+      // Optional: Reload to refresh the AuthContext with new data
       setTimeout(() => {
-          setIsLoading(false);
-          setSuccess(true);
           window.location.reload(); 
       }, 800);
 
     } catch (error) {
-      console.error(error);
+      console.error("Error updating profile:", error);
       setIsLoading(false);
     }
   };
@@ -52,7 +62,7 @@ export default function ProfileSettings() {
       <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Public Profile</h2>
       
       <div className="mb-8 flex items-center gap-6">
-          <img src={formData.avatar} alt="Profile" className="w-20 h-20 rounded-full object-cover border-4 border-gray-100 dark:border-gray-700" />
+          <img src={formData.avatar || "https://github.com/shadcn.png"} alt="Profile" className="w-20 h-20 rounded-full object-cover border-4 border-gray-100 dark:border-gray-700" />
           <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Profile Picture</label>
               <div className="flex gap-3">

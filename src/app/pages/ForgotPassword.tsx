@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft, CheckCircle, Timer, Lock } from 'lucide-react';
-import { getUsers } from '../../data/mockData';
+import { Mail, ArrowLeft, CheckCircle, Lock } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient'; // <--- Real DB Connection
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -18,30 +18,38 @@ export default function ForgotPassword() {
     }
   }, [countdown]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setStatus('loading');
     
-    // Simulate Network Check
-    setTimeout(() => {
-        const users = getUsers();
-        const userExists = users.find(u => u.email === email);
+    try {
+        // 1. Send Reset Request to Supabase
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            // This is where users are sent after clicking the link
+            // For now, we redirect to home, where they will be logged in automatically
+            redirectTo: window.location.origin, 
+        });
 
-        if (userExists) {
-            setStatus('success');
-            setCountdown(60); // Start 60s cooldown
-        } else {
-            setError('No account found with this email address.');
-            setStatus('idle');
+        if (error) {
+            // Supabase security: It often doesn't reveal if an email exists or not
+            // to prevent scraping. But if there's a real error (like rate limit), we show it.
+            throw error;
         }
-    }, 1500);
+
+        // 2. Show Success Message
+        setStatus('success');
+        setCountdown(60); 
+
+    } catch (err: any) {
+        setError(err.message || 'Failed to send reset email.');
+        setStatus('idle');
+    }
   };
 
   const handleResend = () => {
      if (countdown === 0) {
-         setCountdown(60);
-         // Logic to resend email would go here
+         handleSubmit({ preventDefault: () => {} } as React.FormEvent);
      }
   };
 
@@ -60,13 +68,6 @@ export default function ForgotPassword() {
           </p>
           
           <div className="space-y-4">
-              <a 
-                href={`mailto:${email}`}
-                className="block w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-indigo-500/20"
-              >
-                Open Email App
-              </a>
-              
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <span>Didn't receive it?</span>
                   <button 

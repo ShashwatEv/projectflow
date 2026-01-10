@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, Mail, Lock, User, Briefcase, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseclient'; // <--- CORRECT IMPORT
+import { supabase } from '../../lib/supabaseClient'; // <--- THIS IS THE KEY CHANGE
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -17,23 +17,24 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      // 1. Create User in Supabase
+      // 1. THIS CALLS SUPABASE (The Real Database)
       const { data, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
           data: {
             name: formData.name,
-            role: formData.role, 
+            role: formData.role,
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random`
           },
-          emailRedirectTo: `${window.location.origin}/`
+          // Redirect back to your deployed site after verification
+          emailRedirectTo: `${window.location.origin}/` 
         }
       });
 
       if (authError) throw authError;
 
-      // 2. Show Success
+      // 2. Show Success Screen
       setSuccess(true);
 
     } catch (err: any) {
@@ -43,24 +44,27 @@ export default function Signup() {
     }
   };
 
+  // SUCCESS STATE (Check Email Screen)
   if (success) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-        <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl text-center">
+        <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl text-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Mail size={32} />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Check your email</h2>
             <p className="text-gray-500 mb-6">We sent a verification link to <b>{formData.email}</b>.</p>
+            <p className="text-sm text-gray-400">Can't find it? Check your spam folder.</p>
             <Link to="/" className="mt-6 inline-block text-indigo-600 font-bold hover:underline">Back to Login</Link>
         </div>
       </div>
     );
   }
 
+  // SIGNUP FORM
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700">
+      <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-300">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Account</h1>
           <p className="text-gray-500">Join the team today</p>

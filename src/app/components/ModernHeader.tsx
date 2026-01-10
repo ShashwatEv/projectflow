@@ -7,10 +7,25 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { getUsers, getProjects } from '../../data/mockData'; // Add getProjects here
+import { supabase } from '../../lib/supabaseClient'; 
+
+// Define types for our search results
+interface SearchProject {
+  id: string;
+  name: string;
+  status: string;
+}
+
+interface SearchUser {
+  id: string;
+  name: string;
+  avatar: string;
+  role: string;
+}
 
 export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
-  const { user, logout } = useAuth();
+  // 🔴 FIX: Changed 'logout' to 'signOut' to match AuthContext
+  const { user, signOut } = useAuth(); 
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,8 +38,33 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
   const [query, setQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  
+  // --- Data State ---
+  const [projects, setProjects] = useState<SearchProject[]>([]);
+  const [users, setUsers] = useState<SearchUser[]>([]);
 
-  // --- Mock Data for Search ---
+  // --- Fetch Data on Mount ---
+  useEffect(() => {
+    const fetchData = async () => {
+      // 1. Fetch Projects
+      const { data: projectsData } = await supabase
+        .from('projects')
+        .select('id, name, status');
+      
+      if (projectsData) setProjects(projectsData);
+
+      // 2. Fetch Users
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, name, avatar, role');
+        
+      if (usersData) setUsers(usersData);
+    };
+
+    fetchData();
+  }, []); 
+
+  // --- Mock Pages (Static) ---
   const searchablePages = [
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutGrid size={14} /> },
     { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
@@ -34,13 +74,11 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
     { name: 'Analytics', path: '/analytics', icon: <BarChart2 size={14} /> },
     { name: 'Settings', path: '/settings', icon: <Settings size={14} /> },
   ];
-
-  const activeProjects = getProjects();
   
-  // --- Search Logic ---
+  // --- Filter Logic ---
   const filteredPages = searchablePages.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
-  const filteredProjects = activeProjects.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
-  const filteredUsers = getUsers().filter(u => u.name.toLowerCase().includes(query.toLowerCase()));
+  const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
+  const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(query.toLowerCase()));
 
   const hasResults = filteredPages.length > 0 || filteredProjects.length > 0 || filteredUsers.length > 0;
 
@@ -58,8 +96,8 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut(); // 🔴 FIX: Call signOut() here
     navigate('/');
   };
 
@@ -69,7 +107,6 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
     setQuery('');
   };
 
-  // Helper to format breadcrumb text
   const getPageTitle = () => {
     const path = location.pathname.split('/')[1];
     if (!path) return 'Dashboard';
@@ -82,11 +119,11 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
       {/* Left: Mobile Menu & Breadcrumbs */}
       <div className="flex items-center gap-4">
         <button 
-  onClick={onMenuClick} // <--- ADD THIS LINE
-  className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
->
-  <Menu size={20} />
-</button>
+          onClick={onMenuClick}
+          className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        >
+          <Menu size={20} />
+        </button>
         <div className="hidden md:flex items-center text-sm text-gray-500 dark:text-gray-400">
           <span className="font-medium text-gray-900 dark:text-white">Workspace</span>
           <ChevronRight size={14} className="mx-2 opacity-50" />
@@ -142,12 +179,12 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
                     <div className="mb-2">
                       <h4 className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Projects</h4>
                       {filteredProjects.map((proj) => (
-                        <button key={proj.name} onClick={() => handleSearchResultClick(proj.path)} className="w-full text-left px-4 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <button key={proj.id} onClick={() => handleSearchResultClick(`/projects/${proj.id}`)} className="w-full text-left px-4 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                           <div className="flex items-center gap-3">
                             <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md"><FileText size={14} /></div>
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{proj.name}</span>
                           </div>
-                          <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded">{proj.status}</span>
+                          <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded uppercase">{proj.status}</span>
                         </button>
                       ))}
                     </div>
@@ -159,10 +196,12 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
                       <h4 className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</h4>
                       {filteredUsers.map((u) => (
                         <button key={u.id} onClick={() => handleSearchResultClick(`/profile/${u.id}`)} className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                          {u.avatar.startsWith('http') ? (
+                          {u.avatar && u.avatar.startsWith('http') ? (
                              <img src={u.avatar} className="w-7 h-7 rounded-full object-cover" alt="" />
                           ) : (
-                             <div className="w-7 h-7 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-full flex items-center justify-center text-xs font-bold">{u.avatar}</div>
+                             <div className="w-7 h-7 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-full flex items-center justify-center text-xs font-bold">
+                                {u.name ? u.name.charAt(0) : 'U'}
+                             </div>
                           )}
                           <div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{u.name}</p>
@@ -191,7 +230,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
-        {/* Notifications - NOW WORKING LINK */}
+        {/* Notifications */}
         <Link 
           to="/notifications"
           className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative"
@@ -217,7 +256,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
                <img src={user.avatar} alt={user.name} className="w-9 h-9 rounded-lg object-cover bg-gray-200" />
             ) : (
                <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
-                  {user?.avatar || 'G'}
+                  {user?.name?.charAt(0) || 'U'}
                </div>
             )}
           </button>

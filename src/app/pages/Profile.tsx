@@ -1,27 +1,102 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getUsers, UserData } from '../../data/mockData';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext'; // Auth Context
+import { supabase } from '../../lib/supabaseClient'; // Supabase Client
 import { 
   Mail, Briefcase, Clock, CheckCircle2, TrendingUp, 
-  MapPin, Calendar, Edit2, Share2, MoreHorizontal, MessageSquare, Copy
+  MapPin, Calendar, Edit2, Share2, MoreHorizontal, MessageSquare, Copy, Loader2
 } from 'lucide-react';
+
+// Define the shape of the Profile data
+interface ProfileData {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar: string;
+  location?: string;
+  phone?: string;
+  bannerUrl?: string;
+  status?: string;
+  created_at?: string;
+  // We keep stats structure for UI, even if fake for now
+  stats: {
+    workingHours: string;
+    productivity: number;
+    tasksCompleted: number;
+    teamVelocity: number;
+    currentProject?: {
+        name: string;
+        dueDate: string;
+        status: string;
+        progress: number;
+    };
+  };
+}
 
 export default function Profile() {
   const { id } = useParams(); 
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
-  const [profile, setProfile] = useState<UserData | null>(null);
+  
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const users = getUsers();
-    // If ID in URL -> Find that user. Else -> Show Current User.
-    const foundUser = id ? users.find(u => u.id === id) : (currentUser as UserData);
-    
-    if (foundUser) {
-        setProfile(foundUser);
-    }
+    const fetchProfile = async () => {
+      setLoading(true);
+      try {
+        // 1. Determine which ID to fetch (URL param OR Current Logged In User)
+        const targetId = id || currentUser?.id;
+
+        if (!targetId) return;
+
+        // 2. Fetch from Supabase
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', targetId)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+            // 3. Transform DB data to UI shape
+            // (We generate random stats here because the DB doesn't have these columns yet)
+            setProfile({
+                id: data.id,
+                name: data.name || 'Unknown User',
+                email: data.email || '',
+                role: data.role || 'Team Member',
+                avatar: data.avatar || '',
+                location: data.location || 'Remote',
+                phone: data.phone || '',
+                bannerUrl: data.bannerUrl,
+                status: data.status || 'offline',
+                created_at: data.created_at,
+                stats: {
+                    workingHours: '142h', // Placeholder
+                    productivity: 92,     // Placeholder
+                    tasksCompleted: 45,   // Placeholder
+                    teamVelocity: 8.4,    // Placeholder
+                    currentProject: {     // Placeholder
+                        name: 'Website Redesign',
+                        dueDate: 'Oct 24, 2025',
+                        status: 'On Track',
+                        progress: 65
+                    }
+                }
+            });
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
   }, [id, currentUser]);
 
   const handleShare = () => {
@@ -31,13 +106,19 @@ export default function Profile() {
   };
 
   const handleMessage = () => {
-      // Navigate to chat and pass the user ID we want to talk to
-      navigate(`/chat?dm=${profile?.id}`);
+      // Navigate to chat
+      navigate(`/chat`);
   };
 
-  if (!profile) return <div className="p-8 text-center">Loading...</div>;
+  if (loading) return <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>;
+  if (!profile) return <div className="p-8 text-center">User not found.</div>;
 
   const isOwnProfile = currentUser?.id === profile.id;
+
+  // Format Date
+  const joinDate = profile.created_at 
+    ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) 
+    : 'Recently';
 
   return (
     <div className="flex-1 h-full overflow-y-auto bg-gray-50 dark:bg-gray-900/50">
@@ -54,7 +135,7 @@ export default function Profile() {
                   {copied && <span className="text-xs font-bold">Copied!</span>}
               </button>
               {isOwnProfile && (
-                  <button className="p-2 bg-black/30 hover:bg-black/50 text-white rounded-lg backdrop-blur-sm transition-colors">
+                  <button onClick={() => navigate('/settings')} className="p-2 bg-black/30 hover:bg-black/50 text-white rounded-lg backdrop-blur-sm transition-colors">
                       <Edit2 size={20} />
                   </button>
               )}
@@ -81,8 +162,8 @@ export default function Profile() {
                       <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">{profile.name}</h1>
                       <div className="flex flex-wrap gap-4 text-gray-500 dark:text-gray-400 text-sm">
                           <span className="flex items-center gap-1.5"><Briefcase size={16} /> {profile.role}</span>
-                          <span className="flex items-center gap-1.5"><MapPin size={16} /> {profile.location || 'Remote'}</span>
-                          <span className="flex items-center gap-1.5"><Calendar size={16} /> Joined {profile.joinedDate || 'Recently'}</span>
+                          <span className="flex items-center gap-1.5"><MapPin size={16} /> {profile.location}</span>
+                          <span className="flex items-center gap-1.5"><Calendar size={16} /> Joined {joinDate}</span>
                       </div>
                   </div>
 
@@ -157,8 +238,8 @@ export default function Profile() {
                               </div>
                               <div className="w-full bg-indigo-200 dark:bg-indigo-900 rounded-full h-1.5 mt-2">
                                   <div 
-                                    className={`h-1.5 rounded-full transition-all duration-1000 ${profile.stats.currentProject.status === 'Delayed' ? 'bg-red-500' : 'bg-indigo-600'}`} 
-                                    style={{ width: `${profile.stats.currentProject.progress}%` }}
+                                      className={`h-1.5 rounded-full transition-all duration-1000 ${profile.stats.currentProject.status === 'Delayed' ? 'bg-red-500' : 'bg-indigo-600'}`} 
+                                      style={{ width: `${profile.stats.currentProject.progress}%` }}
                                   ></div>
                               </div>
                               <div className="text-right mt-1 text-xs text-indigo-600 dark:text-indigo-400 font-bold">{profile.stats.currentProject.progress}%</div>
