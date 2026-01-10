@@ -4,7 +4,9 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { KanbanColumn } from './KanbanColumn';
 import { Task } from './TaskCard';
 import { ListFilter, Plus, Loader2 } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient'; // <--- Import Supabase
+import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
+import TaskDetailModal from '../components/TaskDetailModal'; // Import the Modal
 
 // Define column keys to match DB 'status' values
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
@@ -17,6 +19,7 @@ interface ColumnData {
 }
 
 export function KanbanBoard() {
+  const { user } = useAuth();
   const [columns, setColumns] = useState<ColumnData>({
     todo: [],
     inProgress: [],
@@ -24,6 +27,9 @@ export function KanbanBoard() {
     done: [],
   });
   const [loading, setLoading] = useState(true);
+  
+  // State for the Task Detail Modal
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // 1. Fetch Tasks on Mount
   useEffect(() => {
@@ -44,11 +50,11 @@ export function KanbanBoard() {
           review: data.filter(t => t.status === 'review'),
           done: data.filter(t => t.status === 'done'),
         };
-        // Map DB fields to Task interface if needed (Supabase returns snake_case, but our interface might be camelCase)
-        // Since we created the table with 'due_date' but interface likely expects 'dueDate', let's map it:
+        
+        // Map DB fields to Task interface
         const mapTask = (t: any): Task => ({
              ...t,
-             dueDate: t.due_date || t.dueDate // Handle both casing
+             dueDate: t.due_date || t.dueDate 
         });
 
         setColumns({
@@ -100,11 +106,26 @@ export function KanbanBoard() {
 
         if (error) {
             console.error('Error updating task status:', error);
-            // Optional: Revert UI if DB fails (omitted for simplicity)
+            fetchTasks(); // Revert on error
         }
     } catch (err) {
         console.error(err);
     }
+  };
+
+  // Simple "Add Task" function for now
+  const handleAddTask = async () => {
+    const title = prompt("Enter task name:");
+    if (!title || !user) return;
+
+    const { error } = await supabase.from('tasks').insert({
+        title,
+        status: 'todo',
+        priority: 'medium',
+        user_id: user.id
+    });
+
+    if (!error) fetchTasks();
   };
 
   if (loading) {
@@ -113,7 +134,7 @@ export function KanbanBoard() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="flex flex-col gap-4 h-full">
+      <div className="flex flex-col gap-4 h-full p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Project Board</h2>
           <div className="flex items-center gap-3">
@@ -121,7 +142,10 @@ export function KanbanBoard() {
               <ListFilter className="h-4 w-4" />
               Filter
             </button>
-            <button className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
+            <button 
+                onClick={handleAddTask}
+                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm"
+            >
               <Plus className="h-4 w-4" />
               New Task
             </button>
@@ -135,6 +159,7 @@ export function KanbanBoard() {
             count={columns.todo.length}
             color="bg-gray-400"
             onDrop={(taskId) => handleDrop(taskId, 'todo')}
+            onTaskClick={(id) => setSelectedTaskId(id)} // Pass click handler
           />
           <KanbanColumn
             title="In Progress"
@@ -142,6 +167,7 @@ export function KanbanBoard() {
             count={columns.inProgress.length}
             color="bg-blue-500"
             onDrop={(taskId) => handleDrop(taskId, 'inProgress')}
+            onTaskClick={(id) => setSelectedTaskId(id)}
           />
           <KanbanColumn
             title="Review"
@@ -149,6 +175,7 @@ export function KanbanBoard() {
             count={columns.review.length}
             color="bg-yellow-500"
             onDrop={(taskId) => handleDrop(taskId, 'review')}
+            onTaskClick={(id) => setSelectedTaskId(id)}
           />
           <KanbanColumn
             title="Done"
@@ -156,8 +183,16 @@ export function KanbanBoard() {
             count={columns.done.length}
             color="bg-green-500"
             onDrop={(taskId) => handleDrop(taskId, 'done')}
+            onTaskClick={(id) => setSelectedTaskId(id)}
           />
         </div>
+
+        {/* The Task Detail Modal */}
+        <TaskDetailModal 
+            taskId={selectedTaskId} 
+            onClose={() => setSelectedTaskId(null)}
+            onUpdate={fetchTasks} // Refresh board if task changes
+        />
       </div>
     </DndProvider>
   );
