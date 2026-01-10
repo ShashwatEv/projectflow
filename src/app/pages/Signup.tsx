@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, Mail, Lock, User, Briefcase, ArrowRight, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabaseclient'; // <--- IMPORT SUPABASE, NOT MOCK DATA
+import { supabase } from '../../lib/supabaseClient'; // <--- CORRECT IMPORT
 
 export default function Signup() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ name: '', email: '', password: '', role: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false); // Add success state
+  const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -17,25 +17,23 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      // 1. Register with Supabase Auth
+      // 1. Create User in Supabase
       const { data, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
-          // These fields are passed to the SQL Trigger we created
           data: {
             name: formData.name,
             role: formData.role, 
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random&color=fff`
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name)}&background=random`
           },
-          // IMPORTANT: Redirect back to your Render URL after they click the email
-          emailRedirectTo: `${window.location.origin}/` 
+          emailRedirectTo: `${window.location.origin}/`
         }
       });
 
       if (authError) throw authError;
 
-      // 2. Show Success Message
+      // 2. Show Success
       setSuccess(true);
 
     } catch (err: any) {
@@ -54,7 +52,6 @@ export default function Signup() {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Check your email</h2>
             <p className="text-gray-500 mb-6">We sent a verification link to <b>{formData.email}</b>.</p>
-            <p className="text-sm text-gray-400">Can't find it? Check your spam folder.</p>
             <Link to="/" className="mt-6 inline-block text-indigo-600 font-bold hover:underline">Back to Login</Link>
         </div>
       </div>
