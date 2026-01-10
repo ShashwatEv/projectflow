@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { 
   Users, FolderKanban, CheckSquare, Activity, 
-  ArrowUpRight, ArrowDownRight, Clock, PlusCircle, CheckCircle2
+  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient'; 
+import CreateProjectModal from '../components/CreateProjectModal'; // Import the Modal
 
 interface ActivityItem {
   id: string;
@@ -22,61 +23,65 @@ export default function Dashboard() {
   });
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // State for the Create Project Modal
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        // 1. Get Project Count
-        const { count: projectCount } = await supabase
-          .from('projects')
-          .select('*', { count: 'exact', head: true });
+  // Define fetchData outside useEffect so we can refresh data after creating a project
+  const fetchData = async () => {
+    try {
+      // 1. Get Project Count
+      const { count: projectCount } = await supabase
+        .from('projects')
+        .select('*', { count: 'exact', head: true });
 
-        // 2. Get User Count
-        const { count: userCount } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true });
+      // 2. Get User Count
+      const { count: userCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true });
 
-        // 3. Get Task Stats
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('status');
+      // 3. Get Task Stats
+      const { data: tasks } = await supabase
+        .from('tasks')
+        .select('status');
 
-        const total = tasks?.length || 0;
-        const completed = tasks?.filter(t => t.status === 'done').length || 0;
+      const total = tasks?.length || 0;
+      const completed = tasks?.filter(t => t.status === 'done').length || 0;
 
-        setStats({
-          totalProjects: projectCount || 0,
-          totalUsers: userCount || 0,
-          totalTasks: total,
-          completedTasks: completed
-        });
+      setStats({
+        totalProjects: projectCount || 0,
+        totalUsers: userCount || 0,
+        totalTasks: total,
+        completedTasks: completed
+      });
 
-        // 4. Get Recent Activity (Last 5 created tasks)
-        const { data: recentTasks } = await supabase
-          .from('tasks')
-          .select('id, title, status, created_at')
-          .order('created_at', { ascending: false })
-          .limit(5);
+      // 4. Get Recent Activity (Last 5 created tasks)
+      const { data: recentTasks } = await supabase
+        .from('tasks')
+        .select('id, title, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
 
-        if (recentTasks) {
-            // Map to a generic activity format (extensible for future project updates)
-            const activity: ActivityItem[] = recentTasks.map(t => ({
-                id: t.id,
-                title: t.title,
-                status: t.status,
-                created_at: t.created_at,
-                type: 'task'
-            }));
-            setRecentActivity(activity);
-        }
-        
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-      } finally {
-        setLoading(false);
+      if (recentTasks) {
+          const activity: ActivityItem[] = recentTasks.map(t => ({
+              id: t.id,
+              title: t.title,
+              status: t.status,
+              created_at: t.created_at,
+              type: 'task'
+          }));
+          setRecentActivity(activity);
       }
+      
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  // Initial Fetch
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -158,14 +163,17 @@ export default function Dashboard() {
             )}
         </div>
 
-        {/* Placeholder for future Chart or Quick Actions */}
+        {/* Quick Actions Card */}
         <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl text-white shadow-lg flex flex-col justify-between">
             <div>
                 <h3 className="font-bold text-xl mb-2">Ready to work?</h3>
                 <p className="text-indigo-100 text-sm mb-6">Create a new project or invite your team members to get started.</p>
             </div>
             <div className="flex gap-3">
-                <button className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-colors">
+                <button 
+                  onClick={() => setIsProjectModalOpen(true)}
+                  className="bg-white text-indigo-600 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-gray-50 transition-colors"
+                >
                     + New Project
                 </button>
                 <button className="bg-indigo-500/50 hover:bg-indigo-500/70 text-white px-4 py-2 rounded-lg text-sm font-bold backdrop-blur-sm transition-colors">
@@ -174,6 +182,15 @@ export default function Dashboard() {
             </div>
         </div>
       </div>
+
+      {/* Include the Modal at the bottom */}
+      <CreateProjectModal 
+        isOpen={isProjectModalOpen} 
+        onClose={() => setIsProjectModalOpen(false)}
+        onProjectCreated={() => {
+           fetchData(); // Refresh the stats when a new project is made!
+        }}
+      />
     </div>
   );
 }
