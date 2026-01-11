@@ -18,9 +18,9 @@ export default function Profile() {
   });
 
   const avatars = [
-    { id: 'male', src: '/male.jpg', label: 'Male' },
-    { id: 'female', src: '/female.jpg', label: 'Female' },
-    { id: 'default', src: '/pfp.jpg', label: 'Default' },
+    { id: 'male', src: '../Avatar/male.jpg', label: 'Male' },
+    { id: 'female', src: '../Avatar/female.jpg', label: 'Female' },
+    { id: 'default', src: '../Avatar/pfp.jpg', label: 'Default' },
   ];
 
   // 1. Fetch User Data
@@ -38,7 +38,7 @@ export default function Profile() {
             name: data.name || '',
             email: data.email || '',
             role: data.role || 'Member',
-            avatar: data.avatar || '/pfp.jpg'
+            avatar: data.avatar || '../Avatar/pfp.jpg'
           });
         }
         setLoading(false);

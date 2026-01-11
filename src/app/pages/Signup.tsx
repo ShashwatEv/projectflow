@@ -11,13 +11,13 @@ export default function Signup() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('/pfp.jpg'); // Default
+  const [selectedAvatar, setSelectedAvatar] = useState('../Assets/pfp.jpg'); // Default
 
   // Avatars available in your public folder
   const avatars = [
-    { id: 'male', src: '/male.jpg', label: 'Male' },
-    { id: 'female', src: '/female.jpg', label: 'Female' },
-    { id: 'default', src: '/pfp.jpg', label: 'Default' },
+    { id: 'male', src: '../Assets/male.jpg', label: 'Male' },
+    { id: 'female', src: '../Assets/female.jpg', label: 'Female' },
+    { id: 'default', src: '../Assets/pfp.jpg', label: 'Default' },
   ];
 
   const handleSignup = async (e: React.FormEvent) => {
