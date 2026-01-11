@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, UserPlus, Filter, MoreHorizontal, Mail, ExternalLink, Loader2 } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient'; // <--- Use Supabase
+import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext'; // <--- 1. Import Auth
 
 // Define the shape of a User based on your DB schema
 interface UserData {
@@ -10,7 +11,6 @@ interface UserData {
   email: string;
   role: string;
   avatar: string;
-  // Note: 'stats' might not be in your DB yet, so we can mock them for UI or add columns later
   stats?: {
     workingHours: string;
     productivity: number;
@@ -19,6 +19,7 @@ interface UserData {
 
 export default function Team() {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth(); // <--- 2. Get Current User
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -34,7 +35,6 @@ export default function Team() {
         if (error) throw error;
 
         if (data) {
-          // Map DB data to UI shape (adding fake stats for now since DB doesn't have them yet)
           const formattedUsers: UserData[] = data.map((u: any) => ({
             id: u.id,
             name: u.name || 'Unknown',
@@ -58,6 +58,17 @@ export default function Team() {
     fetchUsers();
   }, []);
 
+  // <--- 3. Helper Function to start 1-on-1 Chat
+  const startDM = (otherUserId: string) => {
+    if (!currentUser) return;
+    
+    // Sort IDs alphabetically to ensure A+B always creates the same room as B+A
+    const ids = [currentUser.id, otherUserId].sort();
+    const roomId = `dm_${ids[0]}_${ids[1]}`;
+    
+    navigate(`/messages/${roomId}`);
+  };
+
   const filteredUsers = users.filter(u => 
     u.name?.toLowerCase().includes(search.toLowerCase()) || 
     u.role?.toLowerCase().includes(search.toLowerCase())
@@ -70,7 +81,7 @@ export default function Team() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Team Members</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your team and view profiles.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Click a member to start a chat.</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl transition-colors shadow-sm shadow-indigo-200 dark:shadow-none">
             <UserPlus size={18} /> Add Member
@@ -104,7 +115,7 @@ export default function Team() {
             {filteredUsers.length > 0 ? filteredUsers.map((user) => (
                 <div 
                   key={user.id} 
-                  onClick={() => navigate(`/profile/${user.id}`)}
+                  onClick={() => startDM(user.id)} // <--- 4. Updated Click Handler
                   className="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
                 >
                     {/* Hover decoration */}
@@ -118,7 +129,10 @@ export default function Team() {
                                 {user.name.charAt(0)}
                             </div>
                         )}
-                        <button className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/profile/${user.id}`); }} // Keep profile access via the button
+                            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        >
                             <MoreHorizontal size={20} />
                         </button>
                     </div>
@@ -143,7 +157,7 @@ export default function Team() {
                             <span className="truncate max-w-[120px]">{user.email}</span>
                         </div>
                         <div className="flex items-center gap-1 text-indigo-600 text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0">
-                            View Profile <ExternalLink size={12} />
+                            Message <ExternalLink size={12} />
                         </div>
                     </div>
                 </div>

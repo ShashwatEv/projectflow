@@ -27,6 +27,7 @@ import Notifications from './pages/Notifications';
 import TeamChat from './pages/TeamChat';
 import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
+import Messages from './pages/Messages';
 
 // 2. REPLACE: The entire Layout function
 function Layout() {
@@ -76,6 +77,7 @@ export default function App() {
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/chat" element={<TeamChat />} />
+                <Route path="/messages/:roomId" element={<Messages />} />
                 
                 {/* Management */}
                 <Route path="/team" element={<Team />} />
