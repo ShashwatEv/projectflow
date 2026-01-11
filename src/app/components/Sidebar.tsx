@@ -1,7 +1,12 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Users, Calendar, Settings, MessageSquare, CheckSquare, Bell } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
 
 export function Sidebar() {
+  const { user } = useAuth();
+  const [profile, setProfile] = useState<any>(null);
   const location = useLocation();
   const isActive = (path: string) => location.pathname === path;
 
@@ -9,7 +14,7 @@ export function Sidebar() {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: CheckSquare, label: 'My Tasks', path: '/tasks' },
     { icon: Users, label: 'Team', path: '/team' },
-    { icon: MessageSquare, label: 'Chat', path: '/messages/room_1' }, // <--- The New Chat Link
+    { icon: MessageSquare, label: 'Chat', path: '/messages/room_1' },
     { icon: Calendar, label: 'Calendar', path: '/calendar' },
     { icon: Bell, label: 'Notifications', path: '/notifications' },
     { icon: Settings, label: 'Settings', path: '/settings' },
@@ -20,6 +25,21 @@ export function Sidebar() {
     { name: 'Mobile App', color: 'bg-green-500' },
     { name: 'Marketing Campaign', color: 'bg-purple-500' },
   ];
+
+  // Fetch the real profile on mount
+  useEffect(() => {
+    if (user) {
+      const getProfile = async () => {
+        const { data } = await supabase
+          .from('users')
+          .select('name, avatar')
+          .eq('id', user.id)
+          .single();
+        if (data) setProfile(data);
+      };
+      getProfile();
+    }
+  }, [user]);
 
   return (
     <aside className="w-64 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col h-full">
@@ -70,13 +90,20 @@ export function Sidebar() {
 
       {/* User Profile Snippet (Bottom) */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-         <Link to="/profile" className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-               Me
-            </div>
+         <Link to={`/profile/${user?.id}`} className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            {profile?.avatar ? (
+                <img src={profile.avatar} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
+            ) : (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                  {profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                </div>
+            )}
+            
             <div className="flex-1 min-w-0">
-               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">My Profile</p>
-               <p className="text-xs text-gray-500 truncate">View settings</p>
+               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                 {profile?.name || 'Loading...'}
+               </p>
+               <p className="text-xs text-gray-500 truncate">View Settings</p>
             </div>
          </Link>
       </div>
