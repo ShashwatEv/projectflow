@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom'; // <--- Import this
+import { useParams } from 'react-router-dom';
 import { Send, FileText, Download } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -19,30 +19,28 @@ interface Message {
 
 export default function Messages() {
   const { user } = useAuth();
-  const { roomId } = useParams(); // <--- Get dynamic ID
-  const currentRoomId = roomId || 'room_1'; // Default if missing
+  const { roomId } = useParams(); 
+  const currentRoomId = roomId || 'room_1';
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  // 1. Dynamic Typing Hook
   const { typingUsers, broadcastTyping } = useTyping(currentRoomId);
 
   useEffect(() => {
-    setMessages([]); // Clear previous messages when room changes
+    setMessages([]); 
     fetchMessages();
 
-    // 2. Real-time Subscription for Dynamic Room
     const channel = supabase
-      .channel(`chat_${currentRoomId}`) // Unique channel name
+      .channel(`chat_${currentRoomId}`)
       .on(
         'postgres_changes',
         { 
             event: 'INSERT', 
             schema: 'public', 
             table: 'messages', 
-            filter: `room_id=eq.${currentRoomId}` // Dynamic Filter
+            filter: `room_id=eq.${currentRoomId}`
         },
         async (payload) => {
           const { data: userData } = await supabase
@@ -60,9 +58,8 @@ export default function Messages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentRoomId]); // <--- Re-run when roomId changes!
+  }, [currentRoomId]);
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingUsers]);
@@ -71,7 +68,7 @@ export default function Messages() {
     const { data } = await supabase
       .from('messages')
       .select('*, user:users(name, avatar)')
-      .eq('room_id', currentRoomId) // Dynamic Query
+      .eq('room_id', currentRoomId)
       .order('created_at', { ascending: true });
 
     if (data) setMessages(data);
@@ -82,7 +79,7 @@ export default function Messages() {
     if (!newMessage.trim() || !user) return;
 
     const { error } = await supabase.from('messages').insert({
-      room_id: currentRoomId, // Dynamic Insert
+      room_id: currentRoomId,
       user_id: user.id,
       content: newMessage,
     });
@@ -95,7 +92,7 @@ export default function Messages() {
     if (!user) return;
 
     const { error } = await supabase.from('messages').insert({
-      room_id: currentRoomId, // Dynamic Insert
+      room_id: currentRoomId,
       user_id: user.id,
       content: type === 'image' ? 'Shared an image' : 'Shared a file',
       file_url: url,
@@ -105,7 +102,6 @@ export default function Messages() {
     if (error) console.error(error);
   };
 
-  // Helper: Format Room Name for Header
   const getRoomName = () => {
       if (currentRoomId === 'room_1') return '# general';
       return 'Private Conversation';
@@ -115,7 +111,7 @@ export default function Messages() {
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm flex justify-between items-center">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm flex justify-between items-center z-10">
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">{getRoomName()}</h1>
           <p className="text-xs text-gray-500">
@@ -127,31 +123,40 @@ export default function Messages() {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50 dark:bg-gray-900">
         {messages.map((msg, index) => {
-          const isMe = msg.user_id === user?.id;
+          const isMe = msg.user_id === user?.id; // <--- This determines Left vs Right
           const showHeader = index === 0 || messages[index - 1].user_id !== msg.user_id;
 
           return (
-            <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
-              <div className="w-8 flex-shrink-0">
+            <div 
+                key={msg.id} 
+                className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`} // <--- Magic Alignment
+            >
+              {/* Avatar */}
+              <div className="w-8 flex-shrink-0 flex flex-col justify-end">
                 {showHeader && !isMe && (
                    <img 
                      src={msg.user?.avatar || `https://ui-avatars.com/api/?name=${msg.user?.name}`} 
-                     className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700" 
+                     className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm" 
                      alt="avatar" 
                    />
                 )}
               </div>
 
-              <div className={`flex flex-col max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
-                {showHeader && (
+              <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
+                
+                {/* Name Label (Only for others) */}
+                {showHeader && !isMe && (
                     <span className="text-xs text-gray-500 ml-1 mb-1">{msg.user?.name}</span>
                 )}
                 
-                <div className={`p-3 rounded-2xl shadow-sm ${
+                {/* THE BUBBLE */}
+                <div className={`p-3 shadow-sm text-sm break-words relative group ${
                     isMe 
-                    ? 'bg-indigo-600 text-white rounded-tr-none' 
-                    : 'bg-white dark:bg-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700 rounded-tl-none'
+                    ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm' // My Bubble (Blue, sharp top-right)
+                    : 'bg-white dark:bg-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm' // Their Bubble (Gray, sharp top-left)
                 }`}>
+                    
+                    {/* Attachments */}
                     {msg.file_url && (
                         <div className="mb-2">
                             {msg.file_type === 'image' ? (
@@ -184,10 +189,13 @@ export default function Messages() {
                             )}
                         </div>
                     )}
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                    
+                    {/* Message Content */}
+                    <p className="leading-relaxed">{msg.content}</p>
                 </div>
                 
-                <span className="text-[10px] text-gray-400 mt-1">
+                {/* Timestamp */}
+                <span className={`text-[10px] text-gray-400 mt-1 ${isMe ? 'mr-1' : 'ml-1'}`}>
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
