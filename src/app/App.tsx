@@ -1,45 +1,41 @@
-// 1. ADD: Import useState at the top
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext';
-import { ThemeProvider } from '../context/ThemeContext';
+import { AuthProvider } from '../context/AuthContext'; // <--- Verify path
+import { ThemeProvider } from '../context/ThemeContext'; // <--- Verify path
 
 // Component Imports
-import { ModernHeader } from './components/ModernHeader';
-import { ModernSidebar } from './components/ModernSidebar';
-import RequireAuth from './components/RequireAuth'; // Ensure path is correct
+import { ModernHeader } from '../app/components/ModernHeader'; // <--- Verify path
+import { ModernSidebar } from '../app/components/ModernSidebar'; // <--- Verify path
+import RequireAuth from '../app/components/RequireAuth'; 
 
-// Page Imports
-import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
-import Signup from './pages/Signup';
-import ForgotPassword from './pages/ForgotPassword';
-import SettingsLayout from './pages/settings/SettingsLayout';
+// Page Imports (Adjust paths if they are in src/app/pages)
+import Dashboard from '../app/pages/Dashboard';
+import Login from '../app/pages/Login';
+import Signup from '../app/pages/Signup';
+// import ForgotPassword from './app/pages/ForgotPassword'; // Uncomment if created
+import SettingsLayout from '../app/pages/settings/SettingsLayout';
 
 // Feature Pages
-import Projects from './pages/Projects';
-import MyTasks from './pages/MyTasks';
-import Team from './pages/Team';
-import Profile from './pages/Profile';
-import Calendar from './pages/Calendar';
-import Analytics from './pages/Analytics';
-import Notifications from './pages/Notifications';
-import TeamChat from './pages/TeamChat';
-import Automations from './pages/Automations';
-import Timesheets from './pages/Timesheets';
-import Messages from './pages/Messages';
+import Projects from '../app/pages/Projects';
+import MyTasks from '../app/pages/MyTasks';
+import Team from '../app/pages/Team';
+import Profile from '../app/pages/Profile';
+import Calendar from '../app/pages/Calendar';
+import Analytics from '../app/pages/Analytics';
+import Notifications from '../app/pages/Notifications';
+// import TeamChat from './app/pages/TeamChat'; <--- DELETED (Obsolete)
+import Automations from '../app/pages/Automations';
+import Timesheets from '../app/pages/Timesheets';
+import Messages from '../app/pages/Messages';
 
-// 2. REPLACE: The entire Layout function
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
-      {/* Pass the toggle function to Header */}
       <ModernHeader onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Pass the state to Sidebar */}
         <ModernSidebar 
             isOpen={isMobileMenuOpen} 
             onClose={() => setIsMobileMenuOpen(false)} 
@@ -59,14 +55,15 @@ export default function App() {
       <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
         <BrowserRouter>
           <Routes>
-            {/* Public Routes - Accessible without login */}
-            <Route path="/" element={<Login />} />
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+            {/* <Route path="/forgot-password" element={<ForgotPassword />} /> */}
 
-            {/* Protected Routes - Must be logged in */}
+            {/* Protected Routes */}
             <Route element={<RequireAuth />}>
               <Route element={<Layout />}>
+                <Route path="/" element={<Dashboard />} /> {/* Redirect root to Dashboard */}
                 <Route path="/dashboard" element={<Dashboard />} />
                 
                 {/* Work */}
@@ -76,12 +73,15 @@ export default function App() {
                 
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
-                <Route path="/chat" element={<TeamChat />} />
-                <Route path="/messages/:roomId" element={<Messages />} />
+                <Route path="/messages/:roomId" element={<Messages />} /> {/* ONE Chat Route */}
                 
                 {/* Management */}
                 <Route path="/team" element={<Team />} />
+                
+                {/* FIXED: Two Profile Routes (Me vs Others) */}
+                <Route path="/profile" element={<Profile />} /> 
                 <Route path="/profile/:id" element={<Profile />} />
+                
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/automations" element={<Automations />} />
                 <Route path="/analytics" element={<Analytics />} />
