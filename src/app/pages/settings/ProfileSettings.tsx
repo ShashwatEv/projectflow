@@ -1,22 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabaseClient'; 
-import { Save, Loader2, CheckCircle2, MapPin, Mail, Phone, Globe, Camera, Briefcase } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, MapPin, Mail, Phone, Camera, Briefcase, ChevronDown } from 'lucide-react';
 
 export default function ProfileSettings() {
   const { user } = useAuth(); 
   
   const [formData, setFormData] = useState({
     name: user?.name || '',
-    role: user?.role || '', 
+    role: user?.role || 'Member', 
     location: user?.location || '', 
     email: user?.email || '',
     phone: user?.phone || '', 
-    avatar: user?.avatar || ''
+    avatar: user?.avatar || '/pfp.jpg'
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
+
+  // Predefined Options
+  const avatars = [
+    { src: '/male.jpg', label: 'Male' },
+    { src: '/female.jpg', label: 'Female' },
+    { src: '/pfp.jpg', label: 'Default' },
+  ];
+
+  const roles = [
+    "Member",
+    "Developer", 
+    "Senior Developer",
+    "Designer", 
+    "Product Manager", 
+    "Project Manager", 
+    "Admin",
+    "Intern"
+  ];
 
   // Auto-hide success message
   useEffect(() => {
@@ -25,6 +45,17 @@ export default function ProfileSettings() {
       return () => clearTimeout(timer);
     }
   }, [success]);
+
+  // Close avatar picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(event.target as Node)) {
+        setIsAvatarPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +97,6 @@ export default function ProfileSettings() {
            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Update your personal details and public preview.</p>
         </div>
         
-        {/* Save Button (Top Right for easy access) */}
         <button 
             onClick={handleSubmit}
             disabled={isLoading}
@@ -86,23 +116,19 @@ export default function ProfileSettings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* --- LEFT COLUMN: LIVE PREVIEW CARD --- */}
+        {/* --- LEFT COLUMN: LIVE PREVIEW --- */}
         <div className="lg:col-span-4 space-y-6">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Live Preview</h3>
             
-            {/* The Card */}
             <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-xl border border-gray-100 dark:border-gray-700 sticky top-6">
-                {/* Banner Background */}
                 <div className="h-32 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 relative">
                     <div className="absolute inset-0 bg-black/10"></div>
                 </div>
 
-                {/* Card Content */}
                 <div className="px-6 pb-8 relative">
-                    {/* Floating Avatar */}
                     <div className="relative -mt-12 mb-4 inline-block">
                         <img 
-                            src={formData.avatar || "https://github.com/shadcn.png"} 
+                            src={formData.avatar} 
                             alt="Profile" 
                             className="w-24 h-24 rounded-2xl object-cover border-4 border-white dark:border-gray-800 shadow-md bg-white" 
                         />
@@ -114,7 +140,7 @@ export default function ProfileSettings() {
                             {formData.name || 'Your Name'}
                         </h2>
                         <p className="text-indigo-600 dark:text-indigo-400 font-medium text-sm mb-4">
-                            {formData.role || 'Role / Job Title'}
+                            {formData.role || 'Member'}
                         </p>
 
                         <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-700">
@@ -151,38 +177,76 @@ export default function ProfileSettings() {
                 </div>
                 
                 <div className="p-8 space-y-8">
-                    {/* Avatar Input */}
-                    <div>
+                    
+                    {/* 1. Avatar Picker */}
+                    <div ref={avatarMenuRef} className="relative">
                         <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Profile Image</label>
-                        <div className="flex gap-4">
-                            <div className="relative flex-1">
-                                <div className="absolute left-3 top-3 text-gray-400"><Camera size={18} /></div>
-                                <input 
-                                    value={formData.avatar}
-                                    onChange={(e) => setFormData({...formData, avatar: e.target.value})}
-                                    placeholder="Paste image URL here..."
-                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                                />
-                            </div>
+                        
+                        <div 
+                           onClick={() => setIsAvatarPickerOpen(!isAvatarPickerOpen)}
+                           className="flex items-center gap-4 p-3 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors group"
+                        >
+                             <img src={formData.avatar} className="w-12 h-12 rounded-lg object-cover bg-gray-200" alt="Current" />
+                             <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">Selected Avatar</p>
+                                <p className="text-xs text-gray-500 group-hover:text-indigo-500 transition-colors">Click to change...</p>
+                             </div>
+                             <ChevronDown size={16} className={`text-gray-400 transition-transform ${isAvatarPickerOpen ? 'rotate-180' : ''}`} />
                         </div>
-                        <p className="text-xs text-gray-400 mt-2">Use a direct link to a JPG or PNG image.</p>
+
+                        {/* Avatar Selection Panel */}
+                        {isAvatarPickerOpen && (
+                            <div className="absolute top-full left-0 w-full mt-2 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-10 animate-in zoom-in-95 duration-200">
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Choose an Avatar</p>
+                                <div className="grid grid-cols-3 gap-4">
+                                    {avatars.map((av) => (
+                                        <button 
+                                            key={av.src}
+                                            onClick={() => { setFormData({...formData, avatar: av.src}); setIsAvatarPickerOpen(false); }}
+                                            className={`relative group rounded-xl overflow-hidden border-2 transition-all ${formData.avatar === av.src ? 'border-indigo-600 ring-2 ring-indigo-500/20' : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'}`}
+                                        >
+                                            <img src={av.src} alt={av.label} className="w-full h-20 object-cover" />
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <span className="text-white text-xs font-bold">{av.label}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <InputGroup 
                             label="Full Name" 
-                            icon={<span className="text-lg font-bold">Aa</span>} // Text Icon
+                            icon={<span className="text-lg font-bold">Aa</span>}
                             value={formData.name} 
                             onChange={(v: string) => setFormData({...formData, name: v})}
                             placeholder="e.g. Sarah Connor"
                         />
-                         <InputGroup 
-                            label="Job Title / Role" 
-                            icon={<Briefcase size={18} />} 
-                            value={formData.role} 
-                            onChange={(v: string) => setFormData({...formData, role: v})}
-                            placeholder="e.g. Senior Developer"
-                        />
+                         
+                         {/* 2. Job Role Select */}
+                         <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Job Title / Role</label>
+                            <div className="relative group">
+                                <div className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-indigo-600 transition-colors">
+                                    <Briefcase size={18} />
+                                </div>
+                                <select 
+                                    value={formData.role}
+                                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                                    className="w-full pl-10 pr-10 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all dark:text-white appearance-none cursor-pointer"
+                                >
+                                    {roles.map(role => (
+                                        <option key={role} value={role}>{role}</option>
+                                    ))}
+                                </select>
+                                <div className="absolute right-3 top-3 text-gray-400 pointer-events-none">
+                                    <ChevronDown size={16} />
+                                </div>
+                            </div>
+                        </div>
+
                          <InputGroup 
                             label="Location" 
                             icon={<MapPin size={18} />} 
@@ -207,7 +271,7 @@ export default function ProfileSettings() {
   );
 }
 
-// Reusable Input Component for cleaner code
+// Reusable Input Component
 function InputGroup({ label, icon, value, onChange, placeholder }: any) {
     return (
         <div className="space-y-1.5">
