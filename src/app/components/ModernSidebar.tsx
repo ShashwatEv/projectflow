@@ -74,7 +74,7 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
 
             {/* Team Section */}
             <div className="px-3 mt-6 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</div>
-            <NavItem to="/chat" icon={<MessageSquare size={20} />} label="Team Chat" isActive={location.pathname === '/chat'} onClick={onClose} />
+            <NavItem to="/messages/room_1" icon={<MessageSquare size={20} />} label="Team Chat" isActive={location.pathname === '/messages/room_1'} onClick={onClose} />
             <NavItem to="/team" icon={<Users size={20} />} label="Team" isActive={location.pathname === '/team'} onClick={onClose} />
             <NavItem to="/calendar" icon={<Calendar size={20} />} label="Calendar" isActive={location.pathname === '/calendar'} onClick={onClose} />
           </nav>

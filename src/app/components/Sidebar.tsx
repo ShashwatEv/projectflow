@@ -14,7 +14,7 @@ export function Sidebar() {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: CheckSquare, label: 'My Tasks', path: '/tasks' },
     { icon: Users, label: 'Team', path: '/team' },
-    { icon: MessageSquare, label: 'Chat', path: '/messages/room_1' },
+    { icon: MessageSquare, label: 'Team Chat', path: '/messages/room_1' },
     { icon: Calendar, label: 'Calendar', path: '/calendar' },
     { icon: Bell, label: 'Notifications', path: '/notifications' },
     { icon: Settings, label: 'Settings', path: '/settings' },
