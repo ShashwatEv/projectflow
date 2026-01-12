@@ -1,32 +1,32 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext'; // <--- Verify path
-import { ThemeProvider } from '../context/ThemeContext'; // <--- Verify path
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import { AuthProvider } from '../context/AuthContext';
+import { ThemeProvider } from '../context/ThemeContext';
 
 // Component Imports
-import { ModernHeader } from '../app/components/ModernHeader'; // <--- Verify path
-import { ModernSidebar } from '../app/components/ModernSidebar'; // <--- Verify path
-import RequireAuth from '../app/components/RequireAuth'; 
+import { ModernHeader } from './components/ModernHeader';
+import { ModernSidebar } from './components/ModernSidebar';
+import RequireAuth from './components/RequireAuth';
 
-// Page Imports (Adjust paths if they are in src/app/pages)
-import Dashboard from '../app/pages/Dashboard';
-import Login from '../app/pages/Login';
-import Signup from '../app/pages/Signup';
-// import ForgotPassword from './app/pages/ForgotPassword'; // Uncomment if created
-import SettingsLayout from '../app/pages/settings/SettingsLayout';
+// Page Imports
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
+import SettingsLayout from './pages/settings/SettingsLayout';
 
 // Feature Pages
-import Projects from '../app/pages/Projects';
-import MyTasks from '../app/pages/MyTasks';
-import Team from '../app/pages/Team';
-import Profile from '../app/pages/Profile';
-import Calendar from '../app/pages/Calendar';
-import Analytics from '../app/pages/Analytics';
-import Notifications from '../app/pages/Notifications';
-// import TeamChat from './app/pages/TeamChat'; <--- DELETED (Obsolete)
-import Automations from '../app/pages/Automations';
-import Timesheets from '../app/pages/Timesheets';
-import Messages from '../app/pages/Messages';
+import Projects from './pages/Projects';
+import MyTasks from './pages/MyTasks';
+import Team from './pages/Team';
+import Profile from './pages/Profile';
+import Calendar from './pages/Calendar';
+import Analytics from './pages/Analytics';
+import Notifications from './pages/Notifications';
+import Automations from './pages/Automations';
+import Timesheets from './pages/Timesheets';
+import Messages from './pages/Messages';
+// Note: 'TeamChat' is removed because we merged it into 'Messages'
 
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -58,12 +58,14 @@ export default function App() {
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            {/* <Route path="/forgot-password" element={<ForgotPassword />} /> */}
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             {/* Protected Routes */}
             <Route element={<RequireAuth />}>
               <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} /> {/* Redirect root to Dashboard */}
+                {/* Redirect root to Dashboard */}
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                
                 <Route path="/dashboard" element={<Dashboard />} />
                 
                 {/* Work */}
@@ -73,13 +75,15 @@ export default function App() {
                 
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
-                <Route path="/messages/:roomId" element={<Messages />} /> {/* ONE Chat Route */}
+                
+                {/* 🟢 FIXED: Unified Chat Route */}
+                <Route path="/messages/:roomId" element={<Messages />} />
                 
                 {/* Management */}
                 <Route path="/team" element={<Team />} />
                 
-                {/* FIXED: Two Profile Routes (Me vs Others) */}
-                <Route path="/profile" element={<Profile />} /> 
+                {/* 🟢 FIXED: Profile needs both routes */}
+                <Route path="/profile" element={<Profile />} />
                 <Route path="/profile/:id" element={<Profile />} />
                 
                 <Route path="/calendar" element={<Calendar />} />
@@ -90,6 +94,9 @@ export default function App() {
                 <Route path="/settings" element={<SettingsLayout />} />
               </Route>
             </Route>
+            
+            {/* Catch-all: Redirect unknown pages to login */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
 
           </Routes>
         </BrowserRouter>
