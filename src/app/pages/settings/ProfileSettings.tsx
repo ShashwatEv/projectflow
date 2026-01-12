@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabaseClient'; 
-import { Save, Loader2, CheckCircle2, User, MapPin, Phone, Briefcase, Mail, Camera } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, MapPin, Mail, Phone, Globe, Camera, Briefcase } from 'lucide-react';
 
 export default function ProfileSettings() {
   const { user } = useAuth(); 
@@ -18,10 +18,17 @@ export default function ProfileSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Auto-hide success message
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setSuccess(false);
 
     try {
       if (!user?.id) return;
@@ -42,9 +49,7 @@ export default function ProfileSettings() {
       setIsLoading(false);
       setSuccess(true);
       
-      setTimeout(() => {
-          window.location.reload(); 
-      }, 1500);
+      setTimeout(() => window.location.reload(), 1500);
 
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -53,156 +58,171 @@ export default function ProfileSettings() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="max-w-6xl mx-auto h-full animate-in fade-in duration-500">
       
-      {/* Page Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Public Profile</h2>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your public information and how you appear to the team.</p>
-      </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Profile</h2>
+           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Update your personal details and public preview.</p>
+        </div>
         
-        {/* 1. Avatar Card with Gradient */}
-        <div className="relative overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm transition-all hover:shadow-md">
-            {/* Decorative Background */}
-            <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 dark:from-indigo-900/20 dark:to-purple-900/20"></div>
+        {/* Save Button (Top Right for easy access) */}
+        <button 
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className={`
+                px-6 py-2.5 rounded-xl font-medium flex items-center gap-2 transition-all shadow-lg
+                ${success 
+                    ? 'bg-emerald-500 text-white shadow-emerald-500/30' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/30 hover:shadow-indigo-500/40'
+                }
+                disabled:opacity-70 disabled:cursor-not-allowed
+            `}
+        >
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : success ? <CheckCircle2 size={18} /> : <Save size={18} />}
+            {success ? 'Saved!' : 'Save Changes'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* --- LEFT COLUMN: LIVE PREVIEW CARD --- */}
+        <div className="lg:col-span-4 space-y-6">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Live Preview</h3>
             
-            <div className="relative px-8 pt-12 pb-8 flex flex-col sm:flex-row items-start sm:items-end gap-6">
-                <div className="relative group">
-                    <img 
-                        src={formData.avatar || "https://github.com/shadcn.png"} 
-                        alt="Profile" 
-                        className="w-24 h-24 rounded-2xl object-cover border-4 border-white dark:border-gray-800 shadow-lg" 
-                    />
-                    <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-not-allowed">
-                        <Camera className="text-white opacity-80" size={24} />
-                    </div>
+            {/* The Card */}
+            <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-xl border border-gray-100 dark:border-gray-700 sticky top-6">
+                {/* Banner Background */}
+                <div className="h-32 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 relative">
+                    <div className="absolute inset-0 bg-black/10"></div>
                 </div>
-                
-                <div className="flex-1 w-full space-y-2">
-                    <label className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        Profile Image URL
-                    </label>
-                    <div className="relative group">
-                         <input 
-                            type="text" 
-                            value={formData.avatar}
-                            onChange={(e) => setFormData({...formData, avatar: e.target.value})}
-                            placeholder="https://..."
-                            className="w-full pl-4 pr-10 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all group-hover:bg-white dark:group-hover:bg-gray-900"
+
+                {/* Card Content */}
+                <div className="px-6 pb-8 relative">
+                    {/* Floating Avatar */}
+                    <div className="relative -mt-12 mb-4 inline-block">
+                        <img 
+                            src={formData.avatar || "https://github.com/shadcn.png"} 
+                            alt="Profile" 
+                            className="w-24 h-24 rounded-2xl object-cover border-4 border-white dark:border-gray-800 shadow-md bg-white" 
                         />
-                        <div className="absolute right-3 top-2.5 text-gray-400">
-                            <Camera size={16} />
+                        <div className="absolute bottom-0 right-0 w-6 h-6 bg-emerald-500 border-4 border-white dark:border-gray-800 rounded-full"></div>
+                    </div>
+
+                    <div className="text-center sm:text-left">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">
+                            {formData.name || 'Your Name'}
+                        </h2>
+                        <p className="text-indigo-600 dark:text-indigo-400 font-medium text-sm mb-4">
+                            {formData.role || 'Role / Job Title'}
+                        </p>
+
+                        <div className="space-y-3 pt-4 border-t border-gray-100 dark:border-gray-700">
+                             <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                                <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-gray-400"><Mail size={16} /></div>
+                                <span className="truncate">{formData.email}</span>
+                             </div>
+                             
+                             {formData.phone && (
+                                <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                                    <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-gray-400"><Phone size={16} /></div>
+                                    <span>{formData.phone}</span>
+                                </div>
+                             )}
+
+                             {formData.location && (
+                                <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                                    <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-gray-400"><MapPin size={16} /></div>
+                                    <span>{formData.location}</span>
+                                </div>
+                             )}
                         </div>
                     </div>
-                    <p className="text-xs text-gray-500">Supports JPG, PNG or GIF. Recommended size 400x400px.</p>
                 </div>
             </div>
         </div>
 
-        {/* 2. Form Fields */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Identity Section */}
-            <div className="md:col-span-2">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
-                    Identity
-                </h3>
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-3 text-gray-400"><User size={18} /></div>
-                    <input 
-                        value={formData.name}
-                        onChange={(e) => setFormData({...formData, name: e.target.value})}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all focus:scale-[1.01] dark:text-white"
-                        placeholder="Your Name"
-                    />
+        {/* --- RIGHT COLUMN: EDIT FORM --- */}
+        <div className="lg:col-span-8">
+             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-900 dark:text-white">Personal Information</h3>
+                    <span className="text-xs text-gray-500">All fields auto-save to preview</span>
                 </div>
-            </div>
+                
+                <div className="p-8 space-y-8">
+                    {/* Avatar Input */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Profile Image</label>
+                        <div className="flex gap-4">
+                            <div className="relative flex-1">
+                                <div className="absolute left-3 top-3 text-gray-400"><Camera size={18} /></div>
+                                <input 
+                                    value={formData.avatar}
+                                    onChange={(e) => setFormData({...formData, avatar: e.target.value})}
+                                    placeholder="Paste image URL here..."
+                                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                                />
+                            </div>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">Use a direct link to a JPG or PNG image.</p>
+                    </div>
 
-            <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Job Title</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-3 text-gray-400"><Briefcase size={18} /></div>
-                    <input 
-                        value={formData.role}
-                        onChange={(e) => setFormData({...formData, role: e.target.value})}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all focus:scale-[1.01] dark:text-white"
-                        placeholder="Product Designer"
-                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <InputGroup 
+                            label="Full Name" 
+                            icon={<span className="text-lg font-bold">Aa</span>} // Text Icon
+                            value={formData.name} 
+                            onChange={(v: string) => setFormData({...formData, name: v})}
+                            placeholder="e.g. Sarah Connor"
+                        />
+                         <InputGroup 
+                            label="Job Title / Role" 
+                            icon={<Briefcase size={18} />} 
+                            value={formData.role} 
+                            onChange={(v: string) => setFormData({...formData, role: v})}
+                            placeholder="e.g. Senior Developer"
+                        />
+                         <InputGroup 
+                            label="Location" 
+                            icon={<MapPin size={18} />} 
+                            value={formData.location} 
+                            onChange={(v: string) => setFormData({...formData, location: v})}
+                            placeholder="e.g. London, UK"
+                        />
+                         <InputGroup 
+                            label="Phone Number" 
+                            icon={<Phone size={18} />} 
+                            value={formData.phone} 
+                            onChange={(v: string) => setFormData({...formData, phone: v})}
+                            placeholder="+1 (555) 000-0000"
+                        />
+                    </div>
                 </div>
-            </div>
-
-            {/* Contact Section */}
-            <div className="md:col-span-2 mt-2">
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4 border-b border-gray-100 dark:border-gray-800 pb-2">
-                    Contact Information
-                </h3>
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-3 text-gray-400"><Mail size={18} /></div>
-                    <input 
-                        value={formData.email}
-                        disabled
-                        className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 cursor-not-allowed"
-                    />
-                </div>
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-3 text-gray-400"><Phone size={18} /></div>
-                    <input 
-                        value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all focus:scale-[1.01] dark:text-white"
-                        placeholder="+1 (555) 000-0000"
-                    />
-                </div>
-            </div>
-
-            <div className="md:col-span-2 space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Location</label>
-                <div className="relative">
-                    <div className="absolute left-3 top-3 text-gray-400"><MapPin size={18} /></div>
-                    <input 
-                        value={formData.location}
-                        onChange={(e) => setFormData({...formData, location: e.target.value})}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all focus:scale-[1.01] dark:text-white"
-                        placeholder="San Francisco, CA"
-                    />
-                </div>
-            </div>
+             </div>
         </div>
 
-        {/* 3. Action Bar */}
-        <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-4">
-             {success && (
-                <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2 rounded-lg animate-in fade-in slide-in-from-right-4">
-                    <CheckCircle2 size={18} /> 
-                    <span className="text-sm font-medium">Profile Updated!</span>
-                </div>
-            )}
-
-            <button 
-                type="submit"
-                disabled={isLoading}
-                className="group relative px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/40 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-95"
-            >
-                {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} className="transition-transform group-hover:scale-110" />}
-                <span>Save Changes</span>
-            </button>
-        </div>
-
-      </form>
+      </div>
     </div>
   );
+}
+
+// Reusable Input Component for cleaner code
+function InputGroup({ label, icon, value, onChange, placeholder }: any) {
+    return (
+        <div className="space-y-1.5">
+            <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</label>
+            <div className="relative group">
+                <div className="absolute left-3 top-2.5 text-gray-400 group-focus-within:text-indigo-600 transition-colors">
+                    {icon}
+                </div>
+                <input 
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all dark:text-white"
+                    placeholder={placeholder}
+                />
+            </div>
+        </div>
+    );
 }
