@@ -118,29 +118,51 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // --- FIXED SEND MESSAGE FUNCTION ---
   const sendMessage = async (text: string, file?: File) => {
     if (!user) return;
-    
-    // 1. Prepare Payload using 'text' column (fixes 400 error)
+
+    // 1. Create a temporary ID for the optimistic message
+    const tempId = Math.random().toString(36).substr(2, 9);
+    const timestamp = new Date().toISOString();
+
+    // 2. Optimistic Message Object
+    const optimisticMessage: Message = {
+      id: tempId,
+      text: text,
+      senderId: user.id,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      created_at: timestamp,
+      user: { name: user.name, avatar: user.avatar }, // Attach current user info
+      attachments: [] // Handle attachments if needed
+    };
+
+    // 3. Update State IMMEDIATELY (Show it now!)
+    addMessageToState(activeChannelId, optimisticMessage);
+
+    // 4. Prepare Payload for Database
     const payload: any = { 
         user_id: user.id, 
-        text: text, // Changed from 'content' to 'text'
+        text: text, // Make sure your DB column is 'text' (or 'content')
     }; 
     
-    // 2. Handle IDs safely
+    // Handle DM vs Channel IDs
     if (activeChannelId.includes('dm_')) {
       payload.room_id = activeChannelId;
-      payload.channel_id = null; // Explicit null
+      payload.channel_id = null; 
     } else {
       payload.channel_id = activeChannelId;
-      payload.room_id = null; // Explicit null
+      payload.room_id = null; 
     }
 
+    // 5. Send to Supabase
     const { error } = await supabase.from('messages').insert([payload]);
     
     if (error) {
         console.error("Send Error:", error);
-        alert(`Error sending: ${error.message}`);
+        alert("Failed to send message");
+        // Optionally remove the optimistic message here on failure
     } else {
         broadcastTyping(false);
+        // Note: The Realtime subscription will come in later and replace/duplicate this.
+        // Usually, we filter out duplicates or let the realtime event overwrite the optimistic one.
     }
   };
 
