@@ -17,26 +17,19 @@ interface Message {
 }
 
 interface ChatContextType {
-  // Data
   channels: any[];
   users: any[];
   messages: Record<string, Message[]>;
   activeChannelId: string;
-  activeChannelName: string; // <--- This was missing in your interface
-  
-  // States
+  activeChannelName: string;
   isLoadingHistory: boolean;
   typingUsers: string[];
-  hasMoreMessages: boolean; // <--- Added this back to match value
-  
-  // Actions
+  hasMoreMessages: boolean;
   setActiveChannelId: (id: string) => void;
   createChannel: (name: string) => Promise<void>;
   sendMessage: (text: string, file?: File) => Promise<void>;
   broadcastTyping: (isTyping: boolean) => void;
-  loadMoreMessages: () => Promise<void>; // <--- Added this back
-  
-  // Placeholders (Required to prevent errors in other files)
+  loadMoreMessages: () => Promise<void>;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   activeThreadId: string | null;
@@ -49,7 +42,6 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   
-  // State
   const [channels, setChannels] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -59,18 +51,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Initial Fetch
+  // Initial Data Fetch
   useEffect(() => {
-    fetchChannels();
-    fetchUsers();
+    const initData = async () => {
+        const { data: channelData } = await supabase.from('channels').select('*').order('name');
+        if (channelData) {
+            setChannels(channelData);
+            if (!activeChannelId && channelData.length > 0) setActiveChannelId(channelData[0].id);
+        }
+        const { data: userData } = await supabase.from('users').select('*');
+        if (userData) setUsersList(userData);
+    };
+    initData();
   }, []);
-
-  // Set initial active channel
-  useEffect(() => {
-    if (!activeChannelId && channels.length > 0) {
-      setActiveChannelId(channels[0].id);
-    }
-  }, [channels]);
 
   // Realtime Subscription
   useEffect(() => {
@@ -83,13 +76,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       config: { presence: { key: user.id } }
     });
 
+    const filter = activeChannelId.includes('dm_') 
+        ? `room_id=eq.${activeChannelId}` 
+        : `channel_id=eq.${activeChannelId}`;
+
     newChannel
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: activeChannelId.includes('dm_') ? `room_id=eq.${activeChannelId}` : `channel_id=eq.${activeChannelId}`
-      }, async (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter }, async (payload) => {
          const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', payload.new.user_id).single();
          const newMsg = formatMessageFromDB(payload.new, userData);
          addMessageToState(activeChannelId, newMsg);
@@ -104,17 +96,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     channelRef.current = newChannel;
     return () => { supabase.removeChannel(newChannel); };
   }, [activeChannelId]);
-
-  // --- ACTIONS ---
-  const fetchChannels = async () => {
-    const { data } = await supabase.from('channels').select('*').order('name');
-    if (data) setChannels(data);
-  };
-
-  const fetchUsers = async () => {
-    const { data } = await supabase.from('users').select('*');
-    if (data) setUsersList(data);
-  };
 
   const fetchMessages = async (channelId: string) => {
     setIsLoadingHistory(true);
@@ -133,36 +114,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     setIsLoadingHistory(false);
   };
-const sendMessage = async (text: string, file?: File) => {
+
+  // --- FIXED SEND MESSAGE FUNCTION ---
+  const sendMessage = async (text: string, file?: File) => {
     if (!user) return;
-
-    // 1. Prepare the payload matching the new SQL columns
+    
+    // 1. Prepare Payload using 'text' column (fixes 400 error)
     const payload: any = { 
-      user_id: user.id, 
-      content: text, // We use 'content' to match the DB column
-      created_at: new Date().toISOString()
-    };
-
-    // 2. Attach IDs correctly
-    if (activeChannelId.startsWith('dm_')) {
-      payload.room_id = activeChannelId;  // For DMs
-      payload.channel_id = null;          // Clear channel_id
+        user_id: user.id, 
+        text: text, // Changed from 'content' to 'text'
+    }; 
+    
+    // 2. Handle IDs safely
+    if (activeChannelId.includes('dm_')) {
+      payload.room_id = activeChannelId;
+      payload.channel_id = null; // Explicit null
     } else {
-      payload.channel_id = activeChannelId; // For Channels
-      payload.room_id = null;               // Clear room_id
+      payload.channel_id = activeChannelId;
+      payload.room_id = null; // Explicit null
     }
 
-    // 3. Insert to Supabase
     const { error } = await supabase.from('messages').insert([payload]);
     
     if (error) {
-      console.error('Error sending message:', error);
-      alert('Failed to send message. Check console for details.');
+        console.error("Send Error:", error);
+        alert(`Error sending: ${error.message}`);
     } else {
-      broadcastTyping(false);
+        broadcastTyping(false);
     }
   };
-  
+
   const createChannel = async (name: string) => {
     const { data } = await supabase.from('channels').insert([{ name, type: 'public' }]).select().single();
     if (data) {
@@ -177,10 +158,9 @@ const sendMessage = async (text: string, file?: File) => {
     }
   };
 
-  // --- HELPERS ---
   const formatMessageFromDB = (dbMsg: any, userData: any): Message => ({
     id: dbMsg.id,
-    text: dbMsg.content || dbMsg.text,
+    text: dbMsg.text || dbMsg.content, // Handle both just in case
     senderId: dbMsg.user_id,
     user: userData,
     timestamp: new Date(dbMsg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
@@ -189,13 +169,9 @@ const sendMessage = async (text: string, file?: File) => {
   });
 
   const addMessageToState = (channelId: string, msg: Message) => {
-    setMessages(prev => ({
-      ...prev,
-      [channelId]: [...(prev[channelId] || []), msg]
-    }));
+    setMessages(prev => ({ ...prev, [channelId]: [...(prev[channelId] || []), msg] }));
   };
 
-  // Derived Values
   const activeChannelName = channels.find(c => c.id === activeChannelId)?.name 
     || usersList.find(u => activeChannelId.includes(u.id))?.name 
     || 'Chat';
@@ -203,10 +179,9 @@ const sendMessage = async (text: string, file?: File) => {
   return (
     <ChatContext.Provider value={{
       channels, users: usersList, messages, activeChannelId, activeChannelName,
-      typingUsers, isLoadingHistory, 
-      hasMoreMessages: false, // Hardcoded for now to satisfy interface
+      typingUsers, isLoadingHistory, hasMoreMessages: false,
       setActiveChannelId, createChannel, sendMessage, broadcastTyping,
-      loadMoreMessages: async () => {}, // Placeholder
+      loadMoreMessages: async () => {},
       searchQuery: '', setSearchQuery: () => {},
       activeThreadId: null, openThread: () => {}, closeThread: () => {},
     }}>
