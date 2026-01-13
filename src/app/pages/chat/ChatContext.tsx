@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -25,42 +26,69 @@ interface ChatContextType {
   isLoadingHistory: boolean;
   typingUsers: string[];
   hasMoreMessages: boolean;
+  
+  // Actions
   setActiveChannelId: (id: string) => void;
   createChannel: (name: string) => Promise<void>;
   sendMessage: (text: string, file?: File) => Promise<void>;
   broadcastTyping: (isTyping: boolean) => void;
   loadMoreMessages: () => Promise<void>;
+  
+  // Search & Thread (Placeholders)
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   activeThreadId: string | null;
   openThread: (id: string) => void;
   closeThread: () => void;
+
+  // Status (Restored for Sidebar)
+  currentUserStatus: string;
+  setStatus: (status: any) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { roomId } = useParams(); // Read URL param
+  const navigate = useNavigate();
   
   const [channels, setChannels] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
-  const [activeChannelId, setActiveChannelId] = useState<string>(''); 
+  const [activeChannelId, setActiveChannelIdState] = useState<string>(''); 
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [currentUserStatus, setCurrentUserStatus] = useState('online');
   
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // Initial Data Fetch
+  // Sync URL with State
+  useEffect(() => {
+    if (roomId && roomId !== activeChannelId) {
+      setActiveChannelIdState(roomId);
+    }
+  }, [roomId]);
+
+  // Wrapper to update URL when channel changes
+  const setActiveChannelId = (id: string) => {
+    setActiveChannelIdState(id);
+    navigate(`/messages/${id}`);
+  };
+
+  // Initial Fetch
   useEffect(() => {
     const initData = async () => {
-        const { data: channelData } = await supabase.from('channels').select('*').order('name');
-        if (channelData) {
-            setChannels(channelData);
-            if (!activeChannelId && channelData.length > 0) setActiveChannelId(channelData[0].id);
+        const { data: ch } = await supabase.from('channels').select('*').order('name');
+        if (ch) {
+            setChannels(ch);
+            // If no ID in URL, default to first channel
+            if (!roomId && ch.length > 0) {
+               setActiveChannelId(ch[0].id);
+            }
         }
-        const { data: userData } = await supabase.from('users').select('*');
-        if (userData) setUsersList(userData);
+        const { data: u } = await supabase.from('users').select('*');
+        if (u) setUsersList(u);
     };
     initData();
   }, []);
@@ -101,11 +129,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsLoadingHistory(true);
     let query = supabase.from('messages').select(`*, user:users(name, avatar)`).order('created_at', { ascending: true });
     
-    if (channelId.includes('dm_')) {
-      query = query.eq('room_id', channelId);
-    } else {
-      query = query.eq('channel_id', channelId);
-    }
+    if (channelId.includes('dm_')) query = query.eq('room_id', channelId);
+    else query = query.eq('channel_id', channelId);
 
     const { data } = await query;
     if (data) {
@@ -115,55 +140,30 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsLoadingHistory(false);
   };
 
-  // --- FIXED SEND MESSAGE FUNCTION ---
   const sendMessage = async (text: string, file?: File) => {
     if (!user) return;
-
-    // 1. Create a temporary ID for the optimistic message
-    const tempId = Math.random().toString(36).substr(2, 9);
-    const timestamp = new Date().toISOString();
-
-    // 2. Optimistic Message Object
-    const optimisticMessage: Message = {
-      id: tempId,
-      text: text,
-      senderId: user.id,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      created_at: timestamp,
-      user: { name: user.name, avatar: user.avatar }, // Attach current user info
-      attachments: [] // Handle attachments if needed
-    };
-
-    // 3. Update State IMMEDIATELY (Show it now!)
-    addMessageToState(activeChannelId, optimisticMessage);
-
-    // 4. Prepare Payload for Database
-    const payload: any = { 
-        user_id: user.id, 
-        text: text, // Make sure your DB column is 'text' (or 'content')
-    }; 
     
-    // Handle DM vs Channel IDs
+    // Optimistic Update
+    const tempId = Math.random().toString();
+    const optimisticMsg: Message = {
+        id: tempId, text, senderId: user.id, timestamp: 'Now', created_at: new Date().toISOString(),
+        user: { name: user.name, avatar: user.avatar }
+    };
+    addMessageToState(activeChannelId, optimisticMsg);
+
+    const payload: any = { user_id: user.id, text }; 
+    
     if (activeChannelId.includes('dm_')) {
       payload.room_id = activeChannelId;
-      payload.channel_id = null; 
+      payload.channel_id = null;
     } else {
       payload.channel_id = activeChannelId;
-      payload.room_id = null; 
+      payload.room_id = null;
     }
 
-    // 5. Send to Supabase
     const { error } = await supabase.from('messages').insert([payload]);
-    
-    if (error) {
-        console.error("Send Error:", error);
-        alert("Failed to send message");
-        // Optionally remove the optimistic message here on failure
-    } else {
-        broadcastTyping(false);
-        // Note: The Realtime subscription will come in later and replace/duplicate this.
-        // Usually, we filter out duplicates or let the realtime event overwrite the optimistic one.
-    }
+    if (error) console.error(error);
+    else broadcastTyping(false);
   };
 
   const createChannel = async (name: string) => {
@@ -182,7 +182,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const formatMessageFromDB = (dbMsg: any, userData: any): Message => ({
     id: dbMsg.id,
-    text: dbMsg.text || dbMsg.content, // Handle both just in case
+    text: dbMsg.text || dbMsg.content,
     senderId: dbMsg.user_id,
     user: userData,
     timestamp: new Date(dbMsg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
@@ -206,6 +206,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       loadMoreMessages: async () => {},
       searchQuery: '', setSearchQuery: () => {},
       activeThreadId: null, openThread: () => {}, closeThread: () => {},
+      currentUserStatus, setStatus: setCurrentUserStatus
     }}>
       {children}
     </ChatContext.Provider>

@@ -3,6 +3,13 @@ import { Download, FileText, Reply, MessageSquare, Plus } from 'lucide-react';
 import { Message } from '../types';
 import { useChat } from '../ChatContext';
 import { useAuth } from '../../../../context/AuthContext';
+import { useParams } from 'react-router-dom';
+import ChatLayout from '../ChatLayout';
+
+export default function Messages() {
+  // This wrapper ensures ChatLayout is rendered when the route is hit
+  return <ChatLayout />;
+}
 
 interface MessageListProps {
   messages: Message[];
