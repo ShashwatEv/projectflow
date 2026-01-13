@@ -133,19 +133,36 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     setIsLoadingHistory(false);
   };
-
-  const sendMessage = async (text: string, file?: File) => {
+const sendMessage = async (text: string, file?: File) => {
     if (!user) return;
-    const payload: any = { user_id: user.id, content: text }; 
-    if (activeChannelId.includes('dm_')) {
-      payload.room_id = activeChannelId;
-    } else {
-      payload.channel_id = activeChannelId;
-    }
-    await supabase.from('messages').insert([payload]);
-    broadcastTyping(false);
-  };
 
+    // 1. Prepare the payload matching the new SQL columns
+    const payload: any = { 
+      user_id: user.id, 
+      content: text, // We use 'content' to match the DB column
+      created_at: new Date().toISOString()
+    };
+
+    // 2. Attach IDs correctly
+    if (activeChannelId.startsWith('dm_')) {
+      payload.room_id = activeChannelId;  // For DMs
+      payload.channel_id = null;          // Clear channel_id
+    } else {
+      payload.channel_id = activeChannelId; // For Channels
+      payload.room_id = null;               // Clear room_id
+    }
+
+    // 3. Insert to Supabase
+    const { error } = await supabase.from('messages').insert([payload]);
+    
+    if (error) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message. Check console for details.');
+    } else {
+      broadcastTyping(false);
+    }
+  };
+  
   const createChannel = async (name: string) => {
     const { data } = await supabase.from('channels').insert([{ name, type: 'public' }]).select().single();
     if (data) {
