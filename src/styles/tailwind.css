@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
-/* We removed 'tw-animate-css' temporarily because it often causes 
-   conflicts with the new Tailwind v4 alpha/beta versions. 
-   The basic @import "tailwindcss"; is all you need to get started.
-*/
+/* 1. Tell Tailwind to create primary color classes (bg-primary, text-primary, etc.) */
+@theme {
+  --color-primary: var(--theme-primary);
+}
+
+/* 2. Set the default fallback color (Indigo) */
+:root {
+  --theme-primary: #4f46e5; 
+}

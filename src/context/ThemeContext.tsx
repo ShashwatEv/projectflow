@@ -1,63 +1,96 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-// UPDATED: Added 'midnight' and 'forest' types
+// 1. Define Types
 type Theme = 'dark' | 'light' | 'system';
+type AccentColor = 'indigo' | 'emerald' | 'blue' | 'purple' | 'rose' | 'orange';
 
 interface ThemeProviderProps {
   children: ReactNode;
   defaultTheme?: Theme;
-  storageKey?: string;
+  defaultAccent?: AccentColor;
+  storageKeyTheme?: string;
+  storageKeyAccent?: string;
 }
 
 interface ThemeProviderState {
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  accentColor: AccentColor;
+  setAccentColor: (color: AccentColor) => void;
 }
 
 const initialState: ThemeProviderState = {
   theme: 'system',
   setTheme: () => null,
+  accentColor: 'indigo',
+  setAccentColor: () => null,
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
+// Hex values for our accent colors
+const colorMap: Record<AccentColor, string> = {
+  indigo: '#4f46e5',
+  emerald: '#10b981',
+  blue: '#3b82f6',
+  purple: '#9333ea',
+  rose: '#f43f5e',
+  orange: '#f97316',
+};
+
 export function ThemeProvider({
   children,
   defaultTheme = 'system',
-  storageKey = 'vite-ui-theme',
+  defaultAccent = 'indigo',
+  storageKeyTheme = 'vite-ui-theme',
+  storageKeyAccent = 'vite-ui-accent-color',
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  
+  // Initialize Theme from localStorage
+  const [theme, setThemeState] = useState<Theme>(
+    () => (localStorage.getItem(storageKeyTheme) as Theme) || defaultTheme
   );
 
+  // Initialize Accent Color from localStorage
+  const [accentColor, setAccentColorState] = useState<AccentColor>(
+    () => (localStorage.getItem(storageKeyAccent) as AccentColor) || defaultAccent
+  );
+
+  // Handle Theme Application
   useEffect(() => {
     const root = window.document.documentElement;
-
-    // CRITICAL: Remove ALL possible theme classes so they don't conflict
     root.classList.remove('light', 'dark');
 
-    // Logic for System preference
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-        .matches
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'
         : 'light';
-
       root.classList.add(systemTheme);
       return;
     }
 
-    // Logic for explicit Theme
     root.classList.add(theme);
   }, [theme]);
 
+  // Handle Accent Color Injection
+  useEffect(() => {
+    const root = window.document.documentElement;
+    // Inject the selected color into the CSS variable we defined in Step 1
+    root.style.setProperty('--theme-primary', colorMap[accentColor]);
+  }, [accentColor]);
+
   const value = {
     theme,
-    setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme);
-      setTheme(theme);
+    setTheme: (newTheme: Theme) => {
+      localStorage.setItem(storageKeyTheme, newTheme);
+      setThemeState(newTheme);
     },
+    accentColor,
+    setAccentColor: (newColor: AccentColor) => {
+      localStorage.setItem(storageKeyAccent, newColor);
+      setAccentColorState(newColor);
+    }
   };
 
   return (
