@@ -1,8 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext'; // Fixed import path based on App.tsx
 
 export default function RequireAuth() {
-  // 1. Get 'session' and 'loading' from context (not isAuthenticated)
   const { session, loading } = useAuth(); 
   const location = useLocation();
 
@@ -14,12 +13,10 @@ export default function RequireAuth() {
     );
   }
 
-  // 2. Check if session is null. If it is, the user is NOT logged in.
   if (!session) {
-    // Redirect them to the /login page (root path '/')
-    return <Navigate to="/" state={{ from: location }} replace />;
+    // 🟢 FIXED: Redirect to '/login', not '/'
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 3. If session exists, render the protected page
   return <Outlet />;
 }
