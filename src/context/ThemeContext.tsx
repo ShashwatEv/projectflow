@@ -3,20 +3,17 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 // 1. Define Types
 type Theme = 'dark' | 'light' | 'system';
 type AccentColor = 'indigo' | 'emerald' | 'blue' | 'purple' | 'rose' | 'orange';
-
-interface ThemeProviderProps {
-  children: ReactNode;
-  defaultTheme?: Theme;
-  defaultAccent?: AccentColor;
-  storageKeyTheme?: string;
-  storageKeyAccent?: string;
-}
+type FontSize = 'compact' | 'default' | 'large';
 
 interface ThemeProviderState {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   accentColor: AccentColor;
   setAccentColor: (color: AccentColor) => void;
+  fontSize: FontSize;
+  setFontSize: (size: FontSize) => void;
+  reducedMotion: boolean;
+  setReducedMotion: (reduce: boolean) => void;
 }
 
 const initialState: ThemeProviderState = {
@@ -24,6 +21,10 @@ const initialState: ThemeProviderState = {
   setTheme: () => null,
   accentColor: 'indigo',
   setAccentColor: () => null,
+  fontSize: 'default',
+  setFontSize: () => null,
+  reducedMotion: false,
+  setReducedMotion: () => null,
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
@@ -38,71 +39,74 @@ const colorMap: Record<AccentColor, string> = {
   orange: '#f97316',
 };
 
-export function ThemeProvider({
-  children,
-  defaultTheme = 'system',
-  defaultAccent = 'indigo',
-  storageKeyTheme = 'vite-ui-theme',
-  storageKeyAccent = 'vite-ui-accent-color',
-  ...props
-}: ThemeProviderProps) {
+export function ThemeProvider({ children }: { children: ReactNode }) {
   
-  // Initialize Theme from localStorage
+  // Initialize States from localStorage
   const [theme, setThemeState] = useState<Theme>(
-    () => (localStorage.getItem(storageKeyTheme) as Theme) || defaultTheme
+    () => (localStorage.getItem('vite-ui-theme') as Theme) || 'system'
   );
-
-  // Initialize Accent Color from localStorage
   const [accentColor, setAccentColorState] = useState<AccentColor>(
-    () => (localStorage.getItem(storageKeyAccent) as AccentColor) || defaultAccent
+    () => (localStorage.getItem('vite-ui-accent') as AccentColor) || 'indigo'
+  );
+  const [fontSize, setFontSizeState] = useState<FontSize>(
+    () => (localStorage.getItem('vite-ui-font') as FontSize) || 'default'
+  );
+  const [reducedMotion, setReducedMotionState] = useState<boolean>(
+    () => localStorage.getItem('vite-ui-motion') === 'true'
   );
 
-  // Handle Theme Application
+  // 1. Apply Theme
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
-
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       root.classList.add(systemTheme);
-      return;
+    } else {
+      root.classList.add(theme);
     }
-
-    root.classList.add(theme);
   }, [theme]);
 
-  // Handle Accent Color Injection
+  // 2. Apply Accent Color
   useEffect(() => {
-    const root = window.document.documentElement;
-    // Inject the selected color into the CSS variable we defined in Step 1
-    root.style.setProperty('--theme-primary', colorMap[accentColor]);
+    window.document.documentElement.style.setProperty('--theme-primary', colorMap[accentColor]);
   }, [accentColor]);
 
+  // 3. Apply Font Size (Scales Tailwind's 'rem' globally)
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (fontSize === 'compact') root.style.fontSize = '14px';
+    else if (fontSize === 'large') root.style.fontSize = '18px';
+    else root.style.fontSize = '16px'; // Default
+  }, [fontSize]);
+
+  // 4. Apply Reduced Motion
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (reducedMotion) {
+      root.classList.add('reduce-motion');
+    } else {
+      root.classList.remove('reduce-motion');
+    }
+  }, [reducedMotion]);
+
+  // Value provider with localStorage saving
   const value = {
     theme,
-    setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKeyTheme, newTheme);
-      setThemeState(newTheme);
-    },
+    setTheme: (val: Theme) => { localStorage.setItem('vite-ui-theme', val); setThemeState(val); },
     accentColor,
-    setAccentColor: (newColor: AccentColor) => {
-      localStorage.setItem(storageKeyAccent, newColor);
-      setAccentColorState(newColor);
-    }
+    setAccentColor: (val: AccentColor) => { localStorage.setItem('vite-ui-accent', val); setAccentColorState(val); },
+    fontSize,
+    setFontSize: (val: FontSize) => { localStorage.setItem('vite-ui-font', val); setFontSizeState(val); },
+    reducedMotion,
+    setReducedMotion: (val: boolean) => { localStorage.setItem('vite-ui-motion', String(val)); setReducedMotionState(val); },
   };
 
-  return (
-    <ThemeProviderContext.Provider {...props} value={value}>
-      {children}
-    </ThemeProviderContext.Provider>
-  );
+  return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>;
 }
 
 export const useTheme = () => {
   const context = useContext(ThemeProviderContext);
-  if (context === undefined)
-    throw new Error('useTheme must be used within a ThemeProvider');
+  if (context === undefined) throw new Error('useTheme must be used within a ThemeProvider');
   return context;
 };
