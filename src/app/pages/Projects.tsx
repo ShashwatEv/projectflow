@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FolderKanban, MoreHorizontal, Plus, Calendar, Clock, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient'; // <--- Real Data
+import CreateProjectModal from '../components/CreateProjectModal';
 
 interface Project {
   id: string;
@@ -12,6 +13,7 @@ interface Project {
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -50,7 +52,10 @@ export default function Projects() {
            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Projects</h1>
            <p className="text-gray-500">Manage and track your ongoing projects.</p>
         </div>
-        <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors">
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors"
+        >
           <Plus size={18} /> New Project
         </button>
       </div>
@@ -71,7 +76,7 @@ export default function Projects() {
               </div>
 
               <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-indigo-600 transition-colors">{project.name}</h3>
-              
+
               <div className="flex items-center gap-4 mb-6">
                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${getStatusColor(project.status)}`}>
                    {project.status}
@@ -95,7 +100,7 @@ export default function Projects() {
               </div>
             </div>
           ))}
-          
+
           {projects.length === 0 && (
             <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-300">
                <p>No projects found. Create one to get started!</p>
@@ -103,6 +108,11 @@ export default function Projects() {
           )}
         </div>
       )}
+      <CreateProjectModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onProjectCreated={() => fetchProjects()}
+      />
     </div>
   );
 }

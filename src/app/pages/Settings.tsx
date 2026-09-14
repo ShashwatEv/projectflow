@@ -1,15 +1,14 @@
 import { useNavigate } from 'react-router-dom';
 import { User, Bell, Lock, CreditCard, Save, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
 
-  const handleLogout = () => {
-    // 1. Clear the "fake" authentication token
-    localStorage.removeItem('isAuthenticated');
-    
-    // 2. Redirect the user back to the Login page
-    navigate('/');
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
   };
 
   return (
