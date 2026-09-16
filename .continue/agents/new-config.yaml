@@ -1,0 +1,22 @@
+name: Example Config
+version: 1.0.0
+schema: v1
+
+models:
+  - name: qwen2.5-coder 7b
+    provider: ollama
+    model: qwen2.5-coder:7b
+    roles:
+      - chat
+      - edit
+      - apply
+      - autocomplete
+    defaultCompletionOptions:
+      contextLength: 32768
+      maxTokens: 4096
+
+  - name: nomic-embed-text
+    provider: ollama
+    model: nomic-embed-text
+    roles:
+      - embed
