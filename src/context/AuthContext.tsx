@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
-// ✅ UPDATED: Added missing fields (location, phone, etc.)
 export interface UserProfile {
   id: string;
   name: string;
@@ -11,7 +10,7 @@ export interface UserProfile {
   role?: string;
   location?: string;
   phone?: string;
-  bannerUrl?: string; // Optional if you use it
+  bannerUrl?: string;
 }
 
 interface AuthContextType {
@@ -29,18 +28,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email ?? '', session.user.user_metadata);
+      } else {
+        setLoading(false);
+      }
     });
 
-    // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id);
-      else {
+      if (session?.user) {
+        fetchProfile(session.user.id, session.user.email ?? '', session.user.user_metadata);
+      } else {
         setUser(null);
         setLoading(false);
       }
@@ -49,22 +50,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, defaultEmail = '', metadata: Record<string, any> = {}) => {
     try {
-      // Fetch profile data from Supabase
+      // Use .maybeSingle() to prevent HTTP 406 when no row exists
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching profile:', error);
-      } else if (data) {
+      }
+
+      if (data) {
         setUser(data);
+      } else {
+        // Fallback to auth metadata until the database row is populated
+        setUser({
+          id: userId,
+          name: metadata.full_name || metadata.name || defaultEmail.split('@')[0] || 'User',
+          email: defaultEmail,
+          avatar: metadata.avatar_url || '',
+          role: 'Member'
+        });
       }
     } catch (error) {
-      console.error("Unexpected error:", error);
+      console.error('Unexpected error:', error);
     } finally {
       setLoading(false);
     }
