@@ -26,7 +26,8 @@ import Notifications from './pages/Notifications';
 import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
-// Note: 'TeamChat' is removed because we merged it into 'Messages'
+import ProjectDetail from './pages/ProjectDetail';
+import { Toaster } from 'sonner';
 
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -53,6 +54,7 @@ export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+        <Toaster richColors position="top-right" />
         <BrowserRouter>
           <Routes>
             {/* Public Routes */}
@@ -71,12 +73,14 @@ export default function App() {
                 {/* Work */}
                 <Route path="/tasks" element={<MyTasks />} />
                 <Route path="/projects" element={<Projects />} />
+                <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/timesheets" element={<Timesheets />} />
                 
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
                 
-                {/* 🟢 FIXED: Unified Chat Route */}
+                {/* 🟢 Unified Chat Routes */}
+                <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
                 <Route path="/messages/:roomId" element={<Messages />} />
                 
                 {/* Management */}
