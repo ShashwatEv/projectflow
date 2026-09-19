@@ -14,6 +14,7 @@ export default function ChatFileButton({ onUploadComplete }: ChatFileButtonProps
     if (!e.target.files || e.target.files.length === 0) return;
 
     const file = e.target.files[0];
+    if (!file) return;
     setUploading(true);
 
     try {

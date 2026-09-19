@@ -4,14 +4,21 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
-import { 
-  Loader2, CheckCircle2, Circle, AlertTriangle, ListTodo, 
-  TrendingUp, TrendingDown 
+import {
+  Loader2, CheckCircle2, Circle, AlertTriangle, ListTodo,
+  TrendingUp, TrendingDown
 } from 'lucide-react';
+
+interface Task {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+}
 
 export default function Analytics() {
   const [loading, setLoading] = useState(true);
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   // Derived Metrics
   const totalTasks = tasks.length;

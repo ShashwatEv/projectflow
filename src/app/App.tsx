@@ -55,7 +55,7 @@ function Layout() {
 export default function App() {
   return (
     <AuthProvider>
-      <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <ThemeProvider>
         <Toaster richColors position="top-right" />
         <BrowserRouter>
           <Routes>

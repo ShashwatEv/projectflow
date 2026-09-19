@@ -135,9 +135,11 @@ export default function MyTasks() {
         .single();
 
       if (error) throw error;
-      if (data) setTasks(prev => [data as Task, ...prev]);
-      toast.success('Task created successfully');
-      setNewTaskInput('');
+      if (data) {
+        setTasks(prev => [data as Task, ...prev]);
+        toast.success('Task created successfully');
+        setNewTaskInput('');
+      }
     } catch (err: any) {
       toast.error('Failed to create task');
       fetchTasks();

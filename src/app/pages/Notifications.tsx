@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bell, Check, Clock, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Bell, Clock, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 

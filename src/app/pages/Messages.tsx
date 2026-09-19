@@ -488,7 +488,8 @@ export default function Messages() {
 
           {messages.map((msg, index) => {
             const isMe = msg.user_id === user?.id;
-            const showHeader = index === 0 || messages[index - 1].user_id !== msg.user_id;
+            const prevMsg = messages[index - 1];
+            const showHeader = index === 0 || (prevMsg?.user_id !== msg.user_id);
 
             return (
               <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
