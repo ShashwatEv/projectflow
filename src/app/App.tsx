@@ -26,6 +26,7 @@ import Notifications from './pages/Notifications';
 import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
+// Note: 'TeamChat' is removed because we merged it into 'Messages'
 import ProjectDetail from './pages/ProjectDetail';
 import { Toaster } from 'sonner';
 
@@ -79,6 +80,7 @@ export default function App() {
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
                 
+                {/* 🟢 FIXED: Unified Chat Route */}
                 {/* 🟢 Unified Chat Routes */}
                 <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
                 <Route path="/messages/:roomId" element={<Messages />} />
