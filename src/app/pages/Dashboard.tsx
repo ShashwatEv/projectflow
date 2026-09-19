@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Users, FolderKanban, CheckSquare, Activity, 
   ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient'; 
 import CreateProjectModal from '../components/CreateProjectModal'; // Import the Modal
+import AddMemberModal from '../components/AddMemberModal';
 
 interface ActivityItem {
   id: string;

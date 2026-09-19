@@ -27,6 +27,7 @@ import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
+import CommandMenu from './components/CommandMenu';
 import { Toaster } from 'sonner';
 
 function Layout() {
@@ -34,6 +35,7 @@ function Layout() {
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      <CommandMenu />
       <ModernHeader onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       
       <div className="flex flex-1 overflow-hidden relative">

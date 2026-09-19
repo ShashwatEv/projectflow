@@ -3,6 +3,7 @@ import {
   Bell, Search, Menu, LogOut, User, Settings, Moon, Sun, 
   X, LayoutGrid, CheckSquare, FolderKanban, Users, Calendar, 
   BarChart2, FileText, ChevronRight
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -140,19 +141,35 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
         <div className="relative hidden sm:block" ref={searchRef}>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
+        {/* --- GLOBAL SEARCH BAR / COMMAND PALETTE TRIGGER --- */}
+        <div className="relative hidden sm:block">
+          <div 
+            onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+            className="relative flex items-center cursor-pointer group"
+            title="Press Ctrl+K to search"
+          >
+            <Search className="absolute left-3.5 top-2.5 text-gray-400 group-hover:text-indigo-500 transition-colors pointer-events-none" size={15} />
             <input 
+              readOnly
               type="text" 
               placeholder="Search pages, projects, people..." 
               value={query}
               onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
               onFocus={() => setShowResults(true)}
               className="pl-9 pr-8 py-2 bg-gray-100 dark:bg-gray-800 border border-transparent focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 rounded-lg text-sm w-64 lg:w-80 transition-all outline-none dark:text-white"
+              placeholder="Search or jump to... (Ctrl + K)" 
+              className="pl-9 pr-14 py-2 bg-gray-100 dark:bg-gray-800/80 border border-transparent group-hover:border-indigo-500/30 rounded-xl text-xs w-60 lg:w-72 transition-all outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 cursor-pointer shadow-2xs"
             />
             {query && (
               <button onClick={() => { setQuery(''); setShowResults(false); }} className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <X size={14} />
               </button>
             )}
+            <div className="absolute right-2.5 top-2 flex items-center gap-0.5 pointer-events-none">
+              <span className="text-[10px] font-bold text-gray-400 bg-white dark:bg-gray-700 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 shadow-2xs">
+                Ctrl K
+              </span>
+            </div>
           </div>
 
           {/* Search Results Dropdown */}
