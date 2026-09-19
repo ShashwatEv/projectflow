@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { 
-  Bell, Search, Menu, LogOut, User, Settings, Moon, Sun, 
-  X, LayoutGrid, CheckSquare, FolderKanban, Users, Calendar, 
+  Bell, Search, Menu, LogOut, User, Settings, Moon, Sun,
+  X, LayoutGrid, CheckSquare, FolderKanban, Users, Calendar,
   BarChart2, FileText, ChevronRight
-  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
