@@ -1,15 +1,26 @@
-import { useState, useRef, useEffect } from 'react';
-import { 
-  Bell, Search, Menu, LogOut, User, Settings, Moon, Sun,
-  X, LayoutGrid, CheckSquare, FolderKanban, Users, Calendar,
-  BarChart2, FileText, ChevronRight
+import { useEffect, useRef, useState } from 'react';
+import {
+  Bell,
+  CheckSquare,
+  ChevronRight,
+  FileText,
+  FolderKanban,
+  LayoutGrid,
+  LogOut,
+  Menu,
+  Moon,
+  Search,
+  Settings,
+  Sun,
+  User,
+  Users,
+  X,
 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient'; 
+import { supabase } from '../../lib/supabaseClient';
 
-// Define types for our search results
 interface SearchProject {
   id: string;
   name: string;
@@ -23,82 +34,90 @@ interface SearchUser {
   role: string;
 }
 
+interface SearchPage {
+  name: string;
+  path: string;
+  icon: React.ReactNode;
+}
+
 export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
-  // 🔴 FIX: Changed 'logout' to 'signOut' to match AuthContext
-  const { user, signOut } = useAuth(); 
+  const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  
-  // --- Profile Dropdown State ---
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // --- Search State ---
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-  
-  // --- Data State ---
   const [projects, setProjects] = useState<SearchProject[]>([]);
   const [users, setUsers] = useState<SearchUser[]>([]);
 
-  // --- Fetch Data on Mount ---
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Fetch Projects
-      const { data: projectsData } = await supabase
+      const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
         .select('id, name, status');
-      
-      if (projectsData) setProjects(projectsData);
 
-      // 2. Fetch Users
-      const { data: usersData } = await supabase
+      if (!projectsError && projectsData) {
+        setProjects(projectsData);
+      }
+
+      const { data: usersData, error: usersError } = await supabase
         .from('users')
         .select('id, name, avatar, role');
-        
-      if (usersData) setUsers(usersData);
+
+      if (!usersError && usersData) {
+        setUsers(usersData);
+      }
     };
 
     fetchData();
-  }, []); 
+  }, []);
 
-  // --- Mock Pages (Static) ---
-  const searchablePages = [
-    { name: 'Dashboard', path: '/dashboard', icon: <LayoutGrid size={14} /> },
-    { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
-    { name: 'Projects', path: '/projects', icon: <FolderKanban size={14} /> },
-    { name: 'Team', path: '/team', icon: <Users size={14} /> },
-    { name: 'Calendar', path: '/calendar', icon: <Calendar size={14} /> },
-    { name: 'Analytics', path: '/analytics', icon: <BarChart2 size={14} /> },
-    { name: 'Settings', path: '/settings', icon: <Settings size={14} /> },
-  ];
-  
-  // --- Filter Logic ---
-  const filteredPages = searchablePages.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
-  const filteredProjects = projects.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
-  const filteredUsers = users.filter(u => u.name?.toLowerCase().includes(query.toLowerCase()));
-
-  const hasResults = filteredPages.length > 0 || filteredProjects.length > 0 || filteredUsers.length > 0;
-
-  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
+
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const searchablePages: SearchPage[] = [
+    { name: 'Dashboard', path: '/dashboard', icon: <LayoutGrid size={14} /> },
+    { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
+    { name: 'Projects', path: '/projects', icon: <FolderKanban size={14} /> },
+    { name: 'Team', path: '/team', icon: <Users size={14} /> },
+    { name: 'Calendar', path: '/calendar', icon: <Sun size={14} /> },
+    { name: 'Analytics', path: '/analytics', icon: <Sun size={14} /> },
+    { name: 'Settings', path: '/settings', icon: <Settings size={14} /> },
+  ];
+
+  const filteredPages = searchablePages.filter((page) =>
+    page.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const filteredProjects = projects.filter((project) =>
+    project.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const filteredUsers = users.filter((searchUser) =>
+    searchUser.name?.toLowerCase().includes(query.toLowerCase()),
+  );
+  const hasResults =
+    filteredPages.length > 0 || filteredProjects.length > 0 || filteredUsers.length > 0;
+
   const handleLogout = async () => {
-    await signOut(); // 🔴 FIX: Call signOut() here
-    navigate('/');
+    await signOut();
+    setIsProfileOpen(false);
+    navigate('/login');
   };
 
   const handleSearchResultClick = (path: string) => {
@@ -114,114 +133,153 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
   };
 
   return (
-    <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6 z-30 relative transition-colors duration-200">
-      
-      {/* Left: Mobile Menu & Breadcrumbs */}
+    <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
       <div className="flex items-center gap-4">
-        <button 
+        <button
+          type="button"
           onClick={onMenuClick}
-          className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          aria-label="Open navigation menu"
+          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
         >
           <Menu size={20} />
         </button>
-        <div className="hidden md:flex items-center text-sm text-gray-500 dark:text-gray-400">
+
+        <div className="hidden items-center text-sm text-gray-500 dark:text-gray-400 md:flex">
           <span className="font-medium text-gray-900 dark:text-white">Workspace</span>
           <ChevronRight size={14} className="mx-2 opacity-50" />
-          <Link to={location.pathname} className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+          <Link
+            to={location.pathname}
+            className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400"
+          >
             {getPageTitle()}
           </Link>
         </div>
       </div>
 
-      {/* Right: Actions & Profile */}
       <div className="flex items-center gap-2 sm:gap-4">
-        
-        {/* --- GLOBAL SEARCH BAR --- */}
         <div className="relative hidden sm:block" ref={searchRef}>
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-gray-400 pointer-events-none" size={16} />
-        {/* --- GLOBAL SEARCH BAR / COMMAND PALETTE TRIGGER --- */}
-        <div className="relative hidden sm:block">
-          <div 
+          <div
             onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
-            className="relative flex items-center cursor-pointer group"
+            className="group relative flex cursor-pointer items-center"
             title="Press Ctrl+K to search"
           >
-            <Search className="absolute left-3.5 top-2.5 text-gray-400 group-hover:text-indigo-500 transition-colors pointer-events-none" size={15} />
-            <input 
-              readOnly
-              type="text" 
-              placeholder="Search pages, projects, people..." 
+            <Search
+              className="pointer-events-none absolute left-3.5 top-2.5 text-gray-400 transition-colors group-hover:text-indigo-500"
+              size={15}
+            />
+            <input
+              type="text"
+              placeholder="Search or jump to... (Ctrl + K)"
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setShowResults(true);
+              }}
               onFocus={() => setShowResults(true)}
-              className="pl-9 pr-8 py-2 bg-gray-100 dark:bg-gray-800 border border-transparent focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-900 rounded-lg text-sm w-64 lg:w-80 transition-all outline-none dark:text-white"
-              placeholder="Search or jump to... (Ctrl + K)" 
-              className="pl-9 pr-14 py-2 bg-gray-100 dark:bg-gray-800/80 border border-transparent group-hover:border-indigo-500/30 rounded-xl text-xs w-60 lg:w-72 transition-all outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 cursor-pointer shadow-2xs"
+              className="w-60 rounded-xl border border-transparent bg-gray-100/80 py-2 pl-9 pr-14 text-xs text-gray-700 outline-none transition-all hover:border-indigo-500/30 focus:border-indigo-500 focus:bg-white dark:bg-gray-800/80 dark:text-gray-300 dark:placeholder-gray-400 dark:focus:bg-gray-900 lg:w-72"
             />
             {query && (
-              <button onClick={() => { setQuery(''); setShowResults(false); }} className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setQuery('');
+                  setShowResults(false);
+                }}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-2.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
+              >
                 <X size={14} />
               </button>
             )}
-            <div className="absolute right-2.5 top-2 flex items-center gap-0.5 pointer-events-none">
-              <span className="text-[10px] font-bold text-gray-400 bg-white dark:bg-gray-700 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-600 shadow-2xs">
+            <div className="pointer-events-none absolute right-2.5 top-2 flex items-center gap-0.5">
+              <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-400 shadow-2xs dark:border-gray-600 dark:bg-gray-700">
                 Ctrl K
               </span>
             </div>
           </div>
 
-          {/* Search Results Dropdown */}
           {showResults && query && (
-            <div className="absolute top-full left-0 mt-2 w-full lg:w-96 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800 lg:w-96">
               {hasResults ? (
                 <div className="max-h-[70vh] overflow-y-auto py-2">
-                  
-                  {/* Pages Section */}
                   {filteredPages.length > 0 && (
                     <div className="mb-2">
-                      <h4 className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Pages</h4>
+                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                        Pages
+                      </h4>
                       {filteredPages.map((page) => (
-                        <button key={page.path} onClick={() => handleSearchResultClick(page.path)} className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                          <div className="p-1.5 bg-gray-100 dark:bg-gray-700 rounded-md text-gray-500 dark:text-gray-300">{page.icon}</div>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{page.name}</span>
+                        <button
+                          type="button"
+                          key={page.path}
+                          onClick={() => handleSearchResultClick(page.path)}
+                          className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                        >
+                          <div className="rounded-md bg-gray-100 p-1.5 text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                            {page.icon}
+                          </div>
+                          {page.name}
                         </button>
                       ))}
                     </div>
                   )}
 
-                  {/* Projects Section */}
                   {filteredProjects.length > 0 && (
                     <div className="mb-2">
-                      <h4 className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Projects</h4>
-                      {filteredProjects.map((proj) => (
-                        <button key={proj.id} onClick={() => handleSearchResultClick(`/projects/${proj.id}`)} className="w-full text-left px-4 py-2 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                        Projects
+                      </h4>
+                      {filteredProjects.map((project) => (
+                        <button
+                          type="button"
+                          key={project.id}
+                          onClick={() => handleSearchResultClick(`/projects/${project.id}`)}
+                          className="flex w-full items-center justify-between px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        >
                           <div className="flex items-center gap-3">
-                            <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md"><FileText size={14} /></div>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{proj.name}</span>
+                            <div className="rounded-md bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                              <FileText size={14} />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {project.name}
+                            </span>
                           </div>
-                          <span className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded uppercase">{proj.status}</span>
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500 dark:bg-gray-700">
+                            {project.status}
+                          </span>
                         </button>
                       ))}
                     </div>
                   )}
 
-                  {/* People Section */}
                   {filteredUsers.length > 0 && (
                     <div>
-                      <h4 className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</h4>
-                      {filteredUsers.map((u) => (
-                        <button key={u.id} onClick={() => handleSearchResultClick(`/profile/${u.id}`)} className="w-full text-left px-4 py-2 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                          {u.avatar && u.avatar.startsWith('http') ? (
-                             <img src={u.avatar} className="w-7 h-7 rounded-full object-cover" alt="" />
+                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                        Team
+                      </h4>
+                      {filteredUsers.map((searchUser) => (
+                        <button
+                          type="button"
+                          key={searchUser.id}
+                          onClick={() => handleSearchResultClick(`/profile/${searchUser.id}`)}
+                          className="flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                        >
+                          {searchUser.avatar && searchUser.avatar.startsWith('http') ? (
+                            <img
+                              src={searchUser.avatar}
+                              className="h-7 w-7 rounded-full object-cover"
+                              alt=""
+                            />
                           ) : (
-                             <div className="w-7 h-7 bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 rounded-full flex items-center justify-center text-xs font-bold">
-                                {u.name ? u.name.charAt(0) : 'U'}
-                             </div>
+                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300">
+                              {searchUser.name ? searchUser.name.charAt(0) : 'U'}
+                            </div>
                           )}
                           <div>
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{u.name}</p>
-                            <p className="text-xs text-gray-400">{u.role}</p>
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                              {searchUser.name}
+                            </p>
+                            <p className="text-xs text-gray-400">{searchUser.role}</p>
                           </div>
                         </button>
                       ))}
@@ -237,66 +295,93 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           )}
         </div>
 
-        {/* Theme Toggle */}
-        <button 
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
-          className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        <button
+          type="button"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
           title="Toggle Theme"
+          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
-        {/* Notifications */}
-        <Link 
+        <Link
           to="/notifications"
-          className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative"
+          aria-label="Notifications"
           title="Notifications"
+          className="relative rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           <Bell size={20} />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></span>
+          <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-red-500 dark:border-gray-900" />
         </Link>
 
-        <div className="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+        <div className="mx-1 h-8 w-px bg-gray-200 dark:bg-gray-700" />
 
-        {/* User Profile Dropdown */}
         <div className="relative" ref={dropdownRef}>
-          <button 
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-3 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+          <button
+            type="button"
+            onClick={() => setIsProfileOpen((current) => !current)}
+            aria-expanded={isProfileOpen}
+            aria-label="Open profile menu"
+            className="flex items-center gap-3 rounded-xl border border-transparent p-1.5 transition-all hover:border-gray-200 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-gray-800"
           >
-            <div className="text-right hidden md:block">
-              <p className="text-sm font-bold text-gray-900 dark:text-white leading-none">{user?.name || 'Guest'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{user?.role || 'Viewer'}</p>
+            <div className="hidden text-right md:block">
+              <p className="text-sm font-bold leading-none">{user?.name || 'Guest'}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{user?.role || 'Viewer'}</p>
             </div>
             {user?.avatar?.startsWith('http') ? (
-               <img src={user.avatar} alt={user.name} className="w-9 h-9 rounded-lg object-cover bg-gray-200" />
+              <img
+                src={user.avatar}
+                alt={user.name || 'User avatar'}
+                className="h-9 w-9 rounded-lg object-cover bg-gray-200"
+              />
             ) : (
-               <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
-                  {user?.name?.charAt(0) || 'U'}
-               </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+                {user?.name?.charAt(0) || 'U'}
+              </div>
             )}
           </button>
 
-          {/* Dropdown Menu */}
           {isProfileOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                <div className="p-4 border-b border-gray-100 dark:border-gray-700 md:hidden">
-                    <p className="font-bold text-gray-900 dark:text-white">{user?.name}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
-                </div>
-                <div className="p-2 space-y-1">
-                    <button onClick={() => { navigate(`/profile/${user?.id}`); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors">
-                        <User size={16} /> My Profile
-                    </button>
-                    <button onClick={() => { navigate('/settings'); setIsProfileOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors">
-                        <Settings size={16} /> Settings
-                    </button>
-                </div>
-                <div className="p-2 border-t border-gray-100 dark:border-gray-700">
-                    <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                        <LogOut size={16} /> Log Out
-                    </button>
-                </div>
+            <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="border-b border-gray-100 p-4 dark:border-gray-700 md:hidden">
+                <p className="font-bold text-gray-900 dark:text-white">{user?.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
+              </div>
+              <div className="space-y-1 p-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate(`/profile/${user?.id}`);
+                    setIsProfileOpen(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                >
+                  <User size={16} />
+                  My Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/settings');
+                    setIsProfileOpen(false);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                >
+                  <Settings size={16} />
+                  Settings
+                </button>
+              </div>
+              <div className="border-t border-gray-100 p-2 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                >
+                  <LogOut size={16} />
+                  Log Out
+                </button>
+              </div>
             </div>
           )}
         </div>
