@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, FolderKanban, Calendar, CheckSquare, Plus, 
-  MoreHorizontal, Loader2, Clock, CheckCircle2, AlertCircle, 
-  Trash2, Edit3, User, Users, ChevronRight, LayoutGrid, List,
-  ArrowRight, Shield
+import {
+  ArrowLeft, FolderKanban, Calendar, Plus,
+  Loader2, Clock, Trash2, Edit3, ChevronRight, LayoutGrid, List,
+  ArrowRight
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -63,7 +62,6 @@ export default function ProjectDetail() {
   // Modal States
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
-  const [taskModalDefaultStatus, setTaskModalDefaultStatus] = useState<TaskItem['status']>('todo');
 
   // New Task Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');

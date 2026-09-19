@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { 
-  CreditCard, CheckCircle2, Download, Zap, AlertCircle, 
-  Loader2, Shield, Users, HardDrive 
+import {
+  CreditCard, CheckCircle2, Download,
+  Loader2, Users, HardDrive
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 

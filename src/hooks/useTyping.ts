@@ -18,14 +18,17 @@ export function useTyping(channelName: string) {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        const typing = [];
-        
-        // Loop through all users in the channel
+        const typing: string[] = [];
+
+        // Loop through all users and sessions in the channel
+        // Presence state is: { userId: [{ presence_ref: string, ...customData }] }
         for (const id in state) {
-          const userState = state[id][0] as any;
-          // If they are "typing" and it's NOT me
-          if (userState.isTyping && userState.user_id !== user.id) {
-            typing.push(userState.name); // Add their name to the list
+          const userSessions = state[id] as unknown as Array<{ isTyping?: boolean; user_id?: string; name?: string; presence_ref?: string }>;
+          for (const userSession of userSessions) {
+            // If they are "typing" and it's NOT me
+            if (userSession.isTyping && userSession.user_id !== user.id && !typing.includes(userSession.name || '')) {
+              typing.push(userSession.name || ''); // Add their name to the list
+            }
           }
         }
         setTypingUsers(typing);

@@ -239,16 +239,7 @@ export default function MyTasks() {
     }
   };
 
-  const getPriorityColor = (p: string) => {
-    switch (p) {
-      case 'high': return "text-red-500";
-      case 'medium': return "text-orange-500";
-      case 'low': return "text-blue-500";
-      default: return "text-gray-300 dark:text-gray-600";
-    }
-  };
-
-  return (
+return (
     <div className="flex h-full">
       {/* MAIN TASKS WORKSPACE */}
       <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">

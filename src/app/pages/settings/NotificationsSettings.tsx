@@ -33,7 +33,7 @@ export default function NotificationsSettings() {
       if (!user?.id) return;
 
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('users')
           .select('notification_settings')
           .eq('id', user.id)

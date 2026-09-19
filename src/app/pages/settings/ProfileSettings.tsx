@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabaseClient'; 
-import { Save, Loader2, CheckCircle2, MapPin, Mail, Phone, Camera, Briefcase, ChevronDown } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, MapPin, Mail, Phone, Briefcase, ChevronDown } from 'lucide-react';
 
 export default function ProfileSettings() {
   const { user } = useAuth(); 

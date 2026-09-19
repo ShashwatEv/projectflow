@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FolderKanban, MoreHorizontal, Plus, Calendar, Clock, Loader2, 
-  Search, Filter, ExternalLink, Trash2, Check 
+import {
+  FolderKanban, MoreHorizontal, Plus, Calendar, Loader2,
+  Search, ExternalLink, Trash2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';

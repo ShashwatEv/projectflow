@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom'; // To read URL parameters
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { Loader2, Save, CheckCircle2, User, Mail, Shield, Camera, Briefcase, ChevronDown, MapPin, X, Globe, FileText, Lock } from 'lucide-react';
+import { Loader2, Save, CheckCircle2, Mail, Camera, ChevronDown, MapPin, X, Globe, Lock } from 'lucide-react';
 
 export default function Profile() {
   const { user: currentUser } = useAuth();
@@ -53,7 +53,7 @@ export default function Profile() {
     if (targetUserId) {
       const fetchProfile = async () => {
         try {
-          const { data, error } = await supabase
+          const { data } = await supabase
             .from('users')
             .select('*')
             .eq('id', targetUserId)
