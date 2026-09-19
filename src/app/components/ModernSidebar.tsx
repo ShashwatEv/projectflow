@@ -7,10 +7,9 @@ import {
   Calendar, 
   BarChart2, 
   Settings,
-  Bell,           // New
   MessageSquare,  // New
   Zap,            // New
-  Clock,          // New
+  Clock,
   X
 } from 'lucide-react';
 
@@ -111,15 +110,3 @@ function NavItem({ icon, label, to, isActive, badge, onClick }: any) {
   );
 }
 
-function ProjectProgress({ title, percent, color }: any) {
-  return (
-    <div className="mb-4 last:mb-0">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</span>
-      </div>
-      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
-        <div className={`${color} h-1.5 rounded-full`} style={{ width: `${percent}%` }}></div>
-      </div>
-    </div>
-  );
-}

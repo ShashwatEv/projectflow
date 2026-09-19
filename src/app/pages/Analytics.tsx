@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, AreaChart, Area 
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   Loader2, CheckCircle2, Circle, AlertTriangle, ListTodo,

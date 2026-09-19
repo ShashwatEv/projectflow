@@ -53,20 +53,13 @@ export default function MyTasks() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [newTaskInput, setNewTaskInput] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [sortBy, setSortBy] = useState<'date' | 'priority'>('date');
 
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  const [tags] = useState([
-    { name: 'Review', color: 'bg-purple-500' },
-    { name: 'Docs', color: 'bg-blue-500' },
-    { name: 'Bug', color: 'bg-red-500' },
-    { name: 'Meeting', color: 'bg-emerald-500' },
-  ]);
-
+  
   const fetchTasks = async () => {
     try {
       const { data, error } = await supabase
@@ -123,7 +116,7 @@ export default function MyTasks() {
       const newTask = {
         title,
         status: 'todo' as const,
-        priority: newTaskPriority,
+        priority: 'medium' as const,
         due_date: selectedDate ? selectedDate.toISOString() : null,
         assigned_to: user?.id || null,
       };

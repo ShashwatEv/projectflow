@@ -235,7 +235,7 @@ export default function ProjectDetail() {
         name: editName.trim(),
         description: editDescription.trim(),
         status: editStatus,
-        due_date: editDueDate || null,
+        due_date: editDueDate || undefined,
         progress: progressPercent
       };
 

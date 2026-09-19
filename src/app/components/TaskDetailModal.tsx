@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Send, User, Clock, Loader2, Trash2 } from 'lucide-react';
+import { X, Send, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 

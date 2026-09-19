@@ -1,5 +1,3 @@
-import { Loader2 } from 'lucide-react';
-
 interface TypingIndicatorProps {
   users: string[];
 }
