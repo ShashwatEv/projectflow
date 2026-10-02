@@ -8,3 +8,6 @@ build
 # Continue extension config & secrets
 .continue/
 .claude/
+.project_bundle.md
+.bundle_project.py
+.project_snapshot.txt
