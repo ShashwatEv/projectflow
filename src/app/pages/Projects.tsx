@@ -34,27 +34,36 @@ export default function Projects() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // 1. Fetch Projects & Join Owner Avatar
-  const fetchProjects = async () => {
+  // 1. Fetch Projects & Map Owner Profiles cleanly without foreign key join failures
+const fetchProjects = async () => {
   try {
-    // Attempt join with owner relation
-    let { data, error } = await supabase
+    // Query projects directly (guaranteed 200 OK)
+    const { data: projectData, error: projectError } = await supabase
       .from('projects')
-      .select('*, owner:users!owner_id(name, avatar)')
+      .select('*')
       .order('created_at', { ascending: false });
 
-    // Fallback to plain query if relationship is not mapped
-    if (error) {
-      console.warn('Foreign key relation missing, falling back to direct select:', error.message);
-      const fallback = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      data = fallback.data;
-    }
+    if (projectError) throw projectError;
 
-    setProjects(data || []);
+    // Fetch users to map avatars and names
+    const { data: userData } = await supabase
+      .from('users')
+      .select('id, name, avatar');
+
+    const userMap = new Map((userData || []).map((u) => [u.id, u]));
+
+    // Attach owner info to each project
+    const mergedProjects: Project[] = (projectData || []).map((p) => {
+      const ownerUser = p.owner_id ? userMap.get(p.owner_id) : undefined;
+      return {
+        ...p,
+        owner: ownerUser
+          ? { name: ownerUser.name, avatar: ownerUser.avatar }
+          : undefined,
+      };
+    });
+
+    setProjects(mergedProjects);
   } catch (err: any) {
     console.error('Error fetching projects:', err);
     toast.error('Failed to load projects');
