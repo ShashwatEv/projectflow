@@ -15,6 +15,7 @@ import {
   User,
   Users,
   X,
+  Code2,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -52,8 +53,49 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
   const [projects, setProjects] = useState<SearchProject[]>([]);
   const [users, setUsers] = useState<SearchUser[]>([]);
 
+  // Local state to keep navbar avatar and name synchronized with database updates
+  const [currentAvatar, setCurrentAvatar] = useState<string>(user?.avatar || '/pfp.jpg');
+  const [currentName, setCurrentName] = useState<string>(user?.name || 'Guest');
+  const [currentRole, setCurrentRole] = useState<string>(user?.role || 'Viewer');
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Sync profile data on mount and whenever user changes
+  useEffect(() => {
+    if (user) {
+      setCurrentAvatar(user.avatar || '/pfp.jpg');
+      setCurrentName(user.name || 'Guest');
+      setCurrentRole(user.role || 'Viewer');
+    }
+  }, [user]);
+
+  // Real-time synchronization when profile is updated from Profile.tsx
+  useEffect(() => {
+    const syncProfile = async () => {
+      if (!user?.id) return;
+      const { data } = await supabase
+        .from('users')
+        .select('name, avatar, role')
+        .eq('id', user.id)
+        .single();
+
+      if (data) {
+        setCurrentAvatar(data.avatar || '/pfp.jpg');
+        setCurrentName(data.name || 'Guest');
+        setCurrentRole(data.role || 'Viewer');
+
+        if (user) {
+          user.avatar = data.avatar;
+          user.name = data.name;
+          user.role = data.role;
+        }
+      }
+    };
+
+    window.addEventListener('user-profile-updated', syncProfile);
+    return () => window.removeEventListener('user-profile-updated', syncProfile);
+  }, [user]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -94,6 +136,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
 
   const searchablePages: SearchPage[] = [
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutGrid size={14} /> },
+    { name: 'Code Studio', path: '/code', icon: <Code2 size={14} /> },
     { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
     { name: 'Projects', path: '/projects', icon: <FolderKanban size={14} /> },
     { name: 'Team', path: '/team', icon: <Users size={14} /> },
@@ -129,6 +172,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
   const getPageTitle = () => {
     const path = location.pathname.split('/')[1];
     if (!path) return 'Dashboard';
+    if (path === 'code') return 'Code Studio';
     return path.charAt(0).toUpperCase() + path.slice(1);
   };
 
@@ -157,6 +201,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4">
+        {/* Search */}
         <div className="relative hidden sm:block" ref={searchRef}>
           <div
             onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
@@ -264,17 +309,12 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
                           onClick={() => handleSearchResultClick(`/profile/${searchUser.id}`)}
                           className="flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
                         >
-                          {searchUser.avatar && searchUser.avatar.startsWith('http') ? (
-                            <img
-                              src={searchUser.avatar}
-                              className="h-7 w-7 rounded-full object-cover"
-                              alt=""
-                            />
-                          ) : (
-                            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300">
-                              {searchUser.name ? searchUser.name.charAt(0) : 'U'}
-                            </div>
-                          )}
+                          <img
+                            src={searchUser.avatar || '/pfp.jpg'}
+                            onError={(e) => { e.currentTarget.src = '/pfp.jpg'; }}
+                            className="h-7 w-7 rounded-full object-cover bg-gray-200"
+                            alt=""
+                          />
                           <div>
                             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
                               {searchUser.name}
@@ -295,6 +335,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           )}
         </div>
 
+        {/* Theme Toggle */}
         <button
           type="button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -305,6 +346,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
+        {/* Notifications Link */}
         <Link
           to="/notifications"
           aria-label="Notifications"
@@ -317,6 +359,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
 
         <div className="mx-1 h-8 w-px bg-gray-200 dark:bg-gray-700" />
 
+        {/* User Profile Button with Synchronized Local Avatar */}
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
@@ -326,26 +369,24 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
             className="flex items-center gap-3 rounded-xl border border-transparent p-1.5 transition-all hover:border-gray-200 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-gray-800"
           >
             <div className="hidden text-right md:block">
-              <p className="text-sm font-bold leading-none">{user?.name || 'Guest'}</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{user?.role || 'Viewer'}</p>
+              <p className="text-sm font-bold leading-none">{currentName}</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{currentRole}</p>
             </div>
-            {user?.avatar?.startsWith('http') ? (
-              <img
-                src={user.avatar}
-                alt={user.name || 'User avatar'}
-                className="h-9 w-9 rounded-lg object-cover bg-gray-200"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
-                {user?.name?.charAt(0) || 'U'}
-              </div>
-            )}
+
+            <img
+              src={currentAvatar}
+              onError={(e) => {
+                e.currentTarget.src = '/pfp.jpg';
+              }}
+              alt={currentName}
+              className="h-9 w-9 rounded-lg object-cover bg-gray-800 border border-gray-700/60"
+            />
           </button>
 
           {isProfileOpen && (
             <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
               <div className="border-b border-gray-100 p-4 dark:border-gray-700 md:hidden">
-                <p className="font-bold text-gray-900 dark:text-white">{user?.name}</p>
+                <p className="font-bold text-gray-900 dark:text-white">{currentName}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
               </div>
               <div className="space-y-1 p-2">
