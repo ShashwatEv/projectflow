@@ -32,8 +32,8 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/ShashwatEv/ProjectFlow.git]
-   cd ProjectFlow
+   git clone [https://github.com/ShashwatEv/projectflow.git]
+   cd projectflow
    npm install
 
 
