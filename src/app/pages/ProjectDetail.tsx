@@ -348,7 +348,7 @@ export default function ProjectDetail() {
           </button>
           <button
             onClick={() => {
-              setTaskModalDefaultStatus('todo');
+              setNewTaskStatus('todo');
               setNewTaskStatus('todo');
               setIsTaskModalOpen(true);
             }}
@@ -468,7 +468,7 @@ export default function ProjectDetail() {
                   </div>
                   <button
                     onClick={() => {
-                      setTaskModalDefaultStatus(col.id);
+                      setNewTaskStatus(col.id);
                       setNewTaskStatus(col.id);
                       setIsTaskModalOpen(true);
                     }}

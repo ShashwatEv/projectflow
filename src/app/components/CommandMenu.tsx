@@ -4,7 +4,7 @@ import { Command } from 'cmdk';
 import { 
   LayoutGrid, FolderKanban, CheckSquare, Users, Calendar, 
   BarChart2, MessageSquare, Clock, Zap, Settings, Sun, Moon, 
-  Plus, Search, User, ArrowRight
+  Plus, Search, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
