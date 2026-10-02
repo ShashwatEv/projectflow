@@ -37,19 +37,22 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#0d1117] p-4 transition-colors">
       <div className="w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
-        
-        {/* Header Icon & Title */}
-        <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-500/30 flex items-center justify-center text-orange-600 dark:text-orange-500 mb-2">
-            <LogIn size={22} />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-            Welcome Back
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Sign in to continue to ProjectFlow
-          </p>
-        </div>
+        {/* Header Logo & Title */}
+<div className="flex flex-col items-center text-center space-y-2">
+  <div className="w-14 h-14 rounded-2xl bg-white p-2 shadow-lg shadow-black/10 border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mb-1 overflow-hidden">
+    <img 
+      src="../../../favicon.ico" 
+      alt="ProjectFlow Logo" 
+      className="w-full h-full object-contain"
+    />
+  </div>
+  <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+    Welcome Back
+  </h1>
+  <p className="text-xs text-gray-500 dark:text-gray-400">
+    Sign in to continue to ProjectFlow
+  </p>
+</div>
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
