@@ -1,370 +1,443 @@
-// REPLACE your imports with this:
-import { useState, useEffect, useRef } from 'react'; // Added useRef
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Pause, Clock, Calendar as CalendarIcon, MoreVertical, 
-  Plus, CheckCircle2, X, Save, Timer, Trash2, Edit2 // Added Trash2, Edit2
+  Play, Square, Plus, Calendar, Clock, 
+  Trash2, MoreVertical, X, Loader2, CheckCircle2, AlertCircle
 } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'sonner';
 
-// --- Types ---
-type TimeEntry = {
+interface TimeEntry {
   id: string;
   date: string;
-  project: string;
-  task: string;
-  durationSeconds: number;
-  status: 'Approved' | 'Pending';
-};
+  project_id: string | null;
+  description: string;
+  duration_minutes: number;
+  status: 'pending' | 'approved' | 'rejected';
+  project?: {
+    id: string;
+    name: string;
+  };
+}
+
+interface ProjectOption {
+  id: string;
+  name: string;
+}
 
 export default function Timesheets() {
-  // --- State ---
-  const [entries, setEntries] = useState<TimeEntry[]>([
-    { id: '1', date: new Date().toLocaleDateString(), project: 'Website Redesign', task: 'Homepage Hero Section', durationSeconds: 16200, status: 'Approved' }, // 4h 30m
-    { id: '2', date: new Date().toLocaleDateString(), project: 'Mobile App', task: 'Auth Flow', durationSeconds: 8100, status: 'Approved' }, // 2h 15m
-  ]);
-  
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [currentSessionSeconds, setCurrentSessionSeconds] = useState(0);
-  
-  // Modal State
+  const { user } = useAuth();
+
+  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Manual Entry Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'stop' | 'manual'>('stop');
-  const [formData, setFormData] = useState({ project: 'Internal', task: '', hours: '0', minutes: '0' });
-  // --- Dropdown Menu Logic (New) ---
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [entryDescription, setEntryDescription] = useState('');
+  const [entryHours, setEntryHours] = useState('1');
+  const [entryMinutes, setEntryMinutes] = useState('0');
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setActiveMenuId(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [menuRef]);
+  // Live Timer
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this entry?')) {
-        setEntries(entries.filter(e => e.id !== id));
-        setActiveMenuId(null);
+  // Fetch projects list for dropdowns
+  const fetchProjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name')
+        .order('name');
+      if (!error && data) setProjects(data);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
     }
   };
 
-  const handleEdit = (id: string) => {
-    // For now, we'll just alert. You can later connect this to your isModalOpen logic.
-    alert(`Edit functionality for ID: ${id}`);
-    setActiveMenuId(null);
+  // Fetch timesheet entries for current user
+  const fetchEntries = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('timesheets')
+        .select('*, project:projects(id, name)')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) setEntries(data as TimeEntry[]);
+    } catch (err: any) {
+      console.error('Error fetching timesheets:', err);
+      toast.error('Failed to load timesheet entries');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // --- Timer Logic ---
   useEffect(() => {
-    let interval: any;
-    if (isTimerRunning) {
-      interval = setInterval(() => {
-        setCurrentSessionSeconds(prev => prev + 1);
+    fetchProjects();
+    fetchEntries();
+
+    const channel = supabase
+      .channel(`timesheets_${user?.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'timesheets', filter: `user_id=eq.${user?.id}` },
+        () => fetchEntries()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [user?.id]);
+
+  // Live Timer controls
+  const handleToggleTimer = () => {
+    if (!isTimerRunning) {
+      setIsTimerRunning(true);
+      timerRef.current = setInterval(() => {
+        setTimerSeconds(prev => prev + 1);
       }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning]);
+      toast.info('Timer started');
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setIsTimerRunning(false);
 
-  // --- Helpers ---
-  const formatTime = (totalSeconds: number) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    // Show seconds only if actively timing, otherwise H:M is usually enough for timesheets
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      const elapsedMinutes = Math.max(1, Math.round(timerSeconds / 60));
+      // Pre-fill modal with tracked elapsed duration
+      setEntryHours(String(Math.floor(elapsedMinutes / 60)));
+      setEntryMinutes(String(elapsedMinutes % 60));
+      setTimerSeconds(0);
+      setIsModalOpen(true);
+    }
   };
 
-  const formatDurationText = (totalSeconds: number) => {
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
+  const formatTimerClock = (totalSecs: number) => {
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format minutes into "4h 30m"
+  const formatDuration = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
     return `${h}h ${m}m`;
   };
 
-  const getTotalSeconds = () => {
-    return entries.reduce((acc, curr) => acc + curr.durationSeconds, 0) + (isTimerRunning ? currentSessionSeconds : 0);
+  // Calculate current week's total minutes
+  const calculateTotalMinutesThisWeek = () => {
+    const now = new Date();
+    const currentDay = now.getDay();
+    const diffToMonday = (currentDay === 0 ? -6 : 1) - currentDay;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() + diffToMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    return entries
+      .filter(e => new Date(e.date) >= startOfWeek)
+      .reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
   };
 
-  // --- Handlers ---
-  const handleStartStop = () => {
-    if (isTimerRunning) {
-      // STOPPING: Pause and Open Modal
-      setIsTimerRunning(false);
-      setModalMode('stop');
-      setFormData({ ...formData, hours: '0', minutes: '0' }); // Reset manual inputs
-      setIsModalOpen(true);
-    } else {
-      // STARTING
-      setIsTimerRunning(true);
-    }
-  };
+  const weeklyMinutes = calculateTotalMinutesThisWeek();
+  const weeklyHours = Math.floor(weeklyMinutes / 60);
+  const weeklyRemainderMins = weeklyMinutes % 60;
+  const weeklyProgressPercent = Math.min(100, Math.round((weeklyMinutes / (40 * 60)) * 100));
 
-  const handleManualEntry = () => {
-    setModalMode('manual');
-    setIsTimerRunning(false);
-    setFormData({ project: 'Internal', task: '', hours: '1', minutes: '0' });
-    setIsModalOpen(true);
-  };
-
-  const handleSaveEntry = (e: React.FormEvent) => {
+  // Submit new manual entry
+  const handleSaveEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    let duration = 0;
-    if (modalMode === 'stop') {
-      duration = currentSessionSeconds;
-    } else {
-      duration = (parseInt(formData.hours) * 3600) + (parseInt(formData.minutes) * 60);
+    if (!user) return;
+
+    const totalMins = (parseInt(entryHours || '0') * 60) + parseInt(entryMinutes || '0');
+    if (totalMins <= 0) {
+      toast.error('Please enter a duration greater than 0 minutes');
+      return;
+    }
+    if (!entryDescription.trim()) {
+      toast.error('Please enter a description');
+      return;
     }
 
-    const newEntry: TimeEntry = {
-      id: Date.now().toString(),
-      date: new Date().toLocaleDateString(),
-      project: formData.project,
-      task: formData.task || 'Untitled Task',
-      durationSeconds: duration,
-      status: 'Pending'
-    };
+    try {
+      setSubmitting(true);
+      const { error } = await supabase.from('timesheets').insert({
+        user_id: user.id,
+        project_id: selectedProjectId || null,
+        description: entryDescription.trim(),
+        duration_minutes: totalMins,
+        date: entryDate,
+        status: 'approved',
+      });
 
-    setEntries([newEntry, ...entries]);
-    
-    // Cleanup
-    setCurrentSessionSeconds(0);
-    setIsModalOpen(false);
-    setFormData({ project: 'Internal', task: '', hours: '0', minutes: '0' });
+      if (error) throw error;
+
+      toast.success('Time entry logged successfully');
+      setIsModalOpen(false);
+      setEntryDescription('');
+      setEntryHours('1');
+      setEntryMinutes('0');
+      fetchEntries();
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Failed to log time entry');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDiscard = () => {
-    setIsModalOpen(false);
-    setCurrentSessionSeconds(0); // Discard the tracked time
+  // Delete an entry
+  const handleDeleteEntry = async (id: string) => {
+    if (!window.confirm('Delete this time entry?')) return;
+    try {
+      const { error } = await supabase.from('timesheets').delete().eq('id', id);
+      if (error) throw error;
+      setEntries(prev => prev.filter(e => e.id !== id));
+      toast.success('Time entry removed');
+    } catch (err) {
+      toast.error('Failed to delete entry');
+    }
   };
-
-  // Calculate Progress for "40h Goal"
-  const totalSecs = getTotalSeconds();
-  const progressPercent = Math.min((totalSecs / (40 * 3600)) * 100, 100);
 
   return (
-    <div className="p-8 max-w-6xl mx-auto relative min-h-full">
-       
-       {/* --- Header & Timer Widget --- */}
-       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
-           <div>
-               <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Timesheets</h1>
-               <p className="text-gray-500 dark:text-gray-400 mt-1">Track your hours and manage logs.</p>
-           </div>
-           
-           <div className="flex items-center gap-4 bg-white dark:bg-gray-800 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-               <div className="px-4 border-r border-gray-100 dark:border-gray-700">
-                   <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase mb-0.5">Total This Week</p>
-                   <div className="flex items-baseline gap-2">
-                     <p className="text-xl font-bold text-gray-900 dark:text-white font-mono">{formatDurationText(totalSecs)}</p>
-                     <span className="text-xs text-gray-400">/ 40h</span>
-                   </div>
-                   {/* Mini Progress Bar */}
-                   <div className="w-24 h-1 bg-gray-100 dark:bg-gray-700 rounded-full mt-1">
-                      <div className="h-1 bg-indigo-500 rounded-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
-                   </div>
-               </div>
-               
-               {/* Live Timer Display */}
-               {isTimerRunning && (
-                 <div className="px-2 animate-pulse">
-                    <p className="text-xs text-emerald-500 font-bold uppercase mb-0.5">Recording</p>
-                    <p className="text-xl font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatTime(currentSessionSeconds)}</p>
-                 </div>
-               )}
+    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-300">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Timesheets</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Track your hours and manage logs.
+          </p>
+        </div>
 
-               <button 
-                   onClick={handleStartStop}
-                   className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold text-white transition-all shadow-md active:scale-95 ${
-                     isTimerRunning ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'
-                   }`}
-               >
-                   {isTimerRunning ? <Pause size={20} className="fill-white" /> : <Play size={20} className="fill-white" />}
-                   {isTimerRunning ? 'Stop' : 'Start Timer'}
-               </button>
-           </div>
-       </div>
-
-       {/* --- Main Table Area --- */}
-       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-           
-           {/* Table Toolbar */}
-           <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50/50 dark:bg-gray-900/50">
-               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-                   <CalendarIcon size={18} />
-                   <span className="font-medium">{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - This Week</span>
-               </div>
-               <button 
-                 onClick={handleManualEntry}
-                 className="flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-3 py-1.5 rounded-lg transition-colors"
-               >
-                   <Plus size={16} /> Log Manual Entry
-               </button>
-           </div>
-
-           {/* Entries Table */}
-           <div className="overflow-x-auto">
-             <table className="w-full text-left">
-                 <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-medium text-sm border-b border-gray-200 dark:border-gray-700">
-                     <tr>
-                         <th className="px-6 py-4">Date</th>
-                         <th className="px-6 py-4">Project</th>
-                         <th className="px-6 py-4 w-1/3">Description</th>
-                         <th className="px-6 py-4">Duration</th>
-                         <th className="px-6 py-4">Status</th>
-                         <th className="px-6 py-4"></th>
-                     </tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                     {entries.length === 0 ? (
-                       <tr>
-                         <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
-                            <Clock size={48} className="mx-auto mb-3 opacity-20" />
-                            <p>No time entries yet. Start the timer or log manually.</p>
-                         </td>
-                       </tr>
-                     ) : (
-                       entries.map((entry) => (
-                         <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
-                             <td className="px-6 py-4 text-gray-900 dark:text-white font-medium whitespace-nowrap">{entry.date}</td>
-                             <td className="px-6 py-4">
-                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                     <div className={`w-1.5 h-1.5 rounded-full ${entry.project.includes('Internal') ? 'bg-gray-400' : 'bg-indigo-500'}`}></div>
-                                     {entry.project}
-                                 </span>
-                             </td>
-                             <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">{entry.task}</td>
-                             <td className="px-6 py-4 font-mono font-medium text-gray-900 dark:text-white">{formatDurationText(entry.durationSeconds)}</td>
-                             <td className="px-6 py-4">
-                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
-                                     entry.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400'
-                                 }`}>
-                                     {entry.status === 'Approved' ? <CheckCircle2 size={12} /> : <Timer size={12} />}
-                                     {entry.status}
-                                 </span>
-                             </td>
-                             {/* REPLACED TD BLOCK */}
-                             <td className="px-6 py-4 text-right relative">
-                                 <button 
-                                     onClick={(e) => {
-                                         e.stopPropagation();
-                                         setActiveMenuId(activeMenuId === entry.id ? null : entry.id);
-                                     }}
-                                     className={`p-2 rounded-lg transition-colors ${activeMenuId === entry.id ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white' : 'text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                                 >
-                                     <MoreVertical size={18} />
-                                 </button>
-
-                                 {/* Dropdown Menu Popup */}
-                                 {activeMenuId === entry.id && (
-                                     <div ref={menuRef} className="absolute right-8 top-8 w-40 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                                         <button onClick={() => handleEdit(entry.id)} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">
-                                             <Edit2 size={14} /> Edit
-                                         </button>
-                                         <div className="h-px bg-gray-100 dark:bg-gray-700 my-0"></div>
-                                         <button onClick={() => handleDelete(entry.id)} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
-                                             <Trash2 size={14} /> Delete
-                                         </button>
-                                     </div>
-                                 )}
-                             </td>
-                         </tr>
-                       ))
-                     )}
-                 </tbody>
-             </table>
-           </div>
-       </div>
-
-       {/* --- SAVE ENTRY MODAL --- */}
-       {isModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                      {modalMode === 'stop' ? 'Save Time Entry' : 'Log Manual Time'}
-                    </h2>
-                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                      <X size={20} />
-                    </button>
-                </div>
-
-                <form onSubmit={handleSaveEntry} className="space-y-4">
-                    {/* Time Display (Read-only if stopping timer) */}
-                    <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-xl flex flex-col items-center justify-center mb-4 border border-gray-100 dark:border-gray-700">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Duration</span>
-                        {modalMode === 'stop' ? (
-                          <span className="text-3xl font-mono font-bold text-indigo-600 dark:text-indigo-400">{formatTime(currentSessionSeconds)}</span>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                             <div className="flex flex-col items-center">
-                               <input 
-                                 type="number" 
-                                 min="0"
-                                 value={formData.hours}
-                                 onChange={e => setFormData({...formData, hours: e.target.value})}
-                                 className="w-16 text-center text-2xl font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1"
-                               />
-                               <span className="text-[10px] text-gray-400 mt-1">HOURS</span>
-                             </div>
-                             <span className="text-2xl font-bold text-gray-300">:</span>
-                             <div className="flex flex-col items-center">
-                               <input 
-                                 type="number" 
-                                 min="0" 
-                                 max="59"
-                                 value={formData.minutes}
-                                 onChange={e => setFormData({...formData, minutes: e.target.value})}
-                                 className="w-16 text-center text-2xl font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1"
-                               />
-                               <span className="text-[10px] text-gray-400 mt-1">MINS</span>
-                             </div>
-                          </div>
-                        )}
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Project</label>
-                        <select 
-                          value={formData.project} 
-                          onChange={e => setFormData({...formData, project: e.target.value})}
-                          className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
-                        >
-                            <option>Internal</option>
-                            <option>Website Redesign</option>
-                            <option>Mobile App</option>
-                            <option>API Integration</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
-                        <textarea 
-                          rows={3}
-                          value={formData.task}
-                          onChange={e => setFormData({...formData, task: e.target.value})}
-                          placeholder="What were you working on?"
-                          className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none"
-                          required
-                        />
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                        {modalMode === 'stop' && (
-                          <button type="button" onClick={handleDiscard} className="flex-1 px-4 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 rounded-xl font-medium transition-colors">
-                            Discard
-                          </button>
-                        )}
-                        <button type="submit" className="flex-[2] px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2">
-                           <Save size={18} /> Save Entry
-                        </button>
-                    </div>
-                </form>
+        {/* Weekly Progress Bar & Live Timer */}
+        <div className="flex items-center gap-4 bg-white dark:bg-gray-800/80 p-3 rounded-2xl border border-gray-200 dark:border-gray-700/80 shadow-sm">
+          <div className="min-w-[150px] px-2">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total this week</div>
+            <div className="text-sm font-bold text-gray-900 dark:text-white mt-0.5">
+              {weeklyHours}h {weeklyRemainderMins}m <span className="text-gray-400 font-normal">/ 40h</span>
             </div>
-         </div>
-       )}
+            <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 mt-1.5 overflow-hidden">
+              <div 
+                className="bg-indigo-600 h-full rounded-full transition-all duration-500" 
+                style={{ width: `${weeklyProgressPercent}%` }} 
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleToggleTimer}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md transition-all active:scale-95 ${
+              isTimerRunning 
+                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse shadow-red-500/20' 
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+            }`}
+          >
+            {isTimerRunning ? (
+              <>
+                <Square size={14} className="fill-white" />
+                <span>Stop ({formatTimerClock(timerSeconds)})</span>
+              </>
+            ) : (
+              <>
+                <Play size={14} className="fill-white" />
+                <span>Start Timer</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Table Container */}
+      <div className="bg-white dark:bg-gray-800/80 rounded-3xl border border-gray-200 dark:border-gray-700/80 shadow-sm overflow-hidden">
+        {/* Table Subheader */}
+        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300">
+            <Calendar size={15} className="text-indigo-600 dark:text-indigo-400" />
+            <span>Activity Log</span>
+          </div>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+          >
+            <Plus size={15} /> Log Manual Entry
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-gray-100 dark:border-gray-700/60 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50 dark:bg-gray-900/30">
+                <th className="py-3.5 px-6">Date</th>
+                <th className="py-3.5 px-6">Project</th>
+                <th className="py-3.5 px-6">Description</th>
+                <th className="py-3.5 px-6">Duration</th>
+                <th className="py-3.5 px-6">Status</th>
+                <th className="py-3.5 px-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/40 text-xs">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-gray-400">
+                    <Loader2 className="animate-spin text-indigo-600 mx-auto" size={24} />
+                  </td>
+                </tr>
+              ) : entries.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-gray-400 text-xs">
+                    No time entries logged yet. Click "Start Timer" or "Log Manual Entry" above.
+                  </td>
+                </tr>
+              ) : (
+                entries.map(entry => (
+                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
+                    <td className="py-4 px-6 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                      {new Date(entry.date).toLocaleDateString()}
+                    </td>
+                    <td className="py-4 px-6 whitespace-nowrap">
+                      {entry.project?.name ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                          {entry.project.name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">General</span>
+                      )}
+                    </td>
+                    <td className="py-4 px-6 text-gray-700 dark:text-gray-300 font-medium max-w-xs truncate">
+                      {entry.description}
+                    </td>
+                    <td className="py-4 px-6 font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                      {formatDuration(entry.duration_minutes)}
+                    </td>
+                    <td className="py-4 px-6 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 capitalize">
+                        <CheckCircle2 size={11} /> {entry.status}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => handleDeleteEntry(entry.id)}
+                        className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg transition-colors"
+                        title="Delete log"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Manual Entry Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-gray-100 dark:border-gray-700">
+              <h3 className="font-bold text-base text-gray-900 dark:text-white">Log Time Entry</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEntry} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">Project</label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                >
+                  <option value="">No Project (General Work)</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">Description *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Homepage Hero Section"
+                  value={entryDescription}
+                  onChange={(e) => setEntryDescription(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">Hours</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={entryHours}
+                    onChange={(e) => setEntryHours(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">Minutes</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={entryMinutes}
+                    onChange={(e) => setEntryMinutes(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all disabled:opacity-50"
+                >
+                  {submitting ? 'Saving...' : 'Save Log'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

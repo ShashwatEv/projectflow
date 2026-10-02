@@ -1,22 +1,63 @@
-name: Example Config
+name: Main Config
 version: 1.0.0
 schema: v1
-
 models:
-  - name: qwen2.5-coder 7b
-    provider: ollama
-    model: qwen2.5-coder:7b
+  - name: Autodetect
+    provider: groq
+    model: AUTODETECT
+    apiKey: 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
+  - name: Gemini 3 Pro Preview
+    provider: gemini
+    model: gemini-3-pro-preview
+    apiKey: AQ.Ab8RN6IjFk_2ig6QfpBdsaSRuzoTEvMJnWA_nFG0Cv3qCD4QjA
     roles:
       - chat
       - edit
       - apply
-      - autocomplete
     defaultCompletionOptions:
-      contextLength: 32768
-      maxTokens: 4096
-
-  - name: nomic-embed-text
-    provider: ollama
-    model: nomic-embed-text
+      contextLength: 1048576
+      maxTokens: 65536
+    capabilities:
+      - tool_use
+      - image_input
+  - name: Gemini 3 Flash Preview
+    provider: gemini
+    model: gemini-3-flash-preview
+    apiKey: AQ.Ab8RN6IjFk_2ig6QfpBdsaSRuzoTEvMJnWA_nFG0Cv3qCD4QjA
     roles:
-      - embed
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      contextLength: 1048576
+      maxTokens: 65536
+    capabilities:
+      - tool_use
+      - image_input
+  - name: Gemini 3 Flash (1)
+    provider: gemini
+    model: gemini-3-flash-preview
+    apiKey: AQ.Ab8RN6IjFk_2ig6QfpBdsaSRuzoTEvMJnWA_nFG0Cv3qCD4QjA
+    contextLength: 1048576
+  - name: Autodetect (1)
+    provider: openai
+    model: AUTODETECT
+    apiKey: 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
+  - name: "NVIDIA: Nemotron 3 Ultra (free)"
+    provider: Groq
+    model: nvidia/nemotron-3-ultra-550b-a55b:free
+    apiKey: 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
+    defaultCompletionOptions:
+      maxTokens: 65536
+    capabilities:
+      - tool_use
+  - name: Gemini 3 Flash (2)
+    provider: gemini
+    model: gemini-3-flash-preview
+    apiKey: AQ.Ab8RN6IjFk_2ig6QfpBdsaSRuzoTEvMJnWA_nFG0Cv3qCD4QjA
+    contextLength: 1048576
+  - name: Gemini 3 Flash (3)
+    provider: gemini
+    model: gemini-3-flash-preview
+    apiKey: AQ.Ab8RN6IjFk_2ig6QfpBdsaSRuzoTEvMJnWA_nFG0Cv3qCD4QjA
+    contextLength: 1048576
