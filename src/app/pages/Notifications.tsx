@@ -1,111 +1,103 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Bell, Clock, AlertCircle, CheckCircle2, Info, 
-  Trash2, CheckCheck, Sparkles, Code2, FolderKanban, MessageSquare 
+  Bell, Check, Code2, AlertCircle, MessageSquare, 
+  FolderKanban, Clock, ArrowRight, Loader2 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../context/AuthContext';
+import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
 export interface NotificationItem {
   id: string;
   title: string;
   message: string;
-  type: 'info' | 'success' | 'warning' | 'code' | 'task';
-  is_read: boolean;
+  type: 'code' | 'task' | 'project' | 'message' | 'deadline';
   link?: string;
+  is_read: boolean;
   created_at: string;
 }
 
-const SEED_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'seed-1',
-    title: 'Code Studio Push Completed',
-    message: 'Your commit to main branch in ProjectFlow repo was pushed and verified.',
-    type: 'code',
-    is_read: false,
-    link: '/code',
-    created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-  },
-  {
-    id: 'seed-2',
-    title: 'Task Due Soon: Frontend Polish',
-    message: 'Finish the appearance settings sync and color tokens before the upcoming milestone.',
-    type: 'warning',
-    is_read: false,
-    link: '/tasks',
-    created_at: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-  },
-  {
-    id: 'seed-3',
-    title: 'New Team Message',
-    message: 'A team member shared an update in #general chat room.',
-    type: 'info',
-    is_read: true,
-    link: '/messages/room_1',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-  },
-];
-
 export default function Notifications() {
-  const { user } = useAuth();
   const navigate = useNavigate();
+  const theme = useAccentTheme();
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [loading, setLoading] = useState(true);
 
-  // 1. Fetch & Initialize Notifications
-  const fetchNotifications = async () => {
+  // 1. Fetch real notifications and auto-synthesize live project/deadline triggers
+  const fetchLiveNotifications = async () => {
     try {
-      if (!user?.id) {
-        setNotifications(SEED_NOTIFICATIONS);
-        setLoading(false);
-        return;
-      }
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id;
 
-      const { data, error } = await supabase
+      // 1. Fetch stored notifications
+      const { data: storedData, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        // Fallback to starter notifications if table has no entries for user
-        setNotifications(SEED_NOTIFICATIONS);
-      } else {
-        setNotifications(data);
+      if (error && error.code !== '42P01') {
+        console.error('Error fetching notifications:', error);
       }
-    } catch {
-      setNotifications(SEED_NOTIFICATIONS);
+
+      const realList: NotificationItem[] = storedData || [];
+
+      // 2. Synthesize automated progress & deadline notifications from active projects
+      const { data: activeProjects } = await supabase
+        .from('projects')
+        .select('id, name, progress, created_at, status')
+        .eq('status', 'active');
+
+      const projectAutomations: NotificationItem[] = (activeProjects || []).map((proj) => {
+        const progress = proj.progress || 0;
+        let message = `Project ${proj.name} is currently running at ${progress}% milestone velocity.`;
+        let title = `Project Progress: ${proj.name}`;
+
+        if (progress >= 100) {
+          title = `Milestone Complete: ${proj.name}`;
+          message = `All active deliverables in ${proj.name} have reached 100% completion.`;
+        } else if (progress > 50) {
+          title = `Velocity Update: ${proj.name}`;
+          message = `${proj.name} has surpassed 50% milestone progress.`;
+        }
+
+        return {
+          id: `automation-proj-${proj.id}`,
+          title,
+          message,
+          type: 'project',
+          link: `/projects/${proj.id}`,
+          is_read: false,
+          created_at: proj.created_at,
+        };
+      });
+
+      // Merge and sort newest first
+      const combined = [...realList, ...projectAutomations].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setNotifications(combined);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
+    fetchLiveNotifications();
 
-    // 2. Real-time Subscription to Live Alerts
+    // Realtime channel listener for dynamic updates
     const channel = supabase
-      .channel('realtime_user_notifications')
+      .channel('notifications-live')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newItem = payload.new as NotificationItem;
-            setNotifications((prev) => [newItem, ...prev]);
-            toast.info(`🔔 New Notification: ${newItem.title}`);
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedItem = payload.new as NotificationItem;
-            setNotifications((prev) =>
-              prev.map((n) => (n.id === updatedItem.id ? updatedItem : n))
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id));
-          }
+          setNotifications((prev) => [payload.new as NotificationItem, ...prev]);
         }
       )
       .subscribe();
@@ -113,100 +105,111 @@ export default function Notifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, []);
 
-  // Actions
-  const markAsRead = async (id: string, link?: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    );
+  // Mark all notifications as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData?.user?.id;
 
-    if (user?.id && !id.startsWith('seed-')) {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    }
+      if (currentUserId) {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('user_id', currentUserId);
+      }
 
-    if (link) {
-      navigate(link);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      toast.success('Marked all notifications as read');
+    } catch (err: any) {
+      toast.error('Failed to update notifications');
     }
   };
 
-  const markAllAsRead = async () => {
-    const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
-    if (unreadIds.length === 0) return;
-
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-
-    if (user?.id) {
+  // Mark single item read & navigate
+  const handleItemClick = async (item: NotificationItem) => {
+    if (!item.is_read && !item.id.startsWith('automation-')) {
       await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('user_id', user.id);
+        .eq('id', item.id);
     }
 
-    toast.success('All notifications marked as read');
-  };
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
+    );
 
-  const deleteNotification = async (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-
-    if (user?.id && !id.startsWith('seed-')) {
-      await supabase.from('notifications').delete().eq('id', id);
+    if (item.link) {
+      navigate(item.link);
     }
-
-    toast.success('Notification removed');
   };
 
-  const getIcon = (type: NotificationItem['type']) => {
+  // Format relative timestamp
+  const formatTime = (isoString: string) => {
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return 'Just now';
+    }
+  };
+
+  const getIconForType = (type: NotificationItem['type']) => {
     switch (type) {
       case 'code':
-        return <Code2 className="text-indigo-400" size={18} />;
-      case 'success':
-        return <CheckCircle2 className="text-emerald-400" size={18} />;
-      case 'warning':
-        return <AlertCircle className="text-amber-400" size={18} />;
+        return <Code2 size={18} className={theme.textAccent} />;
+      case 'deadline':
       case 'task':
-        return <FolderKanban className="text-blue-400" size={18} />;
+        return <AlertCircle size={18} className="text-amber-400" />;
+      case 'project':
+        return <FolderKanban size={18} className={theme.textAccent} />;
+      case 'message':
       default:
-        return <Info className="text-purple-400" size={18} />;
+        return <MessageSquare size={18} className="text-blue-400" />;
     }
   };
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
-  const filteredNotifications = notifications.filter((n) =>
-    filter === 'unread' ? !n.is_read : true
-  );
+  const filteredNotifications = notifications.filter((n) => {
+    if (filter === 'unread') return !n.is_read;
+    return true;
+  });
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
-      {/* Top Header */}
+    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6 text-gray-200 animate-in fade-in duration-200">
+      
+      {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
-            <Bell className="text-orange-500" size={24} />
-            Notifications
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
+              <Bell size={22} />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Notifications</h1>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
             Stay updated with your live workspace activity and team events.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold transition-all active:scale-95"
-            >
-              <CheckCheck size={14} className="text-emerald-500" />
-              <span>Mark all as read</span>
-            </button>
-          )}
+        {/* Filter Pills & Mark All Action */}
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleMarkAllAsRead}
+            disabled={unreadCount === 0}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#161b22] hover:bg-gray-800 text-gray-300 border border-gray-800 text-xs font-semibold transition-all disabled:opacity-40"
+          >
+            <Check size={14} className="text-emerald-400" />
+            <span>Mark all as read</span>
+          </button>
 
-          <div className="flex items-center gap-1 bg-[#161b22] border border-gray-800 p-1 rounded-xl">
+          <div className="flex items-center bg-[#161b22] p-1 rounded-xl border border-gray-800">
             <button
               onClick={() => setFilter('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                 filter === 'all'
-                  ? 'bg-orange-600 text-white shadow-sm'
+                  ? `${theme.btnPrimary} shadow-sm`
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -214,9 +217,9 @@ export default function Notifications() {
             </button>
             <button
               onClick={() => setFilter('unread')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                 filter === 'unread'
-                  ? 'bg-orange-600 text-white shadow-sm'
+                  ? `${theme.btnPrimary} shadow-sm`
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -227,96 +230,75 @@ export default function Notifications() {
       </div>
 
       {/* Notifications List */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="p-12 text-center text-gray-400 text-xs">
-            Loading updates...
-          </div>
-        ) : filteredNotifications.length === 0 ? (
-          <div className="text-center py-16 bg-[#161b22] rounded-3xl border border-dashed border-gray-800">
-            <div className="w-12 h-12 rounded-2xl bg-gray-800/80 text-gray-400 flex items-center justify-center mx-auto mb-3">
-              <Bell size={22} />
-            </div>
-            <h3 className="text-sm font-bold text-gray-200">All caught up!</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              {filter === 'unread'
-                ? 'No unread notifications left.'
-                : 'No active notifications in this workspace.'}
-            </p>
-          </div>
-        ) : (
-          filteredNotifications.map((item) => (
+      {loading ? (
+        <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
+          <Loader2 size={28} className={`animate-spin ${theme.textAccent}`} />
+          <p className="text-xs">Checking workspace events...</p>
+        </div>
+      ) : filteredNotifications.length === 0 ? (
+        <div className="py-20 text-center bg-[#161b22] border border-gray-800 rounded-2xl p-8 space-y-3">
+          <Bell size={36} className="mx-auto text-gray-600" />
+          <h3 className="text-base font-bold text-white">No notifications</h3>
+          <p className="text-xs text-gray-400 max-w-sm mx-auto">
+            {filter === 'unread'
+              ? 'You have caught up with all unread updates.'
+              : 'Workspace activities, commits, and milestone events will show up here.'}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredNotifications.map((item) => (
             <div
               key={item.id}
-              onClick={() => markAsRead(item.id, item.link)}
-              className={`group relative p-4 rounded-2xl border transition-all cursor-pointer ${
-                item.is_read
-                  ? 'bg-[#161b22]/60 border-gray-800/60 opacity-75 hover:opacity-100 hover:bg-[#161b22]'
-                  : 'bg-[#161b22] border-orange-500/40 shadow-sm hover:border-orange-500/70'
+              onClick={() => handleItemClick(item)}
+              className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex items-start gap-4 ${
+                !item.is_read
+                  ? 'bg-[#161b22] border-gray-800 hover:border-gray-700 shadow-md'
+                  : 'bg-[#161b22]/40 border-gray-800/40 opacity-70 hover:opacity-100'
               }`}
             >
-              <div className="flex items-start gap-3.5">
-                {/* Icon */}
-                <div
-                  className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
-                    item.is_read ? 'bg-gray-800/80' : 'bg-[#0d1117] border border-gray-800'
-                  }`}
-                >
-                  {getIcon(item.type)}
+              {/* Type Avatar Badge */}
+              <div className="p-2.5 rounded-xl bg-[#0d1117] border border-gray-800 shrink-0">
+                {getIconForType(item.type)}
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-white tracking-tight">
+                    {item.title}
+                  </h4>
+                  {!item.is_read && (
+                    <span className={`w-2 h-2 rounded-full ${theme.toggleActive} shrink-0 animate-pulse`} />
+                  )}
                 </div>
 
-                {/* Details */}
-                <div className="flex-1 min-w-0 pr-8">
-                  <div className="flex items-center gap-2">
-                    <h4
-                      className={`text-xs font-bold leading-snug truncate ${
-                        item.is_read ? 'text-gray-300' : 'text-white'
-                      }`}
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  {item.message}
+                </p>
+
+                {/* Metadata & Deep Link */}
+                <div className="flex items-center gap-4 pt-2 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-1">
+                    <Clock size={12} />
+                    <span>{formatTime(item.created_at)}</span>
+                  </div>
+
+                  {item.link && (
+                    <button
+                      type="button"
+                      className={`font-semibold ${theme.textAccent} ${theme.textHover} flex items-center gap-1 transition-colors`}
                     >
-                      {item.title}
-                    </h4>
-                    {!item.is_read && (
-                      <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 animate-pulse" />
-                    )}
-                  </div>
-
-                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    {item.message}
-                  </p>
-
-                  <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Clock size={11} />
-                      {new Date(item.created_at).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {item.link && (
-                      <span className="text-orange-400 hover:underline font-semibold">
-                        View item →
-                      </span>
-                    )}
-                  </div>
+                      <span>View item</span>
+                      <ArrowRight size={11} />
+                    </button>
+                  )}
                 </div>
-
-                {/* Delete button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteNotification(item.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 hover:text-red-400 text-gray-500 rounded-lg transition-all"
-                  title="Dismiss notification"
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

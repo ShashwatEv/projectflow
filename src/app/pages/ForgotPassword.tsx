@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
+import { useAccentTheme } from '../../lib/useAccentTheme';
 
 export default function ForgotPassword() {
+  const theme = useAccentTheme();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [error, setError] = useState('');
@@ -66,7 +68,11 @@ export default function ForgotPassword() {
               <button 
                 onClick={handleResend}
                 disabled={countdown > 0}
-                className={`font-semibold transition-colors ${countdown > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-orange-600 hover:text-orange-700 dark:text-orange-500 hover:underline'}`}
+                className={`font-semibold transition-colors ${
+                  countdown > 0 
+                    ? 'text-gray-400 cursor-not-allowed' 
+                    : `${theme.textAccent}${theme.textHover} hover:underline`
+                }`}
               >
                 {countdown > 0 ? `Resend in ${countdown}s` : 'Click to resend'}
               </button>
@@ -76,7 +82,7 @@ export default function ForgotPassword() {
           <div className="pt-4 border-t border-gray-100 dark:border-gray-800/80">
             <Link 
               to="/login" 
-              className="text-xs font-semibold text-gray-600 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-500 flex items-center justify-center gap-2 transition-colors"
+              className={`text-xs font-semibold text-gray-600 dark:text-gray-400 ${theme.textHover} flex items-center justify-center gap-2 transition-colors`}
             >
               <ArrowLeft size={15} /> Back to Sign In
             </Link>
@@ -93,7 +99,7 @@ export default function ForgotPassword() {
         {/* Top Back Nav */}
         <Link 
           to="/login" 
-          className="inline-flex items-center text-xs font-semibold text-gray-500 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-500 transition-colors group"
+          className={`inline-flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400 ${theme.textHover} transition-colors group`}
         >
           <ArrowLeft size={14} className="mr-1.5 group-hover:-translate-x-1 transition-transform" /> Back to Sign In
         </Link>
@@ -102,7 +108,7 @@ export default function ForgotPassword() {
         <div className="flex flex-col items-center text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-white p-2 shadow-lg shadow-black/10 border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mb-1 overflow-hidden">
             <img 
-              src="../../../favicon.ico" 
+              src="/favicon.ico" 
               alt="ProjectFlow Logo" 
               className="w-full h-full object-contain"
             />
@@ -135,7 +141,7 @@ export default function ForgotPassword() {
                 type="email" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors" 
+                className={`w-full pl-10 pr-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors`} 
                 placeholder="name@company.com" 
                 required 
               />
@@ -143,9 +149,9 @@ export default function ForgotPassword() {
           </div>
           
           <button 
-            type="submit"
+            type="submit" 
             disabled={status === 'loading'} 
-            className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+            className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-50 font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2`}
           >
             {status === 'loading' ? (
               <>
@@ -163,7 +169,7 @@ export default function ForgotPassword() {
             Remembered your password?{' '}
             <Link
               to="/login"
-              className="font-bold text-orange-600 hover:text-orange-700 dark:text-orange-500 transition-colors"
+              className={`font-bold ${theme.textAccent} ${theme.textHover} transition-colors`}
             >
               Sign In
             </Link>

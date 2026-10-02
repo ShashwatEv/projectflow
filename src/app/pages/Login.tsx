@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LogIn, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
+import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
+  const theme = useAccentTheme();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -37,22 +40,23 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#0d1117] p-4 transition-colors">
       <div className="w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
+        
         {/* Header Logo & Title */}
-<div className="flex flex-col items-center text-center space-y-2">
-  <div className="w-14 h-14 rounded-2xl bg-white p-2 shadow-lg shadow-black/10 border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mb-1 overflow-hidden">
-    <img 
-      src="../../../favicon.ico" 
-      alt="ProjectFlow Logo" 
-      className="w-full h-full object-contain"
-    />
-  </div>
-  <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-    Welcome Back
-  </h1>
-  <p className="text-xs text-gray-500 dark:text-gray-400">
-    Sign in to continue to ProjectFlow
-  </p>
-</div>
+        <div className="flex flex-col items-center text-center space-y-2">
+          <div className="w-14 h-14 rounded-2xl bg-white p-2 shadow-lg shadow-black/10 border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mb-1 overflow-hidden">
+            <img 
+              src="/favicon.ico" 
+              alt="ProjectFlow Logo" 
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Welcome Back
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Sign in to continue to ProjectFlow
+          </p>
+        </div>
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
@@ -66,7 +70,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="name@company.com"
-              className="w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors"
+              className={`w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors`}
             />
           </div>
 
@@ -77,7 +81,7 @@ export default function Login() {
               </label>
               <Link
                 to="/forgot-password"
-                className="text-orange-600 hover:text-orange-700 dark:text-orange-500 font-medium transition-colors"
+                className={`${theme.textAccent} ${theme.textHover} font-medium transition-colors`}
               >
                 Forgot password?
               </Link>
@@ -90,7 +94,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••••••"
-                className="w-full px-4 py-3 pr-11 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors font-mono"
+                className={`w-full px-4 py-3 pr-11 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
               />
               <button
                 type="button"
@@ -106,7 +110,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+            className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-50 font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2`}
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Sign In'}
           </button>
@@ -118,7 +122,7 @@ export default function Login() {
             Don't have an account?{' '}
             <Link
               to="/signup"
-              className="font-bold text-orange-600 hover:text-orange-700 dark:text-orange-500 transition-colors"
+              className={`font-bold ${theme.textAccent} ${theme.textHover} transition-colors`}
             >
               Create one
             </Link>

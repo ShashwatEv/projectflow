@@ -39,9 +39,9 @@ export default function CodeStudio() {
   );
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
 
-  // Branches & PR Modal
+  // Branches & PR Modal (start empty to prevent blind 404 requests)
   const [branches, setBranches] = useState<string[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<string>('main');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isPrModalOpen, setIsPrModalOpen] = useState<boolean>(false);
 
   // File tree and active file states
@@ -94,26 +94,32 @@ export default function CodeStudio() {
     loadProjects();
   }, []);
 
-  // 2. Fetch branches when repo updates
+  // 2. Fetch branches when repo updates and determine default branch first
   useEffect(() => {
     async function loadBranches() {
       if (!repoInput.includes('/')) return;
-      const branchList = await fetchBranches(repoInput, githubToken);
-      if (branchList.length > 0) {
-        setBranches(branchList);
-        if (!branchList.includes(selectedBranch)) {
-          setSelectedBranch(branchList[0] || 'main');
+      try {
+        const branchList = await fetchBranches(repoInput, githubToken);
+        if (branchList && branchList.length > 0) {
+          setBranches(branchList);
+          // Prefer main if available, else first branch (e.g. master)
+          const targetBranch = branchList.includes('main') ? 'main' : (branchList[0] || 'main');
+          setSelectedBranch(targetBranch);
+        } else {
+          setBranches(['main']);
+          setSelectedBranch('main');
         }
-      } else {
+      } catch {
         setBranches(['main']);
+        setSelectedBranch('main');
       }
     }
     loadBranches();
   }, [repoInput, githubToken]);
 
-  // 3. Fetch Repository Tree from GitHub (handles 'main' vs 'master' fallback cleanly)
+  // 3. Fetch Repository Tree only when repo and resolved branch are available
   const fetchRepoFiles = async (repoName: string, branchName: string) => {
-    if (!repoName.includes('/')) return;
+    if (!repoName.includes('/') || !branchName) return;
     setLoadingFiles(true);
     setFiles([]);
     setActiveFile('');
@@ -134,7 +140,7 @@ export default function CodeStudio() {
         { headers }
       );
 
-      // Fallback if the default branch is master instead of main
+      // Fallback if branch is master instead of main
       if (res.status === 404 && branchName === 'main') {
         const fallbackRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
@@ -157,7 +163,7 @@ export default function CodeStudio() {
         toast.success(`Connected to ${repoName} (${branchName})`);
       }
     } catch {
-      // Quiet fail if offline or invalid repo
+      // Quiet fail to avoid unhandled rejections
     } finally {
       setLoadingFiles(false);
     }
@@ -262,7 +268,6 @@ export default function CodeStudio() {
           setActiveFileSha(resData.content.sha);
         }
 
-        // Trigger Automation Webhooks
         await dispatchAutomation({
           event: 'code_pushed',
           title: `Code Push: ${activeFile}`,
@@ -404,7 +409,7 @@ export default function CodeStudio() {
             <span className="hidden sm:inline">AI Assist</span>
           </button>
 
-          {/* Deep link: Open in Local Desktop VS Code */}
+          {/* Local VS Code Deep Link */}
           <button
             onClick={openInLocalVSCode}
             title="Open repository in desktop VS Code"
@@ -484,7 +489,7 @@ export default function CodeStudio() {
               </div>
             ) : files.length === 0 ? (
               <div className="p-4 text-center text-gray-400 text-xs">
-                No files found on branch {selectedBranch}.
+                {selectedBranch ? `No files found on branch ${selectedBranch}.` : 'Select a branch to explore files.'}
               </div>
             ) : (
               files.map((file) => {
@@ -523,7 +528,6 @@ export default function CodeStudio() {
                   </span>
                 )}
 
-                {/* Team Presence Avatars viewing this file */}
                 {activeFile && (
                   <div className="flex items-center gap-1">
                     {activePeers

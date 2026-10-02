@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import { useAccentTheme } from '../../lib/useAccentTheme';
 import { Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Signup() {
   const navigate = useNavigate();
+  const theme = useAccentTheme();
+
   const [loading, setLoading] = useState(false);
   
   // Form State
@@ -79,30 +82,33 @@ export default function Signup() {
               Choose your Avatar
             </label>
             <div className="flex justify-center gap-4">
-              {avatars.map((av) => (
-                <div 
-                  key={av.id}
-                  onClick={() => setSelectedAvatar(av.src)}
-                  className={`relative cursor-pointer group transition-all duration-200 ${
-                    selectedAvatar === av.src ? 'scale-105' : 'opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <img 
-                    src={av.src} 
-                    alt={av.label} 
-                    className={`w-14 h-14 rounded-full object-cover border-2 transition-all ${
-                      selectedAvatar === av.src 
-                        ? 'border-orange-500 shadow-md shadow-orange-500/20' 
-                        : 'border-transparent'
-                    }`} 
-                  />
-                  {selectedAvatar === av.src && (
-                    <div className="absolute -top-1 -right-1 bg-orange-500 text-white rounded-full p-0.5 animate-in zoom-in">
-                      <CheckCircle2 size={14} />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {avatars.map((av) => {
+                const isSelected = selectedAvatar === av.src;
+                return (
+                  <div 
+                    key={av.id}
+                    onClick={() => setSelectedAvatar(av.src)}
+                    className={`relative cursor-pointer group transition-all duration-200 ${
+                      isSelected ? 'scale-105' : 'opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img 
+                      src={av.src} 
+                      alt={av.label} 
+                      className={`w-14 h-14 rounded-full object-cover border-2 transition-all ${
+                        isSelected 
+                          ? `${theme.borderAccent} shadow-md` 
+                          : 'border-transparent'
+                      }`} 
+                    />
+                    {isSelected && (
+                      <div className={`absolute -top-1 -right-1 ${theme.toggleActive} text-white rounded-full p-0.5 animate-in zoom-in`}>
+                        <CheckCircle2 size={14} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -117,7 +123,7 @@ export default function Signup() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="John Doe"
-              className="w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors"
+              className={`w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors`}
             />
           </div>
 
@@ -132,7 +138,7 @@ export default function Signup() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
-              className="w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors"
+              className={`w-full px-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors`}
             />
           </div>
 
@@ -148,7 +154,7 @@ export default function Signup() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                className="w-full px-4 py-3 pr-11 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-orange-500 transition-colors font-mono"
+                className={`w-full px-4 py-3 pr-11 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
               />
               <button
                 type="button"
@@ -165,7 +171,7 @@ export default function Signup() {
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"
+            className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-50 font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2`}
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Create Account'}
           </button>
@@ -177,7 +183,7 @@ export default function Signup() {
             Already have an account?{' '}
             <Link 
               to="/login" 
-              className="font-bold text-orange-600 hover:text-orange-700 dark:text-orange-500 transition-colors"
+              className={`font-bold ${theme.textAccent} ${theme.textHover} transition-colors`}
             >
               Sign In
             </Link>

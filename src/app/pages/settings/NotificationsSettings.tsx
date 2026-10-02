@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Mail, Bell, Loader2 } from 'lucide-react';
+import { Mail, Bell, Loader2, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
-import { useAuth } from '../../../context/AuthContext';
+import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
-interface NotificationPrefs {
+interface NotificationPreferences {
   weekly_newsletter: boolean;
   new_comments: boolean;
   project_invites: boolean;
@@ -12,7 +12,7 @@ interface NotificationPrefs {
   task_reminders: boolean;
 }
 
-const DEFAULT_PREFS: NotificationPrefs = {
+const DEFAULT_PREFERENCES: NotificationPreferences = {
   weekly_newsletter: true,
   new_comments: true,
   project_invites: false,
@@ -21,23 +21,19 @@ const DEFAULT_PREFS: NotificationPrefs = {
 };
 
 export default function NotificationsSettings() {
-  const { user } = useAuth();
-  const [prefs, setPrefs] = useState<NotificationPrefs>(() => {
-    const saved = localStorage.getItem('pf_notification_prefs');
-    return saved ? JSON.parse(saved) : DEFAULT_PREFS;
-  });
+  const theme = useAccentTheme();
+  const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
-  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // 1. Fetch real preferences from Supabase profile on load
+  // 1. Fetch user notification preferences
   useEffect(() => {
     async function loadPreferences() {
-      if (!user?.id) {
-        setLoading(false);
-        return;
-      }
-
       try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
+        if (!user) return;
+
         const { data, error } = await supabase
           .from('users')
           .select('notification_preferences')
@@ -45,193 +41,209 @@ export default function NotificationsSettings() {
           .single();
 
         if (!error && data?.notification_preferences) {
-          const loaded = { ...DEFAULT_PREFS, ...data.notification_preferences };
-          setPrefs(loaded);
-          localStorage.setItem('pf_notification_prefs', JSON.stringify(loaded));
+          setPreferences({
+            ...DEFAULT_PREFERENCES,
+            ...data.notification_preferences,
+          });
         }
-      } catch (err) {
-        console.warn('Could not load user notification prefs from DB, using local state:', err);
+      } catch (err: any) {
+        console.error('Failed to load notification settings:', err);
       } finally {
         setLoading(false);
       }
     }
 
     loadPreferences();
-  }, [user]);
+  }, []);
 
-  // 2. Toggle Handler with Realtime Push Permission & DB persistence
-  const handleToggle = async (key: keyof NotificationPrefs) => {
-    const nextValue = !prefs[key];
-
-    // If enabling a push notification, request native browser permission
-    if (nextValue && (key === 'mentions' || key === 'task_reminders')) {
-      if ('Notification' in window && Notification.permission !== 'granted') {
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') {
-          toast.warning('Browser notifications blocked. Please enable them in browser settings.');
-        }
-      }
-    }
-
-    const updated = { ...prefs, [key]: nextValue };
-    setPrefs(updated);
-    localStorage.setItem('pf_notification_prefs', JSON.stringify(updated));
-    setUpdatingKey(key);
+  // 2. Toggle and persist preference state
+  const handleToggle = async (key: keyof NotificationPreferences) => {
+    const updated = {
+      ...preferences,
+      [key]: !preferences[key],
+    };
+    setPreferences(updated);
+    setSavingKey(key);
 
     try {
-      if (user?.id) {
-        const { error } = await supabase
-          .from('users')
-          .update({ notification_preferences: updated })
-          .eq('id', user.id);
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (!user) return;
 
-        if (error) {
-          // If the column doesn't exist yet, we still retain local storage smoothly
-          console.warn('Could not persist to Supabase users table:', error.message);
-        }
-      }
-      toast.success(nextValue ? 'Preference enabled' : 'Preference disabled');
-    } catch {
-      toast.error('Failed to sync setting');
+      const { error } = await supabase
+        .from('users')
+        .update({
+          notification_preferences: updated,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      toast.success('Notification preferences updated');
+    } catch (err: any) {
+      toast.error('Could not save preference change');
+      // Rollback on network failure
+      setPreferences(preferences);
     } finally {
-      setUpdatingKey(null);
+      setSavingKey(null);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center text-gray-400 space-y-3">
+        <Loader2 size={26} className={`animate-spin ${theme.textAccent}`} />
+        <p className="text-xs">Loading preferences...</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl">
+    <div className="space-y-6 max-w-4xl animate-in fade-in duration-200">
       {/* 1. Email Notifications Card */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-6">
-        <div>
-          <div className="flex items-center gap-2 text-white">
-            <Mail size={18} className="text-orange-500" />
-            <h3 className="font-bold text-base">Email Notifications</h3>
+      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
+        <div className="flex items-start gap-3 border-b border-gray-800/80 pb-5">
+          <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+            <Mail size={20} />
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Choose what we send to your inbox.
-          </p>
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight">Email Notifications</h2>
+            <p className="text-xs text-gray-400">Choose what we send to your inbox.</p>
+          </div>
         </div>
 
-        <div className="space-y-4 divide-y divide-gray-800/80">
+        <div className="divide-y divide-gray-800/70">
           {/* Weekly Newsletter */}
-          <div className="flex items-center justify-between pt-4 first:pt-0">
+          <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-white">Weekly Newsletter</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Get a summary of your team's performance every Monday.
-              </p>
+              <p className="text-sm font-semibold text-white">Weekly Newsletter</p>
+              <p className="text-xs text-gray-400">Get a summary of your team's performance every Monday.</p>
             </div>
-            <ToggleSwitch
-              checked={prefs.weekly_newsletter}
-              onChange={() => handleToggle('weekly_newsletter')}
-              loading={updatingKey === 'weekly_newsletter'}
-            />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.weekly_newsletter}
+              onClick={() => handleToggle('weekly_newsletter')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                preferences.weekly_newsletter ? theme.toggleActive : 'bg-gray-700/60'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  preferences.weekly_newsletter ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           {/* New Comments */}
-          <div className="flex items-center justify-between pt-4">
+          <div className="py-4 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-white">New Comments</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Receive an email when someone comments on your task.
-              </p>
+              <p className="text-sm font-semibold text-white">New Comments</p>
+              <p className="text-xs text-gray-400">Receive an email when someone comments on your task.</p>
             </div>
-            <ToggleSwitch
-              checked={prefs.new_comments}
-              onChange={() => handleToggle('new_comments')}
-              loading={updatingKey === 'new_comments'}
-            />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.new_comments}
+              onClick={() => handleToggle('new_comments')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                preferences.new_comments ? theme.toggleActive : 'bg-gray-700/60'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  preferences.new_comments ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           {/* Project Invites */}
-          <div className="flex items-center justify-between pt-4">
+          <div className="py-4 last:pb-0 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-white">Project Invites</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Get notified when you are added to a new project.
-              </p>
+              <p className="text-sm font-semibold text-white">Project Invites</p>
+              <p className="text-xs text-gray-400">Get notified when you are added to a new project.</p>
             </div>
-            <ToggleSwitch
-              checked={prefs.project_invites}
-              onChange={() => handleToggle('project_invites')}
-              loading={updatingKey === 'project_invites'}
-            />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.project_invites}
+              onClick={() => handleToggle('project_invites')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                preferences.project_invites ? theme.toggleActive : 'bg-gray-700/60'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  preferences.project_invites ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>
 
       {/* 2. Push Notifications Card */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-6">
-        <div>
-          <div className="flex items-center gap-2 text-white">
-            <Bell size={18} className="text-orange-500" />
-            <h3 className="font-bold text-base">Push Notifications</h3>
+      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
+        <div className="flex items-start gap-3 border-b border-gray-800/80 pb-5">
+          <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+            <Bell size={20} />
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Real-time alerts on your desktop/mobile.
-          </p>
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight">Push Notifications</h2>
+            <p className="text-xs text-gray-400">Real-time alerts on your desktop/mobile.</p>
+          </div>
         </div>
 
-        <div className="space-y-4 divide-y divide-gray-800/80">
+        <div className="divide-y divide-gray-800/70">
           {/* Mentions */}
-          <div className="flex items-center justify-between pt-4 first:pt-0">
+          <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-white">Mentions</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Notify when @mentioned in a comment.
-              </p>
+              <p className="text-sm font-semibold text-white">Mentions</p>
+              <p className="text-xs text-gray-400">Notify when @mentioned in a comment or chat.</p>
             </div>
-            <ToggleSwitch
-              checked={prefs.mentions}
-              onChange={() => handleToggle('mentions')}
-              loading={updatingKey === 'mentions'}
-            />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.mentions}
+              onClick={() => handleToggle('mentions')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                preferences.mentions ? theme.toggleActive : 'bg-gray-700/60'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  preferences.mentions ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
 
           {/* Task Reminders */}
-          <div className="flex items-center justify-between pt-4">
+          <div className="py-4 last:pb-0 flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-white">Task Reminders</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Get a reminder 1 hour before a task is due.
-              </p>
+              <p className="text-sm font-semibold text-white">Task Reminders</p>
+              <p className="text-xs text-gray-400">Get a reminder 1 hour before a task is due.</p>
             </div>
-            <ToggleSwitch
-              checked={prefs.task_reminders}
-              onChange={() => handleToggle('task_reminders')}
-              loading={updatingKey === 'task_reminders'}
-            />
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.task_reminders}
+              onClick={() => handleToggle('task_reminders')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                preferences.task_reminders ? theme.toggleActive : 'bg-gray-700/60'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  preferences.task_reminders ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>
     </div>
-  );
-}
-
-// Compact reusable toggle button
-function ToggleSwitch({
-  checked,
-  onChange,
-  loading,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  loading?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onChange}
-      disabled={loading}
-      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 shrink-0 ${
-        checked ? 'bg-orange-600' : 'bg-gray-700'
-      } ${loading ? 'opacity-60 cursor-wait' : 'cursor-pointer active:scale-95'}`}
-    >
-      <div
-        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
   );
 }
