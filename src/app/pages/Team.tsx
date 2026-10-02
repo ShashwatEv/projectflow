@@ -4,6 +4,7 @@ import {
     Search, UserPlus, Filter, MoreHorizontal, Mail, MessageSquare, 
     Loader2, Briefcase, Clock, Zap, X, MapPin, Globe, Check, Copy, ExternalLink 
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';

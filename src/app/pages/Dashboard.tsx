@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
+import AddMemberModal from '../components/AddMemberModal';
 
 interface ActivityItem {
   id: string;
