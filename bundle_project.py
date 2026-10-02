@@ -1,128 +1,100 @@
 import os
-from pathlib import Path
+import sys
 
-# Folders to ignore completely
+# Output file name
+OUTPUT_FILE = "project_snapshot.txt"
+
+# Directories to ignore
 IGNORE_DIRS = {
-    ".git",
     "node_modules",
-    ".next",
     "dist",
+    ".git",
+    ".continue",
+    ".vscode",
     "build",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".expo",
     "coverage",
-    ".turbo",
     ".cache",
 }
 
-# File extensions to ignore (binaries, bundles, locks)
-IGNORE_EXTS = {
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
-    ".woff", ".woff2", ".ttf", ".eot",
-    ".mp4", ".mp3", ".wav",
-    ".zip", ".tar", ".gz",
-    ".pyc", ".pyo", ".pyd",
-    ".db", ".sqlite", ".sqlite3",
-    ".lock", ".map", ".min.js", ".min.css",
-}
-
-# Explicit filenames to skip
+# Specific files or extensions to ignore
 IGNORE_FILES = {
-    "package-lock.json",
-    "yarn.lock",
-    "pnpm-lock.yaml",
-    "bun.lockb",
-    ".DS_Store",
+    OUTPUT_FILE,
     "bundle_project.py",
-    "project_bundle.md",
+    "package-lock.json",
+    ".env",
+    ".env.local",
+    ".DS_Store",
+    "thumbs.db",
 }
 
-OUTPUT_FILE = "project_bundle.md"
+# Allowed text file extensions to include in snapshot
+ALLOWED_EXTENSIONS = {
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".json",
+    ".css",
+    ".html",
+    ".sql",
+    ".env.example",
+    ".md",
+    ".svg",
+}
 
+def is_text_file(filename):
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in ALLOWED_EXTENSIONS
 
-def is_text_file(filepath: Path) -> bool:
-    """Quick check to avoid reading binary files."""
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            f.read(1024)
-        return True
-    except (UnicodeDecodeError, PermissionError):
-        return False
+def generate_bundle(root_dir="."):
+    file_count = 0
+    total_lines = 0
 
+    print(f"📦 Bundling project files from '{os.path.abspath(root_dir)}'...")
 
-def build_tree(root_dir: Path, prefix: str = "") -> list[str]:
-    """Generates an ASCII directory tree."""
-    tree_lines = []
-    try:
-        entries = sorted(
-            [e for e in root_dir.iterdir() if e.name not in IGNORE_DIRS and e.name not in IGNORE_FILES],
-            key=lambda x: (not x.is_dir(), x.name.lower()),
-        )
-    except PermissionError:
-        return []
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as out:
+        # 1. Generate Directory Tree Outline
+        out.write("=" * 80 + "\n")
+        out.write("PROJECT FLOW WORKSPACE SNAPSHOT\n")
+        out.write("=" * 80 + "\n\n")
+        out.write("--- FILE INVENTORY ---\n")
 
-    for index, path in enumerate(entries):
-        if path.suffix.lower() in IGNORE_EXTS:
-            continue
+        collected_files = []
+        for dirpath, dirnames, filenames in os.walk(root_dir):
+            # Prune ignored folders in-place
+            dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
 
-        is_last = index == len(entries) - 1
-        connector = "└── " if is_last else "├── "
-        tree_lines.append(f"{prefix}{connector}{path.name}")
-
-        if path.is_dir():
-            sub_prefix = f"{prefix}{'    ' if is_last else '│   '}"
-            tree_lines.extend(build_tree(path, sub_prefix))
-
-    return tree_lines
-
-
-def generate_bundle(root_path: Path, output_path: Path):
-    with open(output_path, "w", encoding="utf-8") as out:
-        out.write("# ProjectFlow Codebase Bundle\n\n")
-
-        # 1. Write the directory structure
-        out.write("## 1. Directory Structure\n\n```text\n")
-        out.write(f"{root_path.name}/\n")
-        tree = build_tree(root_path)
-        out.write("\n".join(tree))
-        out.write("\n```\n\n")
-
-        # 2. Iterate and append file contents
-        out.write("## 2. File Contents\n\n")
-        file_count = 0
-
-        for current_root, dirs, files in os.walk(root_path):
-            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
-
-            for file in sorted(files):
-                file_path = Path(current_root) / file
-
-                if file in IGNORE_FILES or file_path.suffix.lower() in IGNORE_EXTS:
+            for fname in sorted(filenames):
+                if fname in IGNORE_FILES:
                     continue
+                if is_text_file(fname):
+                    rel_path = os.path.relpath(os.path.join(dirpath, fname), root_dir)
+                    collected_files.append(rel_path)
+                    out.write(f"  • {rel_path}\n")
 
-                if not is_text_file(file_path):
-                    continue
+        out.write("\n" + "=" * 80 + "\n\n")
 
-                rel_path = file_path.relative_to(root_path)
-                ext = file_path.suffix.lstrip(".").lower()
-                lang_tag = ext if ext else "text"
+        # 2. Append Code Contents for each collected file
+        for rel_path in sorted(collected_files):
+            full_path = os.path.join(root_dir, rel_path)
+            try:
+                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
 
-                try:
-                    content = file_path.read_text(encoding="utf-8", errors="replace")
-                    out.write(f"### `{rel_path}`\n\n")
-                    out.write(f"```{lang_tag}\n")
-                    out.write(content)
-                    out.write("\n```\n\n")
-                    file_count += 1
-                except Exception as e:
-                    out.write(f"### `{rel_path}` (Error reading file: {e})\n\n")
+                lines = content.count("\n") + 1
+                total_lines += lines
+                file_count += 1
 
-    print(f"Bundled {file_count} files into '{output_path.name}'.")
+                out.write(f"\n{'#' * 80}\n")
+                out.write(f"FILE: {rel_path}  ({lines} lines)\n")
+                out.write(f"{'#' * 80}\n\n")
+                out.write(content)
+                out.write("\n\n")
 
+            except Exception as e:
+                print(f"⚠️  Could not read {rel_path}: {e}")
+
+    print(f"✅ Finished! Bundled {file_count} files ({total_lines} lines) into '{OUTPUT_FILE}'.")
 
 if __name__ == "__main__":
-    current_directory = Path.cwd()
-    output_destination = current_directory / OUTPUT_FILE
-    generate_bundle(current_directory, output_destination)
+    generate_bundle()

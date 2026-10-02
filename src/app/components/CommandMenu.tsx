@@ -4,7 +4,7 @@ import { Command } from 'cmdk';
 import { 
   LayoutGrid, FolderKanban, CheckSquare, Users, Calendar, 
   BarChart2, MessageSquare, Clock, Zap, Settings, Sun, Moon, 
-  Plus, Search, ArrowRight
+  Plus, Search, ArrowRight, Code2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
@@ -26,7 +26,6 @@ export default function CommandMenu() {
       }
     };
 
-    // Listen for custom trigger event
     const handleOpenTrigger = () => setOpen(true);
     window.addEventListener('open-command-palette', handleOpenTrigger);
     document.addEventListener('keydown', down);
@@ -83,7 +82,7 @@ export default function CommandMenu() {
               No matching commands or results found.
             </Command.Empty>
 
-            {/* Actions Group */}
+            {/* Quick Actions */}
             <Command.Group heading="Quick Actions" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
               <Command.Item
                 onSelect={() => runCommand(() => setTheme(theme === 'dark' ? 'light' : 'dark'))}
@@ -106,6 +105,7 @@ export default function CommandMenu() {
             <Command.Group heading="Navigation" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
               {[
                 { name: 'Dashboard Overview', path: '/dashboard', icon: <LayoutGrid size={16} /> },
+                { name: 'Code Studio', path: '/code', icon: <Code2 size={16} /> },
                 { name: 'Projects', path: '/projects', icon: <FolderKanban size={16} /> },
                 { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={16} /> },
                 { name: 'Team Chat', path: '/messages/room_1', icon: <MessageSquare size={16} /> },
@@ -115,7 +115,7 @@ export default function CommandMenu() {
                 { name: 'Timesheets', path: '/timesheets', icon: <Clock size={16} /> },
                 { name: 'Automations', path: '/automations', icon: <Zap size={16} /> },
                 { name: 'Workspace Settings', path: '/settings', icon: <Settings size={16} /> },
-              ].map(item => (
+              ].map((item) => (
                 <Command.Item
                   key={item.path}
                   onSelect={() => runCommand(() => navigate(item.path))}
@@ -133,7 +133,7 @@ export default function CommandMenu() {
             {/* Projects Group */}
             {projects.length > 0 && (
               <Command.Group heading="Projects" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
-                {projects.map(proj => (
+                {projects.map((proj) => (
                   <Command.Item
                     key={proj.id}
                     onSelect={() => runCommand(() => navigate(`/projects/${proj.id}`))}
@@ -154,7 +154,7 @@ export default function CommandMenu() {
             {/* People Group */}
             {users.length > 0 && (
               <Command.Group heading="Team Members" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
-                {users.map(u => (
+                {users.map((u) => (
                   <Command.Item
                     key={u.id}
                     onSelect={() => runCommand(() => navigate(`/profile/${u.id}`))}
@@ -184,4 +184,3 @@ export default function CommandMenu() {
     </div>
   );
 }
-

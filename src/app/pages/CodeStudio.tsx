@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
-  Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check
+  Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, GitPullRequest
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
+import { fetchBranches } from '../../lib/githubService';
+import CodeStudioPRModal from '../components/CodeStudioPRModal';
+import { useStudioPresence } from '../../lib/useStudioPresence';
+import { dispatchAutomation } from '../../lib/automationTrigger';
 import { toast } from 'sonner';
 
 interface Project {
@@ -22,7 +26,7 @@ interface FileTreeItem {
 
 export default function CodeStudio() {
   const [projects, setProjects] = useState<Project[]>([]);
-  
+
   // Persisted state from localStorage
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return localStorage.getItem('pf_selected_project_id') || '';
@@ -30,11 +34,15 @@ export default function CodeStudio() {
   const [repoInput, setRepoInput] = useState<string>(() => {
     return localStorage.getItem('pf_active_repo') || '';
   });
-
   const [githubToken, setGithubToken] = useState<string>(
     localStorage.getItem('pf_github_token') || ''
   );
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
+
+  // Branches & PR Modal
+  const [branches, setBranches] = useState<string[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<string>('main');
+  const [isPrModalOpen, setIsPrModalOpen] = useState<boolean>(false);
 
   // File tree and active file states
   const [files, setFiles] = useState<FileTreeItem[]>([]);
@@ -54,7 +62,10 @@ export default function CodeStudio() {
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [copiedResponse, setCopiedResponse] = useState<boolean>(false);
 
-  // 1. Fetch available projects and load saved or first project's repo
+  // Real-time team presence
+  const activePeers = useStudioPresence(selectedProjectId, activeFile);
+
+  // 1. Fetch available projects
   useEffect(() => {
     async function loadProjects() {
       const { data, error } = await supabase
@@ -83,8 +94,25 @@ export default function CodeStudio() {
     loadProjects();
   }, []);
 
-  // 2. Fetch Repository Tree from GitHub
-  const fetchRepoFiles = async (repoName: string) => {
+  // 2. Fetch branches when repo updates
+  useEffect(() => {
+    async function loadBranches() {
+      if (!repoInput.includes('/')) return;
+      const branchList = await fetchBranches(repoInput, githubToken);
+      if (branchList.length > 0) {
+        setBranches(branchList);
+        if (!branchList.includes(selectedBranch)) {
+          setSelectedBranch(branchList[0] || 'main');
+        }
+      } else {
+        setBranches(['main']);
+      }
+    }
+    loadBranches();
+  }, [repoInput, githubToken]);
+
+  // 3. Fetch Repository Tree from GitHub for the active branch
+  const fetchRepoFiles = async (repoName: string, branchName: string) => {
     if (!repoName.includes('/')) return;
     setLoadingFiles(true);
     setFiles([]);
@@ -101,15 +129,14 @@ export default function CodeStudio() {
         headers['Authorization'] = `token ${githubToken.trim()}`;
       }
 
-      // Try 'main' branch first
       let res = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
+        `https://api.github.com/repos/${owner}/${repo}/git/trees/${branchName}?recursive=1`,
         { headers }
       );
       let data = await res.json();
 
-      // Fallback to 'master' if 'main' is not found
-      if (res.status === 404) {
+      // Fallback if branch name differs
+      if (res.status === 404 && branchName === 'main') {
         res = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
           { headers }
@@ -119,9 +146,9 @@ export default function CodeStudio() {
 
       if (data.tree) {
         setFiles(data.tree.filter((item: FileTreeItem) => item.type === 'blob'));
-        toast.success(`Connected to ${repoName}`);
+        toast.success(`Connected to ${repoName} (${branchName})`);
       } else {
-        toast.error(data.message || 'Could not load repo files');
+        toast.error(data.message || 'Could not load repository files');
       }
     } catch {
       toast.error('Failed to load GitHub repository');
@@ -131,12 +158,12 @@ export default function CodeStudio() {
   };
 
   useEffect(() => {
-    if (repoInput) {
-      fetchRepoFiles(repoInput);
+    if (repoInput && selectedBranch) {
+      fetchRepoFiles(repoInput, selectedBranch);
     }
-  }, [repoInput, githubToken]);
+  }, [repoInput, selectedBranch, githubToken]);
 
-  // 3. Fetch file content
+  // 4. Fetch file content
   const loadFileContent = async (item: FileTreeItem) => {
     setActiveFile(item.path);
     setActiveFileSha(item.sha);
@@ -170,7 +197,7 @@ export default function CodeStudio() {
     }
   };
 
-  // 4. Save Token Locally
+  // 5. Save Token Locally
   const handleSaveToken = (val: string) => {
     setGithubToken(val);
     localStorage.setItem('pf_github_token', val);
@@ -178,7 +205,7 @@ export default function CodeStudio() {
     toast.success('GitHub Token configured!');
   };
 
-  // 5. Open in Local Desktop VS Code
+  // 6. Open in Local Desktop VS Code
   const openInLocalVSCode = () => {
     if (!repoInput) return;
     const gitUrl = `https://github.com/${repoInput}.git`;
@@ -186,7 +213,7 @@ export default function CodeStudio() {
     toast.info('Opening desktop VS Code...');
   };
 
-  // 6. Push Commit to GitHub
+  // 7. Commit, Push, and Trigger Automations
   const handleCommitAndPush = async () => {
     if (!githubToken.trim()) {
       toast.error('Please configure a GitHub Token first to push changes');
@@ -216,6 +243,7 @@ export default function CodeStudio() {
           body: JSON.stringify({
             message: `Update ${activeFile} via ProjectFlow Code Studio`,
             content: encodedContent,
+            branch: selectedBranch,
             sha: activeFileSha,
           }),
         }
@@ -227,6 +255,14 @@ export default function CodeStudio() {
         if (resData.content?.sha) {
           setActiveFileSha(resData.content.sha);
         }
+
+        // Trigger Automation Webhooks
+        await dispatchAutomation({
+          event: 'code_pushed',
+          title: `Code Push: ${activeFile}`,
+          description: `Committed changes to \`${activeFile}\` on branch \`${selectedBranch}\` in \`${repoInput}\`.`,
+          user: localStorage.getItem('pf_user_name') || 'Team Member',
+        });
       } else {
         toast.error(resData.message || 'Push failed');
       }
@@ -237,7 +273,7 @@ export default function CodeStudio() {
     }
   };
 
-  // 7. Ask AI Assistant
+  // 8. Ask AI Assistant
   const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const query = customQuery || aiPrompt;
@@ -278,10 +314,10 @@ export default function CodeStudio() {
   return (
     <div className="flex flex-col h-full bg-[#0d1117] text-gray-200">
       {/* Top Studio Bar */}
-      <div className="h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5">
           <Code2 className="text-indigo-400" size={20} />
-          <h2 className="font-bold text-sm text-white hidden sm:block">Code Studio</h2>
+          <h2 className="font-bold text-sm text-white hidden md:block">Code Studio</h2>
 
           {/* Project Selector */}
           <select
@@ -307,8 +343,7 @@ export default function CodeStudio() {
           </select>
 
           {/* Repo Input */}
-          <div className="flex items-center gap-1.5 bg-[#0d1117] border border-gray-700 rounded-lg px-2.5 py-1">
-            <GitBranch size={13} className="text-gray-400" />
+          <div className="flex items-center gap-1.5 bg-[#0d1117] border border-gray-700 rounded-lg px-2 py-1">
             <input
               type="text"
               value={repoInput}
@@ -317,13 +352,39 @@ export default function CodeStudio() {
                 localStorage.setItem('pf_active_repo', e.target.value);
               }}
               placeholder="owner/repo"
-              className="bg-transparent text-xs text-white outline-none w-36 sm:w-44 font-mono"
+              className="bg-transparent text-xs text-white outline-none w-32 sm:w-40 font-mono"
             />
+          </div>
+
+          {/* Branch Selector Dropdown */}
+          <div className="flex items-center gap-1.5 bg-[#0d1117] border border-gray-700 rounded-lg px-2 py-1">
+            <GitBranch size={13} className="text-indigo-400" />
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="bg-transparent text-xs text-gray-300 outline-none font-mono cursor-pointer"
+            >
+              {branches.map((b) => (
+                <option key={b} value={b} className="bg-[#161b22] text-white">
+                  {b}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Create PR Button */}
+          <button
+            onClick={() => setIsPrModalOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 text-xs font-semibold transition-all active:scale-95"
+            title="Create Pull Request"
+          >
+            <GitPullRequest size={13} className="text-indigo-400" />
+            <span className="hidden sm:inline">Open PR</span>
+          </button>
+
           {/* AI Assist Button */}
           <button
             onClick={() => setShowAiDrawer(!showAiDrawer)}
@@ -334,17 +395,17 @@ export default function CodeStudio() {
             }`}
           >
             <Sparkles size={14} />
-            <span>AI Assist</span>
+            <span className="hidden sm:inline">AI Assist</span>
           </button>
 
           {/* Deep link: Open in Local Desktop VS Code */}
           <button
             onClick={openInLocalVSCode}
-            title="Open repository in your local desktop VS Code"
+            title="Open repository in desktop VS Code"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition-all active:scale-95"
           >
             <Laptop size={14} />
-            <span className="hidden md:inline">Open in Local VS Code</span>
+            <span className="hidden lg:inline">Open in VS Code</span>
           </button>
 
           {/* Commit & Push Button */}
@@ -354,13 +415,13 @@ export default function CodeStudio() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 active:scale-95"
           >
             {savingFile ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            <span>Commit & Push</span>
+            <span>Push</span>
           </button>
 
           {/* Token Toggle Button */}
           <button
             onClick={() => setShowTokenInput(!showTokenInput)}
-            title="Configure GitHub Personal Access Token (5,000 req/hr)"
+            title="Configure GitHub Personal Access Token"
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
               githubToken 
                 ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' 
@@ -393,7 +454,7 @@ export default function CodeStudio() {
             </button>
           </div>
           <span className="text-[11px] text-gray-400 hidden lg:inline">
-            Required for pushing commits and 5,000 req/hr rate limit.
+            Required for pushing commits, branches, and 5,000 req/hr rate limits.
           </span>
         </div>
       )}
@@ -404,7 +465,7 @@ export default function CodeStudio() {
         <div className="w-56 md:w-64 bg-[#161b22] border-r border-gray-800 flex flex-col shrink-0">
           <div className="p-3 border-b border-gray-800 flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
             <span>Files ({files.length})</span>
-            <button onClick={() => fetchRepoFiles(repoInput)} className="hover:text-white">
+            <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white">
               <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
             </button>
           </div>
@@ -413,11 +474,11 @@ export default function CodeStudio() {
             {loadingFiles ? (
               <div className="p-8 text-center text-gray-400">
                 <Loader2 className="animate-spin mx-auto mb-2 text-indigo-400" size={20} />
-                <span>Loading repo...</span>
+                <span>Loading tree...</span>
               </div>
             ) : files.length === 0 ? (
               <div className="p-4 text-center text-gray-400 text-xs">
-                No files found. Check repository name.
+                No files found on branch {selectedBranch}.
               </div>
             ) : (
               files.map((file) => {
@@ -443,16 +504,36 @@ export default function CodeStudio() {
 
         {/* Editor Center & AI Drawer */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Monaco Editor Area */}
+          {/* Monaco Editor Canvas */}
           <div className="flex-1 flex flex-col bg-[#0d1117] overflow-hidden">
-            {/* Active File Bar */}
+            {/* Active File Bar & Team Presence Avatars */}
             <div className="h-9 bg-[#0d1117] border-b border-gray-800 px-4 flex items-center justify-between text-xs">
               <span className="font-mono text-gray-400">{activeFile || 'No file selected'}</span>
-              {loadingContent && (
-                <span className="text-indigo-400 flex items-center gap-1">
-                  <Loader2 size={12} className="animate-spin" /> Loading content...
-                </span>
-              )}
+              
+              <div className="flex items-center gap-3">
+                {loadingContent && (
+                  <span className="text-indigo-400 flex items-center gap-1 text-[11px]">
+                    <Loader2 size={12} className="animate-spin" /> Loading...
+                  </span>
+                )}
+
+                {/* Team Presence Avatars viewing this file */}
+                {activeFile && (
+                  <div className="flex items-center gap-1">
+                    {activePeers
+                      .filter((p) => p.activeFile === activeFile)
+                      .map((peer, i) => (
+                        <span
+                          key={i}
+                          title={`${peer.name} is looking at this file`}
+                          className="w-5 h-5 rounded-full bg-indigo-600/40 border border-indigo-400 text-[10px] font-bold text-indigo-200 flex items-center justify-center uppercase cursor-default"
+                        >
+                          {peer.name?.charAt(0) || 'D'}
+                        </span>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Monaco Editor */}
@@ -499,11 +580,11 @@ export default function CodeStudio() {
                 </div>
               </div>
 
-              {/* Quick Prompt Chips */}
+              {/* Quick Prompt Action Chips */}
               <div className="p-2 border-b border-gray-800 flex flex-wrap gap-1.5 bg-[#0d1117]/50">
                 <button
                   onClick={() => {
-                    const prompt = 'Find any potential bugs, memory leaks, or unhandled edge cases in this code.';
+                    const prompt = 'Find any potential bugs, unhandled null checks, or edge cases in this code.';
                     setAiPrompt(prompt);
                     handleAskAi(undefined, prompt);
                   }}
@@ -513,13 +594,13 @@ export default function CodeStudio() {
                 </button>
                 <button
                   onClick={() => {
-                    const prompt = 'Add clear TypeScript types, JSDoc comments, and improve readability.';
+                    const prompt = 'Add clean TypeScript types and JSDoc comments to this code.';
                     setAiPrompt(prompt);
                     handleAskAi(undefined, prompt);
                   }}
                   className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                 >
-                  📝 Add Docs & Types
+                  📝 Add Docs
                 </button>
                 <button
                   onClick={() => {
@@ -533,12 +614,12 @@ export default function CodeStudio() {
                 </button>
               </div>
 
-              {/* AI Messages / Output Panel */}
+              {/* AI Output Area */}
               <div className="flex-1 overflow-y-auto p-3 text-xs font-sans text-gray-300 space-y-3 custom-scrollbar">
                 {aiLoading ? (
                   <div className="p-8 text-center text-purple-400 space-y-2">
                     <Loader2 className="animate-spin mx-auto text-purple-400" size={24} />
-                    <p className="text-xs text-gray-400">Analyzing code & rotating API pool...</p>
+                    <p className="text-xs text-gray-400">Analyzing code with pooled Gemini keys...</p>
                   </div>
                 ) : aiResponse ? (
                   <div className="space-y-2">
@@ -548,7 +629,7 @@ export default function CodeStudio() {
                   </div>
                 ) : (
                   <div className="text-center text-gray-500 py-16 px-4 text-xs">
-                    Select a quick action above or type a prompt below to analyze <span className="font-mono text-gray-400">{activeFile || 'current file'}</span>.
+                    Select a quick action above or type a question to inspect <span className="font-mono text-gray-400">{activeFile || 'this file'}</span>.
                   </div>
                 )}
               </div>
@@ -574,6 +655,16 @@ export default function CodeStudio() {
           )}
         </div>
       </div>
+
+      {/* Pull Request Creation Modal */}
+      <CodeStudioPRModal
+        isOpen={isPrModalOpen}
+        onClose={() => setIsPrModalOpen(false)}
+        repo={repoInput}
+        token={githubToken}
+        currentBranch={selectedBranch}
+        defaultBaseBranch="main"
+      />
     </div>
   );
 }
