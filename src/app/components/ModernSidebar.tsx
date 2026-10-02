@@ -82,7 +82,7 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
         <div className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center">
             <img 
-              src="../../../public/favicon.ico" 
+              src="../../../favicon.ico" 
               alt="ProjectFlow Logo" 
               className="h-8 w-8 rounded-lg object-contain mr-3 shrink-0" 
             />

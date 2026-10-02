@@ -4,7 +4,7 @@ import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
   ArrowUpDown, ChevronLeft, ChevronRight, X,
   LayoutGrid, List, Loader2, ArrowRight, FolderKanban,
-  ShieldAlert, UserCheck
+  ShieldAlert, UserCheck, User
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +21,12 @@ interface Task {
   project_id?: string;
   project?: { name: string };
   assigned_to?: string;
+  assignee?: {
+    id: string;
+    name: string;
+    avatar: string;
+    role: string;
+  };
 }
 
 const COLUMNS: { id: Task['status']; label: string; dot: string; color: string }[] = [
@@ -65,7 +71,6 @@ export default function MyTasks() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // 1. Check if user has configured their role
   useEffect(() => {
     async function verifyUserRole() {
       if (!user) return;
@@ -90,14 +95,13 @@ export default function MyTasks() {
     verifyUserRole();
   }, [user]);
 
-  // 2. Fetch only tasks assigned to the logged-in user
   const fetchTasks = async () => {
     if (!user) return;
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('*, project:projects(name)')
-        .eq('assigned_to', user.id) // 🔒 Filter strictly to current user's tasks
+        .select('*, project:projects(name), assignee:users(id, name, avatar, role)')
+        .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -131,7 +135,6 @@ export default function MyTasks() {
     }
   }, [hasRole, user?.id]);
 
-  // Calendar Helpers
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   const changeMonth = (offset: number) => {
@@ -156,13 +159,13 @@ export default function MyTasks() {
         status: 'todo' as const,
         priority: 'medium' as const,
         due_date: selectedDate ? selectedDate.toISOString() : null,
-        assigned_to: user.id, // Assign to current user
+        assigned_to: user.id,
       };
 
       const { data, error } = await supabase
         .from('tasks')
         .insert(newTask)
-        .select('*, project:projects(name)')
+        .select('*, project:projects(name), assignee:users(id, name, avatar, role)')
         .single();
 
       if (error) throw error;
@@ -275,7 +278,6 @@ export default function MyTasks() {
     }
   };
 
-  // Loading gate
   if (loading) {
     return (
       <div className="flex-1 h-full flex items-center justify-center p-12">
@@ -284,7 +286,6 @@ export default function MyTasks() {
     );
   }
 
-  // ⚠️ ROLE GATE: If user has not configured their role
   if (hasRole === false) {
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -309,9 +310,11 @@ export default function MyTasks() {
     );
   }
 
+  const pendingCount = tasks.filter(t => t.status !== 'done').length;
+  const completedCount = tasks.filter(t => t.status === 'done').length;
+
   return (
     <div className="flex h-full">
-      {/* MAIN TASKS WORKSPACE */}
       <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -329,12 +332,13 @@ export default function MyTasks() {
                 Filtered for {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} <X size={13} />
               </p>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Showing only deliverables assigned to you.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Showing deliverables assigned to your account.
+              </p>
             )}
           </div>
 
           <div className="flex flex-wrap gap-2 items-center">
-            {/* View Switcher */}
             <div className="flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mr-2">
               <button
                 onClick={() => setViewMode('list')}
@@ -375,7 +379,7 @@ export default function MyTasks() {
             type="text"
             value={newTaskInput}
             onChange={(e) => setNewTaskInput(e.target.value)}
-            placeholder="Add a new personal task..."
+            placeholder="Add a new task assigned to you..."
             className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all"
           />
         </form>
@@ -387,6 +391,7 @@ export default function MyTasks() {
               {processedTasks.map((task) => {
                 const isDone = task.status === 'done';
                 const isSelected = selectedTasks.includes(task.id);
+                const isMine = task.assigned_to === user?.id;
 
                 return (
                   <div
@@ -415,9 +420,23 @@ export default function MyTasks() {
                       </button>
 
                       <div className="min-w-0">
-                        <h3 className={`font-semibold text-sm text-gray-900 dark:text-white truncate transition-all ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
-                          {task.title}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className={`font-semibold text-sm text-gray-900 dark:text-white truncate transition-all ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
+                            {task.title}
+                          </h3>
+
+                          {/* 🟢 OWNERSHIP BADGE: Instantly confirms who owns this task */}
+                          {isMine ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> You
+                            </span>
+                          ) : task.assignee?.name ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+                              <User size={10} /> {task.assignee.name}
+                            </span>
+                          ) : null}
+                        </div>
+
                         <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
                           {task.project?.name ? (
                             <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium">
@@ -458,7 +477,7 @@ export default function MyTasks() {
 
               {processedTasks.length === 0 && (
                 <div className="py-16 text-center text-gray-400 text-xs">
-                  You have no tasks assigned in this filter.
+                  No tasks found in this view.
                 </div>
               )}
             </div>
@@ -489,11 +508,9 @@ export default function MyTasks() {
                             <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityBadge(task.priority)}`}>
                               {task.priority}
                             </span>
-                            {task.project?.name && (
-                              <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 truncate max-w-[100px]">
-                                {task.project.name}
-                              </span>
-                            )}
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800">
+                              You
+                            </span>
                           </div>
 
                           <h4 className="font-semibold text-xs text-gray-900 dark:text-white leading-snug mb-2">
@@ -551,7 +568,7 @@ export default function MyTasks() {
         )}
       </div>
 
-      {/* MINI CALENDAR SIDEBAR */}
+      {/* MINI CALENDAR & RIGHT OVERVIEW */}
       <div className="w-72 border-l border-gray-200 dark:border-gray-800 p-5 hidden xl:flex flex-col bg-white dark:bg-gray-800/40">
         <div className="flex justify-between items-center mb-4">
           <span className="font-bold text-sm text-gray-900 dark:text-white">
@@ -600,20 +617,21 @@ export default function MyTasks() {
           })}
         </div>
 
+        {/* 🟢 ACCURATE & CONSISTENT TASK OVERVIEW */}
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
           <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Task Overview</h4>
           <div className="space-y-2 text-xs">
             <div className="flex justify-between text-gray-600 dark:text-gray-300">
-              <span>My Tasks</span>
-              <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
+              <span>Active Pending</span>
+              <span className="font-bold text-indigo-600">{pendingCount}</span>
             </div>
             <div className="flex justify-between text-gray-600 dark:text-gray-300">
               <span>Completed</span>
-              <span className="font-bold text-emerald-600">{tasks.filter(t => t.status === 'done').length}</span>
+              <span className="font-bold text-emerald-600">{completedCount}</span>
             </div>
-            <div className="flex justify-between text-gray-600 dark:text-gray-300">
-              <span>In Progress</span>
-              <span className="font-bold text-indigo-600">{tasks.filter(t => t.status === 'inProgress').length}</span>
+            <div className="flex justify-between text-gray-600 dark:text-gray-300 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <span>Total Assigned</span>
+              <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
             </div>
           </div>
         </div>
