@@ -7,6 +7,8 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { ModernHeader } from './components/ModernHeader';
 import { ModernSidebar } from './components/ModernSidebar';
 import RequireAuth from './components/RequireAuth';
+import CommandMenu from './components/CommandMenu';
+import OnboardingTour from './components/OnboardingTour';
 
 // Page Imports
 import Dashboard from './pages/Dashboard';
@@ -27,7 +29,6 @@ import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
-import CommandMenu from './components/CommandMenu';
 import CodeStudio from './pages/CodeStudio';
 import { Toaster } from 'sonner';
 
@@ -37,16 +38,19 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <CommandMenu />
+      {/* 🚀 First-time Guided Onboarding Tour & Terms Acceptance */}
+      <OnboardingTour />
+      
       <ModernHeader onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       
       <div className="flex flex-1 overflow-hidden relative">
         <ModernSidebar 
-            isOpen={isMobileMenuOpen} 
-            onClose={() => setIsMobileMenuOpen(false)} 
+          isOpen={isMobileMenuOpen} 
+          onClose={() => setIsMobileMenuOpen(false)} 
         />
         
         <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full">
-           <Outlet />
+          <Outlet />
         </main>
       </div>
     </div>
@@ -78,25 +82,23 @@ export default function App() {
                 <Route path="/projects" element={<Projects />} />
                 <Route path="/projects/:id" element={<ProjectDetail />} />
                 <Route path="/timesheets" element={<Timesheets />} />
+                <Route path="/code" element={<CodeStudio />} />
                 
                 {/* Communication */}
                 <Route path="/notifications" element={<Notifications />} />
                 
-                {/* 🟢 Unified Chat Routes */}
+                {/* Unified Chat Routes */}
                 <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
                 <Route path="/messages/:roomId" element={<Messages />} />
                 
                 {/* Management */}
                 <Route path="/team" element={<Team />} />
-                
-                {/* 🟢 FIXED: Profile needs both routes */}
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/profile/:id" element={<Profile />} />
-                
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/automations" element={<Automations />} />
                 <Route path="/analytics" element={<Analytics />} />
-                <Route path="/code" element={<CodeStudio />} />
+
                 {/* Settings */}
                 <Route path="/settings" element={<SettingsLayout />} />
               </Route>
