@@ -3,7 +3,6 @@
 > A full-stack, agile engineering workspace built with React 19, Supabase, Tailwind CSS, and Monaco Editor[cite: 21]. Features real-time state synchronization, embedded code editing, AI-assisted reviews, and customizable workspace themes[cite: 21].
 
 [![Live Demo](https://projectflow-d9dk.onrender.com)]
-[![License: GNU](https://img.shields.io/badge/License-GNU-blue.svg?style=for-the-badge)](LICENSE)
 
 ---
 
@@ -38,18 +37,19 @@
 
 2. **Install dependencies:**
 
-  Bash
-  npm install
+   bash
+   npm install
 
 3. **Configure Environment Variables:**
   Edit .env.example file in the root directory to .env:
 
   VITE_SUPABASE_URL=your_supabase_project_url
+  
   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 4. **Run the local development server:**
 
-   Bash
+   bash
    npm run dev
 
 ## 📄 Licensing & Commercial Inquiries
