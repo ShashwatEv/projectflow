@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FolderKanban, Plus, Calendar, ArrowRight, MoreVertical, 
-  Trash2, Loader2, Search, CheckCircle2 
+  Trash2, Loader2, Search 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
