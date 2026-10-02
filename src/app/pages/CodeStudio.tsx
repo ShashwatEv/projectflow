@@ -111,7 +111,7 @@ export default function CodeStudio() {
     loadBranches();
   }, [repoInput, githubToken]);
 
-  // 3. Fetch Repository Tree from GitHub for the active branch
+  // 3. Fetch Repository Tree from GitHub (handles 'main' vs 'master' fallback cleanly)
   const fetchRepoFiles = async (repoName: string, branchName: string) => {
     if (!repoName.includes('/')) return;
     setLoadingFiles(true);
@@ -133,25 +133,31 @@ export default function CodeStudio() {
         `https://api.github.com/repos/${owner}/${repo}/git/trees/${branchName}?recursive=1`,
         { headers }
       );
-      let data = await res.json();
 
-      // Fallback if branch name differs
+      // Fallback if the default branch is master instead of main
       if (res.status === 404 && branchName === 'main') {
-        res = await fetch(
+        const fallbackRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
           { headers }
         );
-        data = await res.json();
+        if (fallbackRes.ok) {
+          res = fallbackRes;
+          setSelectedBranch('master');
+        }
       }
 
+      if (!res.ok) {
+        setLoadingFiles(false);
+        return;
+      }
+
+      const data = await res.json();
       if (data.tree) {
         setFiles(data.tree.filter((item: FileTreeItem) => item.type === 'blob'));
         toast.success(`Connected to ${repoName} (${branchName})`);
-      } else {
-        toast.error(data.message || 'Could not load repository files');
       }
     } catch {
-      toast.error('Failed to load GitHub repository');
+      // Quiet fail if offline or invalid repo
     } finally {
       setLoadingFiles(false);
     }
@@ -251,7 +257,7 @@ export default function CodeStudio() {
 
       const resData = await res.json();
       if (res.ok) {
-        toast.success(`Committed & pushed ${activeFile}! 🎉`);
+        toast.success(`Committed & pushed ${activeFile}! 🚀`);
         if (resData.content?.sha) {
           setActiveFileSha(resData.content.sha);
         }
@@ -590,7 +596,7 @@ export default function CodeStudio() {
                   }}
                   className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                 >
-                  🐞 Find Bugs
+                  🔍 Find Bugs
                 </button>
                 <button
                   onClick={() => {
