@@ -36,37 +36,32 @@ export default function Projects() {
 
   // 1. Fetch Projects & Join Owner Avatar
   const fetchProjects = async () => {
-    try {
-      // Query projects and join owner information from users table
-      const { data, error } = await supabase
+  try {
+    // Attempt join with owner relation
+    let { data, error } = await supabase
+      .from('projects')
+      .select('*, owner:users!owner_id(name, avatar)')
+      .order('created_at', { ascending: false });
+
+    // Fallback to plain query if relationship is not mapped
+    if (error) {
+      console.warn('Foreign key relation missing, falling back to direct select:', error.message);
+      const fallback = await supabase
         .from('projects')
-        .select(`
-          *,
-          owner:users!owner_id (
-            name,
-            avatar
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
-
-      if (error) {
-        // Fallback query if foreign relation naming differs
-        const { data: fallbackData } = await supabase
-          .from('projects')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        setProjects(fallbackData || []);
-      } else {
-        setProjects(data || []);
-      }
-    } catch (err: any) {
-      console.error('Error fetching projects:', err);
-      toast.error('Failed to load projects');
-    } finally {
-      setLoading(false);
+      
+      data = fallback.data;
     }
-  };
+
+    setProjects(data || []);
+  } catch (err: any) {
+    console.error('Error fetching projects:', err);
+    toast.error('Failed to load projects');
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchProjects();
