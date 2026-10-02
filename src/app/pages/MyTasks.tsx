@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
   ArrowUpDown, ChevronLeft, ChevronRight, X,
-  LayoutGrid, List, Loader2, ArrowRight, FolderKanban
+  LayoutGrid, List, Loader2, ArrowRight, FolderKanban,
+  ShieldAlert, UserCheck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -47,9 +49,13 @@ const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
 export default function MyTasks() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasRole, setHasRole] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string>('');
+
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [newTaskInput, setNewTaskInput] = useState('');
@@ -59,12 +65,39 @@ export default function MyTasks() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  
+  // 1. Check if user has configured their role
+  useEffect(() => {
+    async function verifyUserRole() {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        if (error || !data?.role || data.role.trim() === '' || data.role.toLowerCase() === 'unassigned') {
+          setHasRole(false);
+        } else {
+          setHasRole(true);
+          setUserRole(data.role);
+        }
+      } catch (err) {
+        setHasRole(false);
+      }
+    }
+
+    verifyUserRole();
+  }, [user]);
+
+  // 2. Fetch only tasks assigned to the logged-in user
   const fetchTasks = async () => {
+    if (!user) return;
     try {
       const { data, error } = await supabase
         .from('tasks')
         .select('*, project:projects(name)')
+        .eq('assigned_to', user.id) // 🔒 Filter strictly to current user's tasks
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -78,19 +111,25 @@ export default function MyTasks() {
   };
 
   useEffect(() => {
-    fetchTasks();
+    if (hasRole) {
+      fetchTasks();
 
-    const channel = supabase
-      .channel('my_tasks_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        fetchTasks();
-      })
-      .subscribe();
+      const channel = supabase
+        .channel(`my_tasks_${user?.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'tasks', filter: `assigned_to=eq.${user?.id}` },
+          () => fetchTasks()
+        )
+        .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } else if (hasRole === false) {
+      setLoading(false);
+    }
+  }, [hasRole, user?.id]);
 
   // Calendar Helpers
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -105,10 +144,9 @@ export default function MyTasks() {
       d1.getFullYear() === d2.getFullYear();
   };
 
-  // --- TASK HANDLERS ---
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskInput.trim()) return;
+    if (!newTaskInput.trim() || !user) return;
 
     const title = newTaskInput.trim();
 
@@ -118,7 +156,7 @@ export default function MyTasks() {
         status: 'todo' as const,
         priority: 'medium' as const,
         due_date: selectedDate ? selectedDate.toISOString() : null,
-        assigned_to: user?.id || null,
+        assigned_to: user.id, // Assign to current user
       };
 
       const { data, error } = await supabase
@@ -211,7 +249,6 @@ export default function MyTasks() {
     }
   };
 
-  // Filter Tasks
   const processedTasks = tasks
     .filter(t => {
       if (filter === 'pending') return t.status !== 'done';
@@ -228,7 +265,6 @@ export default function MyTasks() {
       return 0;
     });
 
-  // Next status progression helper
   const getNextStatus = (current: Task['status']): Task['status'] | null => {
     switch (current) {
       case 'todo': return 'inProgress';
@@ -239,20 +275,61 @@ export default function MyTasks() {
     }
   };
 
-return (
+  // Loading gate
+  if (loading) {
+    return (
+      <div className="flex-1 h-full flex items-center justify-center p-12">
+        <Loader2 className="animate-spin text-indigo-600" size={36} />
+      </div>
+    );
+  }
+
+  // ⚠️ ROLE GATE: If user has not configured their role
+  if (hasRole === false) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-3xl p-8 border border-gray-200 dark:border-gray-700 shadow-xl text-center space-y-5 animate-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-500 flex items-center justify-center mx-auto">
+            <ShieldAlert size={32} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Role Configuration Required</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+              You must configure your professional role (e.g., Admin, Developer, Designer) before accessing your assigned deliverables.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/profile')}
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2"
+          >
+            <UserCheck size={16} /> Configure Role in Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
     <div className="flex h-full">
       {/* MAIN TASKS WORKSPACE */}
       <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">
         {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Tasks</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Tasks</h1>
+              {userRole && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                  {userRole}
+                </span>
+              )}
+            </div>
             {selectedDate ? (
               <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 flex items-center gap-1.5 cursor-pointer font-medium hover:underline" onClick={() => setSelectedDate(null)}>
                 Filtered for {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} <X size={13} />
               </p>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Track and complete your personal & project deliverables.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Showing only deliverables assigned to you.</p>
             )}
           </div>
 
@@ -298,18 +375,13 @@ return (
             type="text"
             value={newTaskInput}
             onChange={(e) => setNewTaskInput(e.target.value)}
-            placeholder="Add a new task..."
+            placeholder="Add a new personal task..."
             className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all"
           />
         </form>
 
-        {/* Tasks View: Loading State */}
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center p-12">
-            <Loader2 className="animate-spin text-indigo-600" size={36} />
-          </div>
-        ) : viewMode === 'list' ? (
-          /* --- LIST VIEW --- */
+        {/* LIST VIEW */}
+        {viewMode === 'list' ? (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex-1 mb-16">
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {processedTasks.map((task) => {
@@ -386,13 +458,13 @@ return (
 
               {processedTasks.length === 0 && (
                 <div className="py-16 text-center text-gray-400 text-xs">
-                  No tasks matching your current filter.
+                  You have no tasks assigned in this filter.
                 </div>
               )}
             </div>
           </div>
         ) : (
-          /* --- BOARD VIEW --- */
+          /* BOARD VIEW */
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 mb-16 items-start">
             {COLUMNS.map(col => {
               const colTasks = processedTasks.filter(t => t.status === col.id);
@@ -532,7 +604,7 @@ return (
           <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Task Overview</h4>
           <div className="space-y-2 text-xs">
             <div className="flex justify-between text-gray-600 dark:text-gray-300">
-              <span>Total Tasks</span>
+              <span>My Tasks</span>
               <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
             </div>
             <div className="flex justify-between text-gray-600 dark:text-gray-300">
