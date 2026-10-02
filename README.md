@@ -40,9 +40,9 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
 2. **Configure Environment Variables:**
   Edit .env.example file in the root directory to .env:
 
-  VITE_SUPABASE_URL=your_supabase_project_url
+   VITE_SUPABASE_URL=your_supabase_project_url
   
-  VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 3. **Run the local development server:**
 
