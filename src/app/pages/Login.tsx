@@ -21,7 +21,7 @@ export default function Login() {
 
       if (error) throw error;
       
-      // Redirect to dashboard or team page after login
+      // Redirect to dashboard after successful login
       navigate('/dashboard'); 
       
     } catch (error: any) {
@@ -60,7 +60,6 @@ export default function Login() {
             <div>
               <div className="flex justify-between items-center">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                  <a href="#" className="text-xs text-indigo-600 hover:underline">Forgot password?</a>
                   <Link to="/forgot-password" className="text-xs text-indigo-600 hover:underline">Forgot password?</Link>
               </div>
               <input 

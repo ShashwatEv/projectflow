@@ -12,6 +12,7 @@ ProjectFlow/
 ├── guidelines
 │   └── Guidelines.md
 ├── public
+│   ├── _redirects
 ├── src
 │   ├── app
 │   │   ├── components
@@ -307,17 +308,17 @@ This Figma Make file includes photos from [Unsplash](https://unsplash.com) used 
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
-    "@types/node": "^26.5.1",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.70.0",
-    "@typescript-eslint/parser": "^8.70.0",
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.3.12",  
+    "@types/react-dom": "^18.3.1", 
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
     "@vitejs/plugin-react": "4.7.0",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.7",
+    "eslint-plugin-react-refresh": "^0.4.0",
     "tailwindcss": "4.1.12",
-    "typescript": "^7.0.2",
+    "typescript": "~5.6.0",
     "vite": "6.3.5"
   },
   "peerDependencies": {
@@ -375,7 +376,7 @@ export default {}
 
     /* Bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -513,12 +514,19 @@ or initiating processes. They communicate interactivity and should have clear, a
 
 ```
 
+### `public\_redirects`
+
+```text
+/*  /index.html  200
+
+```
+
 ### `src\main.tsx`
 
 ```tsx
 
   import { createRoot } from "react-dom/client";
-  import App from "./app/App.tsx";
+  import App from "./app/App";
   import "./styles/index.css";
 
   createRoot(document.getElementById("root")!).render(<App />);
@@ -882,7 +890,7 @@ import { Command } from 'cmdk';
 import { 
   LayoutGrid, FolderKanban, CheckSquare, Users, Calendar, 
   BarChart2, MessageSquare, Clock, Zap, Settings, Sun, Moon, 
-  Plus, Search, User, ArrowRight
+  Plus, Search, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
@@ -8675,7 +8683,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
-import AddMemberModal from '../components/AddMemberModal';
 
 interface ActivityItem {
   id: string;
@@ -10477,7 +10484,6 @@ export default function Notifications() {
 ```tsx
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom'; // To read URL parameters
-import { toast } from 'sonner';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { Loader2, Save, CheckCircle2, Mail, Camera, ChevronDown, MapPin, X, Globe, Lock } from 'lucide-react';
@@ -11207,7 +11213,7 @@ export default function ProjectDetail() {
           </button>
           <button
             onClick={() => {
-              setTaskModalDefaultStatus('todo');
+              setNewTaskStatus('todo');
               setNewTaskStatus('todo');
               setIsTaskModalOpen(true);
             }}
@@ -11327,7 +11333,7 @@ export default function ProjectDetail() {
                   </div>
                   <button
                     onClick={() => {
-                      setTaskModalDefaultStatus(col.id);
+                      setNewTaskStatus(col.id);
                       setNewTaskStatus(col.id);
                       setIsTaskModalOpen(true);
                     }}
@@ -12202,7 +12208,6 @@ import {
     Search, UserPlus, Filter, MoreHorizontal, Mail, MessageSquare, 
     Loader2, Briefcase, Clock, Zap, X, MapPin, Globe, Check, Copy, ExternalLink 
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';

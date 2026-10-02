@@ -89,7 +89,6 @@ export default function ProjectDetail() {
   const fetchProjectData = async () => {
     try {
       setLoading(true);
-      // 1. Fetch Project Info
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
         .select('*')
@@ -108,7 +107,6 @@ export default function ProjectDetail() {
       setEditStatus(projectData.status || 'active');
       setEditDueDate(projectData.due_date ? projectData.due_date.split('T')[0] : '');
 
-      // 2. Fetch Project Tasks
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
         .select('*, user:users(id, name, avatar)')
@@ -116,7 +114,7 @@ export default function ProjectDetail() {
         .order('created_at', { ascending: false });
 
       if (tasksError) {
-        console.warn('Could not query tasks by project_id, falling back to all tasks:', tasksError.message);
+        console.warn('Could not query tasks by project_id:', tasksError.message);
         setTasks([]);
       } else if (tasksData) {
         setTasks(tasksData);
@@ -138,15 +136,12 @@ export default function ProjectDetail() {
     }
   };
 
-  // Progress Calculation
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.status === 'done').length;
   const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  // Task Status Update Handler
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskItem['status']) => {
     try {
-      // Optimistic update
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
 
       const { error } = await supabase
@@ -162,7 +157,6 @@ export default function ProjectDetail() {
     }
   };
 
-  // Delete Task Handler
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
     try {
@@ -176,7 +170,6 @@ export default function ProjectDetail() {
     }
   };
 
-  // Create Task Handler
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || !id) return;
@@ -222,7 +215,6 @@ export default function ProjectDetail() {
     }
   };
 
-  // Update Project Handler
   const handleUpdateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!project || !editName.trim()) return;
@@ -254,7 +246,6 @@ export default function ProjectDetail() {
     }
   };
 
-  // Delete Project Handler
   const handleDeleteProject = async () => {
     if (!project) return;
     if (!confirm(`Are you sure you want to delete project "${project.name}"? This cannot be undone.`)) return;
@@ -349,7 +340,6 @@ export default function ProjectDetail() {
           <button
             onClick={() => {
               setNewTaskStatus('todo');
-              setNewTaskStatus('todo');
               setIsTaskModalOpen(true);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl shadow-md shadow-indigo-500/20 transition-all active:scale-95"
@@ -381,7 +371,6 @@ export default function ProjectDetail() {
             )}
           </div>
 
-          {/* Key Metrics */}
           <div className="flex flex-wrap items-center gap-6 lg:border-l lg:border-gray-200 dark:lg:border-gray-700 lg:pl-6">
             <div>
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Progress</p>
@@ -446,7 +435,7 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* --- KANBAN BOARD VIEW --- */}
+      {/* Board View */}
       {viewMode === 'board' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 items-start">
           {COLUMNS.map(col => {
@@ -457,7 +446,6 @@ export default function ProjectDetail() {
                 key={col.id} 
                 className="bg-gray-50/80 dark:bg-gray-800/40 rounded-2xl border border-gray-200/80 dark:border-gray-700/60 p-4 flex flex-col min-h-[500px]"
               >
-                {/* Column Header */}
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
@@ -469,7 +457,6 @@ export default function ProjectDetail() {
                   <button
                     onClick={() => {
                       setNewTaskStatus(col.id);
-                      setNewTaskStatus(col.id);
                       setIsTaskModalOpen(true);
                     }}
                     className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-white dark:hover:bg-gray-700 transition-colors"
@@ -479,7 +466,6 @@ export default function ProjectDetail() {
                   </button>
                 </div>
 
-                {/* Column Tasks List */}
                 <div className="space-y-3 flex-1 overflow-y-auto pr-1">
                   {colTasks.map(task => {
                     const nextStatus = getNextStatus(task.status);
@@ -548,7 +534,7 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* --- LIST VIEW --- */}
+      {/* List View */}
       {viewMode === 'list' && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
           <table className="w-full text-left">
@@ -611,7 +597,7 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* --- ADD TASK MODAL --- */}
+      {/* Modal: Add Task */}
       {isTaskModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -722,7 +708,7 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* --- EDIT PROJECT MODAL --- */}
+      {/* Modal: Edit Project */}
       {isEditProjectOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -803,4 +789,3 @@ export default function ProjectDetail() {
     </div>
   );
 }
-

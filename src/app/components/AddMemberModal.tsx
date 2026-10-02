@@ -14,15 +14,15 @@ export default function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMe
     name: '',
     email: '',
     role: 'Member',
-    avatar: '/pfp.jpg' // Default selection
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
   });
 
   if (!isOpen) return null;
 
   const avatars = [
-    { id: 'male', src: '/male.jpg', label: 'Male' },
-    { id: 'female', src: '/female.jpg', label: 'Female' },
-    { id: 'default', src: '/pfp.jpg', label: 'Default' },
+    { id: 'male', src: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80', label: 'Male' },
+    { id: 'female', src: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80', label: 'Female' },
+    { id: 'default', src: 'https://api.dicebear.com/7.x/bottts/svg?seed=flow', label: 'Bot' },
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,12 +30,9 @@ export default function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMe
     setLoading(true);
 
     try {
-      // Create a new user profile directly in the database
-      // Note: This creates a profile, but the user still needs to Sign Up 
-      // with this email to actually log in.
       const { error } = await supabase.from('users').insert({
-        name: formData.name,
-        email: formData.email,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
         role: formData.role,
         avatar: formData.avatar,
         status: 'offline'
@@ -45,7 +42,12 @@ export default function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMe
       
       onMemberAdded();
       onClose();
-      setFormData({ name: '', email: '', role: 'Member', avatar: '/pfp.jpg' });
+      setFormData({
+        name: '',
+        email: '',
+        role: 'Member',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
+      });
     } catch (error) {
       console.error('Error adding member:', error);
       alert('Failed to add member.');
@@ -64,7 +66,6 @@ export default function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMe
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          
           {/* Avatar Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Select Avatar</label>
@@ -97,45 +98,45 @@ export default function AddMemberModal({ isOpen, onClose, onMemberAdded }: AddMe
 
           <div className="space-y-4">
             <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
-                <input 
-                  required
-                  value={formData.name}
-                  onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="e.g. Sarah Connor"
-                />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
+              <input 
+                required
+                value={formData.name}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                placeholder="e.g. Sarah Connor"
+              />
             </div>
             <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
-                <input 
-                  required
-                  type="email"
-                  value={formData.email}
-                  onChange={e => setFormData({...formData, email: e.target.value})}
-                  className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                  placeholder="e.g. sarah@example.com"
-                />
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
+              <input 
+                required
+                type="email"
+                value={formData.email}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white"
+                placeholder="e.g. sarah@example.com"
+              />
             </div>
             <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
-                <select 
-                  value={formData.role}
-                  onChange={e => setFormData({...formData, role: e.target.value})}
-                  className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                >
-                  <option>Member</option>
-                  <option>Developer</option>
-                  <option>Designer</option>
-                  <option>Manager</option>
-                </select>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
+              <select 
+                value={formData.role}
+                onChange={e => setFormData({ ...formData, role: e.target.value })}
+                className="w-full mt-1 px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white cursor-pointer"
+              >
+                <option>Member</option>
+                <option>Developer</option>
+                <option>Designer</option>
+                <option>Manager</option>
+              </select>
             </div>
           </div>
 
           <button 
             type="submit" 
             disabled={loading}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Add Member'}
           </button>
