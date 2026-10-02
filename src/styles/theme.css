@@ -170,3 +170,92 @@
     line-height: 1.5;
   }
 }
+/* ========================================================
+   DYNAMIC ACCENT COLOR OVERRIDES
+   Overrides hardcoded indigo classes across all pages
+   ======================================================== */
+:root[data-accent="emerald"] {
+  --app-accent: #10b981;
+  --app-accent-hover: #059669;
+  --app-accent-light: rgba(16, 185, 129, 0.15);
+}
+
+:root[data-accent="blue"] {
+  --app-accent: #2563eb;
+  --app-accent-hover: #1d4ed8;
+  --app-accent-light: rgba(37, 99, 235, 0.15);
+}
+
+:root[data-accent="purple"] {
+  --app-accent: #9333ea;
+  --app-accent-hover: #7e22ce;
+  --app-accent-light: rgba(147, 51, 234, 0.15);
+}
+
+:root[data-accent="rose"] {
+  --app-accent: #f43f5e;
+  --app-accent-hover: #e11d48;
+  --app-accent-light: rgba(244, 63, 94, 0.15);
+}
+
+:root[data-accent="orange"] {
+  --app-accent: #ea580c;
+  --app-accent-hover: #c2410c;
+  --app-accent-light: rgba(234, 88, 12, 0.15);
+}
+
+/* Swap buttons, text, and active rings when an accent is chosen */
+:root[data-accent]:not([data-accent="indigo"]) .bg-indigo-600,
+:root[data-accent]:not([data-accent="indigo"]) .bg-indigo-700 {
+  background-color: var(--app-accent) !important;
+}
+
+:root[data-accent]:not([data-accent="indigo"]) .hover\:bg-indigo-700:hover,
+:root[data-accent]:not([data-accent="indigo"]) .hover\:bg-indigo-600:hover {
+  background-color: var(--app-accent-hover) !important;
+}
+
+:root[data-accent]:not([data-accent="indigo"]) .text-indigo-600,
+:root[data-accent]:not([data-accent="indigo"]) .text-indigo-500,
+:root[data-accent]:not([data-accent="indigo"]) .text-indigo-400 {
+  color: var(--app-accent) !important;
+}
+
+:root[data-accent]:not([data-accent="indigo"]) .border-indigo-600,
+:root[data-accent]:not([data-accent="indigo"]) .border-indigo-500 {
+  border-color: var(--app-accent) !important;
+}
+
+:root[data-accent]:not([data-accent="indigo"]) .bg-indigo-50,
+:root[data-accent]:not([data-accent="indigo"]) .bg-indigo-100,
+:root[data-accent]:not([data-accent="indigo"]) .dark .bg-indigo-900\/30,
+:root[data-accent]:not([data-accent="indigo"]) .dark .bg-indigo-950\/40 {
+  background-color: var(--app-accent-light) !important;
+}
+
+/* ========================================================
+   GLOBAL TYPOGRAPHY SCALING (Scales all Tailwind text sizes)
+   ======================================================== */
+html[data-size="compact"] {
+  zoom: 0.9;
+}
+
+html[data-size="default"] {
+  zoom: 1;
+}
+
+html[data-size="large"] {
+  zoom: 1.1;
+}
+
+/* ========================================================
+   GLOBAL REDUCED MOTION OVERRIDE
+   ======================================================== */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

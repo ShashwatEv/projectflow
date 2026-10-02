@@ -1,112 +1,150 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
-// 1. Define Types
-type Theme = 'dark' | 'light' | 'system';
-type AccentColor = 'indigo' | 'emerald' | 'blue' | 'purple' | 'rose' | 'orange';
-type FontSize = 'compact' | 'default' | 'large';
+export type ThemeMode = 'light' | 'dark' | 'system';
+export type AccentColor = 'indigo' | 'emerald' | 'blue' | 'purple' | 'rose' | 'orange';
+export type TypographySize = 'compact' | 'default' | 'large';
 
-interface ThemeProviderState {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
+interface ThemeContextType {
+  theme: 'light' | 'dark';
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
   accentColor: AccentColor;
   setAccentColor: (color: AccentColor) => void;
-  fontSize: FontSize;
-  setFontSize: (size: FontSize) => void;
-  reducedMotion: boolean;
-  setReducedMotion: (reduce: boolean) => void;
+  typographySize: TypographySize;
+  setTypographySize: (size: TypographySize) => void;
+  reduceMotion: boolean;
+  setReduceMotion: (reduce: boolean) => void;
 }
 
-const initialState: ThemeProviderState = {
-  theme: 'system',
-  setTheme: () => null,
-  accentColor: 'indigo',
-  setAccentColor: () => null,
-  fontSize: 'default',
-  setFontSize: () => null,
-  reducedMotion: false,
-  setReducedMotion: () => null,
-};
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  // 1. Theme Mode (Light / Dark / System)
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('pf_theme_mode') as ThemeMode) || 'dark';
+  });
 
-// Hex values for our accent colors
-const colorMap: Record<AccentColor, string> = {
-  indigo: '#4f46e5',
-  emerald: '#10b981',
-  blue: '#3b82f6',
-  purple: '#9333ea',
-  rose: '#f43f5e',
-  orange: '#f97316',
-};
+  const [theme, setThemeState] = useState<'light' | 'dark'>('dark');
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  
-  // Initialize States from localStorage
-  const [theme, setThemeState] = useState<Theme>(
-    () => (localStorage.getItem('vite-ui-theme') as Theme) || 'system'
-  );
-  const [accentColor, setAccentColorState] = useState<AccentColor>(
-    () => (localStorage.getItem('vite-ui-accent') as AccentColor) || 'indigo'
-  );
-  const [fontSize, setFontSizeState] = useState<FontSize>(
-    () => (localStorage.getItem('vite-ui-font') as FontSize) || 'default'
-  );
-  const [reducedMotion, setReducedMotionState] = useState<boolean>(
-    () => localStorage.getItem('vite-ui-motion') === 'true'
-  );
+  // 2. Accent Color
+  const [accentColor, setAccentColorState] = useState<AccentColor>(() => {
+    return (localStorage.getItem('pf_accent_color') as AccentColor) || 'indigo';
+  });
 
-  // 1. Apply Theme
+  // 3. Typography Size
+  const [typographySize, setTypographySizeState] = useState<TypographySize>(() => {
+    return (localStorage.getItem('pf_typography_size') as TypographySize) || 'default';
+  });
+
+  // 4. Accessibility / Reduce Motion
+  const [reduceMotion, setReduceMotionState] = useState<boolean>(() => {
+    return localStorage.getItem('pf_reduce_motion') === 'true';
+  });
+
+  // --- Handlers & Synchronization Effects ---
+
+  // Handle Theme Mode (Light / Dark / System)
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
-    }
-  }, [theme]);
+    const root = document.documentElement;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
-  // 2. Apply Accent Color
+    const applyTheme = () => {
+      let resolved: 'light' | 'dark' = 'dark';
+      if (themeMode === 'system') {
+        resolved = mediaQuery.matches ? 'dark' : 'light';
+      } else {
+        resolved = themeMode;
+      }
+
+      setThemeState(resolved);
+      if (resolved === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+
+    const listener = () => {
+      if (themeMode === 'system') applyTheme();
+    };
+
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, [themeMode]);
+
+  // Handle Accent Color (updates data-accent attribute)
   useEffect(() => {
-    window.document.documentElement.style.setProperty('--theme-primary', colorMap[accentColor]);
+    const root = document.documentElement;
+    root.setAttribute('data-accent', accentColor);
+    localStorage.setItem('pf_accent_color', accentColor);
   }, [accentColor]);
 
-  // 3. Apply Font Size (Scales Tailwind's 'rem' globally)
+  // Handle Typography Scale (updates data-size attribute)
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (fontSize === 'compact') root.style.fontSize = '14px';
-    else if (fontSize === 'large') root.style.fontSize = '18px';
-    else root.style.fontSize = '16px'; // Default
-  }, [fontSize]);
+    const root = document.documentElement;
+    root.setAttribute('data-size', typographySize);
+    localStorage.setItem('pf_typography_size', typographySize);
+  }, [typographySize]);
 
-  // 4. Apply Reduced Motion
+  // Handle Accessibility (adds / removes .reduce-motion class)
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (reducedMotion) {
+    const root = document.documentElement;
+    if (reduceMotion) {
       root.classList.add('reduce-motion');
     } else {
       root.classList.remove('reduce-motion');
     }
-  }, [reducedMotion]);
+    localStorage.setItem('pf_reduce_motion', String(reduceMotion));
+  }, [reduceMotion]);
 
-  // Value provider with localStorage saving
-  const value = {
-    theme,
-    setTheme: (val: Theme) => { localStorage.setItem('vite-ui-theme', val); setThemeState(val); },
-    accentColor,
-    setAccentColor: (val: AccentColor) => { localStorage.setItem('vite-ui-accent', val); setAccentColorState(val); },
-    fontSize,
-    setFontSize: (val: FontSize) => { localStorage.setItem('vite-ui-font', val); setFontSizeState(val); },
-    reducedMotion,
-    setReducedMotion: (val: boolean) => { localStorage.setItem('vite-ui-motion', String(val)); setReducedMotionState(val); },
+  const setThemeMode = (mode: ThemeMode) => {
+    setThemeModeState(mode);
+    localStorage.setItem('pf_theme_mode', mode);
   };
 
-  return <ThemeProviderContext.Provider value={value}>{children}</ThemeProviderContext.Provider>;
+  const setTheme = (t: 'light' | 'dark') => {
+    setThemeMode(t);
+  };
+
+  const setAccentColor = (color: AccentColor) => {
+    setAccentColorState(color);
+  };
+
+  const setTypographySize = (size: TypographySize) => {
+    setTypographySizeState(size);
+  };
+
+  const setReduceMotion = (reduce: boolean) => {
+    setReduceMotionState(reduce);
+  };
+
+  return (
+    <ThemeContext.Provider
+      value={{
+        theme,
+        themeMode,
+        setThemeMode,
+        setTheme,
+        accentColor,
+        setAccentColor,
+        typographySize,
+        setTypographySize,
+        reduceMotion,
+        setReduceMotion,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
-export const useTheme = () => {
-  const context = useContext(ThemeProviderContext);
-  if (context === undefined) throw new Error('useTheme must be used within a ThemeProvider');
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
   return context;
-};
+}
