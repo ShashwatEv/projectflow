@@ -1,162 +1,237 @@
 import { useState, useEffect } from 'react';
+import { Mail, Bell, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
-import { Loader2, Save } from 'lucide-react';
+import { toast } from 'sonner';
 
-// Define the shape of our settings
-interface NotificationPreferences {
-  email_newsletter: boolean;
-  email_comments: boolean;
-  email_invites: boolean;
-  push_mentions: boolean;
-  push_reminders: boolean;
-  [key: string]: boolean; // Allow dynamic keys for flexibility
+interface NotificationPrefs {
+  weekly_newsletter: boolean;
+  new_comments: boolean;
+  project_invites: boolean;
+  mentions: boolean;
+  task_reminders: boolean;
 }
 
-const DEFAULT_SETTINGS: NotificationPreferences = {
-  email_newsletter: true,
-  email_comments: true,
-  email_invites: false,
-  push_mentions: true,
-  push_reminders: false,
+const DEFAULT_PREFS: NotificationPrefs = {
+  weekly_newsletter: true,
+  new_comments: true,
+  project_invites: false,
+  mentions: true,
+  task_reminders: false,
 };
 
 export default function NotificationsSettings() {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<NotificationPreferences>(DEFAULT_SETTINGS);
+  const [prefs, setPrefs] = useState<NotificationPrefs>(() => {
+    const saved = localStorage.getItem('pf_notification_prefs');
+    return saved ? JSON.parse(saved) : DEFAULT_PREFS;
+  });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
-  // 1. Fetch Settings on Load
+  // 1. Fetch real preferences from Supabase profile on load
   useEffect(() => {
-    async function fetchSettings() {
-      if (!user?.id) return;
+    async function loadPreferences() {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
 
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('users')
-          .select('notification_settings')
+          .select('notification_preferences')
           .eq('id', user.id)
           .single();
 
-        if (data?.notification_settings) {
-          setSettings(data.notification_settings);
+        if (!error && data?.notification_preferences) {
+          const loaded = { ...DEFAULT_PREFS, ...data.notification_preferences };
+          setPrefs(loaded);
+          localStorage.setItem('pf_notification_prefs', JSON.stringify(loaded));
         }
       } catch (err) {
-        console.error('Error loading settings:', err);
+        console.warn('Could not load user notification prefs from DB, using local state:', err);
       } finally {
         setLoading(false);
       }
     }
-    fetchSettings();
+
+    loadPreferences();
   }, [user]);
 
-  // 2. Handle Toggle & Auto-Save
-  const handleToggle = async (key: string) => {
-    if (!user?.id) return;
+  // 2. Toggle Handler with Realtime Push Permission & DB persistence
+  const handleToggle = async (key: keyof NotificationPrefs) => {
+    const nextValue = !prefs[key];
 
-    // Optimistic Update (Change UI immediately)
-    const newSettings = { ...settings, [key]: !settings[key] };
-    setSettings(newSettings);
-    setSaving(true);
+    // If enabling a push notification, request native browser permission
+    if (nextValue && (key === 'mentions' || key === 'task_reminders')) {
+      if ('Notification' in window && Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          toast.warning('Browser notifications blocked. Please enable them in browser settings.');
+        }
+      }
+    }
+
+    const updated = { ...prefs, [key]: nextValue };
+    setPrefs(updated);
+    localStorage.setItem('pf_notification_prefs', JSON.stringify(updated));
+    setUpdatingKey(key);
 
     try {
-      // Save to Supabase
-      const { error } = await supabase
-        .from('users')
-        .update({ notification_settings: newSettings })
-        .eq('id', user.id);
+      if (user?.id) {
+        const { error } = await supabase
+          .from('users')
+          .update({ notification_preferences: updated })
+          .eq('id', user.id);
 
-      if (error) throw error;
-      
-      // Simulate a small delay just to show the "Saving..." state briefly
-      setTimeout(() => setSaving(false), 500);
-
-    } catch (err) {
-      console.error('Error saving settings:', err);
-      // Revert if failed
-      setSettings(settings); 
-      setSaving(false);
+        if (error) {
+          // If the column doesn't exist yet, we still retain local storage smoothly
+          console.warn('Could not persist to Supabase users table:', error.message);
+        }
+      }
+      toast.success(nextValue ? 'Preference enabled' : 'Preference disabled');
+    } catch {
+      toast.error('Failed to sync setting');
+    } finally {
+      setUpdatingKey(null);
     }
   };
 
-  if (loading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>;
-
   return (
-    <div className="space-y-6 max-w-3xl">
-      
-      {/* Saving Indicator */}
-      <div className="h-6 flex items-center justify-end">
-        {saving && (
-          <span className="text-xs font-medium text-emerald-600 flex items-center gap-1 animate-pulse">
-            <Save size={12} /> Saving changes...
-          </span>
-        )}
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl">
+      {/* 1. Email Notifications Card */}
+      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-6">
+        <div>
+          <div className="flex items-center gap-2 text-white">
+            <Mail size={18} className="text-orange-500" />
+            <h3 className="font-bold text-base">Email Notifications</h3>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Choose what we send to your inbox.
+          </p>
+        </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Email Notifications</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Choose what we send to your inbox.</p>
-        
-        <div className="space-y-4">
-          <ToggleItem 
-            title="Weekly Newsletter" 
-            desc="Get a summary of your team's performance every Monday." 
-            checked={settings.email_newsletter}
-            onChange={() => handleToggle('email_newsletter')}
-          />
-          <ToggleItem 
-            title="New Comments" 
-            desc="Receive an email when someone comments on your task." 
-            checked={settings.email_comments}
-            onChange={() => handleToggle('email_comments')}
-          />
-          <ToggleItem 
-            title="Project Invites" 
-            desc="Get notified when you are added to a new project." 
-            checked={settings.email_invites}
-            onChange={() => handleToggle('email_invites')}
-          />
+        <div className="space-y-4 divide-y divide-gray-800/80">
+          {/* Weekly Newsletter */}
+          <div className="flex items-center justify-between pt-4 first:pt-0">
+            <div>
+              <p className="text-xs font-semibold text-white">Weekly Newsletter</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Get a summary of your team's performance every Monday.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={prefs.weekly_newsletter}
+              onChange={() => handleToggle('weekly_newsletter')}
+              loading={updatingKey === 'weekly_newsletter'}
+            />
+          </div>
+
+          {/* New Comments */}
+          <div className="flex items-center justify-between pt-4">
+            <div>
+              <p className="text-xs font-semibold text-white">New Comments</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Receive an email when someone comments on your task.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={prefs.new_comments}
+              onChange={() => handleToggle('new_comments')}
+              loading={updatingKey === 'new_comments'}
+            />
+          </div>
+
+          {/* Project Invites */}
+          <div className="flex items-center justify-between pt-4">
+            <div>
+              <p className="text-xs font-semibold text-white">Project Invites</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Get notified when you are added to a new project.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={prefs.project_invites}
+              onChange={() => handleToggle('project_invites')}
+              loading={updatingKey === 'project_invites'}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Push Notifications</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Real-time alerts on your desktop/mobile.</p>
-        
-        <div className="space-y-4">
-           <ToggleItem 
-            title="Mentions" 
-            desc="Notify when @mentioned in a comment." 
-            checked={settings.push_mentions}
-            onChange={() => handleToggle('push_mentions')}
-          />
-           <ToggleItem 
-            title="Task Reminders" 
-            desc="Get a reminder 1 hour before a task is due." 
-            checked={settings.push_reminders}
-            onChange={() => handleToggle('push_reminders')}
-          />
+      {/* 2. Push Notifications Card */}
+      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-6">
+        <div>
+          <div className="flex items-center gap-2 text-white">
+            <Bell size={18} className="text-orange-500" />
+            <h3 className="font-bold text-base">Push Notifications</h3>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Real-time alerts on your desktop/mobile.
+          </p>
+        </div>
+
+        <div className="space-y-4 divide-y divide-gray-800/80">
+          {/* Mentions */}
+          <div className="flex items-center justify-between pt-4 first:pt-0">
+            <div>
+              <p className="text-xs font-semibold text-white">Mentions</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Notify when @mentioned in a comment.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={prefs.mentions}
+              onChange={() => handleToggle('mentions')}
+              loading={updatingKey === 'mentions'}
+            />
+          </div>
+
+          {/* Task Reminders */}
+          <div className="flex items-center justify-between pt-4">
+            <div>
+              <p className="text-xs font-semibold text-white">Task Reminders</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Get a reminder 1 hour before a task is due.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={prefs.task_reminders}
+              onChange={() => handleToggle('task_reminders')}
+              loading={updatingKey === 'task_reminders'}
+            />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Updated ToggleItem to be "Controlled" (Managed by parent)
-function ToggleItem({ title, desc, checked, onChange }: { title: string, desc: string, checked: boolean, onChange: () => void }) {
+// Compact reusable toggle button
+function ToggleSwitch({
+  checked,
+  onChange,
+  loading,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  loading?: boolean;
+}) {
   return (
-    <div className="flex items-start justify-between">
-      <div>
-        <h4 className="text-sm font-medium text-gray-900 dark:text-white">{title}</h4>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
-      </div>
-      <button 
-        onClick={onChange}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${checked ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-      >
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={loading}
+      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 shrink-0 ${
+        checked ? 'bg-orange-600' : 'bg-gray-700'
+      } ${loading ? 'opacity-60 cursor-wait' : 'cursor-pointer active:scale-95'}`}
+    >
+      <div
+        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
   );
 }
