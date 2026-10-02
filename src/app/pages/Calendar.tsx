@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
-  Clock, FolderKanban, CheckSquare, X, Loader2 
+  X, Loader2 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -124,17 +124,17 @@ export default function Calendar() {
   const handleNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const handleToday = () => setCurrentDate(new Date());
 
-  // Open the modal, optionally pre-filling a specific date from a cell click
   const openAddModal = (prefillDate?: string) => {
-    // Check if prefillDate is provided, otherwise fall back to a valid string
-    // This removes the potential for passing 'undefined' to setEventDate.
-    if (prefillDate) {
-      setEventDate(prefillDate);
-    } else {
-      setEventDate(new Date().toISOString().split('T')[0]);
-    }
-    setIsModalOpen(true);
-  };
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+
+  setEventDate(prefillDate ?? todayStr);
+  setIsModalOpen(true);
+};
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!eventTitle.trim() || !eventDate || !user) return;

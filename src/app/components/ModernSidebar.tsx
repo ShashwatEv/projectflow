@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-
+import { Code2 } from 'lucide-react';
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -114,6 +114,14 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
             onClick={onClose} 
           />
           
+<NavItem 
+  to="/code" 
+  icon={<Code2 size={20} />} 
+  label="Code Studio" 
+  isActive={location.pathname === '/code'} 
+  onClick={onClose} 
+/>
+
           <NavItem to="/timesheets" icon={<Clock size={20} />} label="Timesheets" isActive={location.pathname === '/timesheets'} onClick={onClose} />
           <NavItem to="/automations" icon={<Zap size={20} />} label="Automations" isActive={location.pathname === '/automations'} onClick={onClose} />
 

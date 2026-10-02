@@ -5,3 +5,5 @@ build
 .env
 .env.local
 .DS_Store
+# Continue extension config & secrets
+.continue/

@@ -28,6 +28,7 @@ import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
 import CommandMenu from './components/CommandMenu';
+import CodeStudio from './pages/CodeStudio';
 import { Toaster } from 'sonner';
 
 function Layout() {
@@ -95,7 +96,7 @@ export default function App() {
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/automations" element={<Automations />} />
                 <Route path="/analytics" element={<Analytics />} />
-                
+                <Route path="/code" element={<CodeStudio />} />
                 {/* Settings */}
                 <Route path="/settings" element={<SettingsLayout />} />
               </Route>
