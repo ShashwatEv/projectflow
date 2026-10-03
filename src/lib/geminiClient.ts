@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 
 // Gather all configured keys from env or fallback to a custom team setting
 const RAW_KEYS = [
-  import.meta.env.VITE_GEMINI_KEY_1,
+  import.meta.env.VITE_OPENROUTER_KEY_1,
   import.meta.env.VITE_GEMINI_KEY_2,
 ].filter(Boolean) as string[];
 
