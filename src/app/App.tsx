@@ -34,7 +34,7 @@ import CodeStudio from './pages/CodeStudio';
 import SprintPlanner from './pages/SprintPlanner';
 
 // Future Expansion Pages (Lazy loaded)
-const ApiPlayground = lazy(() => import('./pages/APIplayground').catch(() => ({ default: () => <PlaceholderPage title="API Console & Webhook Tester" description="Interactive API console coming right up..." /> })));
+const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ default: () => <PlaceholderPage title="API Console & Webhook Tester" description="Interactive API console coming right up..." /> })));
 
 import { Toaster } from 'sonner';
 
