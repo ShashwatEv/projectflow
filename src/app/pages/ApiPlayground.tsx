@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { 
   Terminal, Play, Clock, Database, Copy, Check, Plus, 
-  Trash2, RefreshCw, Send, Lock, ShieldAlert 
+  Trash2, RefreshCw, Send, Lock, ShieldAlert, Sparkles,
+  GitPullRequest, GitCommit, Webhook
 } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
+import { recordAuditLog } from '../../lib/auditLogger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
@@ -38,14 +41,32 @@ export default function ApiPlayground() {
   const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
   // Request State
-  const [method, setMethod] = useState<HttpMethod>('GET');
-  const [url, setUrl] = useState<string>('https://jsonplaceholder.typicode.com/todos/1');
-  const [activeTab, setActiveTab] = useState<'params' | 'headers' | 'body'>('headers');
+  const [method, setMethod] = useState<HttpMethod>('POST');
+  const [url, setUrl] = useState<string>('https://api.github.com/repos/org/projectflow/hooks');
+  const [activeTab, setActiveTab] = useState<'params' | 'headers' | 'body'>('body');
   const [headers, setHeaders] = useState<HeaderItem[]>([
     { key: 'Content-Type', value: 'application/json', enabled: true },
-    { key: 'Accept', value: 'application/json', enabled: true },
+    { key: 'X-GitHub-Event', value: 'pull_request', enabled: true },
+    { key: 'X-Hub-Signature-256', value: 'sha256=d3b07384d113edec49eaa6238ad5ff00', enabled: true },
   ]);
-  const [bodyContent, setBodyContent] = useState<string>('{\n  "title": "New Task via ProjectFlow",\n  "completed": false\n}');
+  const [bodyContent, setBodyContent] = useState<string>(
+    JSON.stringify(
+      {
+        action: 'closed',
+        pull_request: {
+          number: 42,
+          title: 'feat: automated delivery pipeline (closes #task-1)',
+          merged: true,
+          head: { ref: 'feature/pipeline' },
+          base: { ref: 'main' },
+        },
+        repository: { full_name: 'org/projectflow' },
+        sender: { login: user?.name || 'shashwat-dev' },
+      },
+      null,
+      2
+    )
+  );
   const [loading, setLoading] = useState<boolean>(false);
 
   // Response State
@@ -67,7 +88,68 @@ export default function ApiPlayground() {
     );
   };
 
-  // Dispatch API Request with verification gate check on mutating HTTP verbs
+  // Preset Scenario Ingestion
+  const loadPreset = (type: 'github_pr' | 'github_push' | 'sample_get') => {
+    if (type === 'github_pr') {
+      setMethod('POST');
+      setUrl('https://api.projectflow.internal/webhooks/github');
+      setHeaders([
+        { key: 'Content-Type', value: 'application/json', enabled: true },
+        { key: 'X-GitHub-Event', value: 'pull_request', enabled: true },
+      ]);
+      setBodyContent(
+        JSON.stringify(
+          {
+            event: 'pull_request.closed',
+            action: 'merged',
+            pull_request: {
+              number: 108,
+              title: 'fix(core): resolve blocker task and sync sprint state',
+              merged: true,
+              merged_at: new Date().toISOString(),
+            },
+            commits: [
+              { message: 'fix: complete sprint dependencies (resolves all open blockers)' }
+            ]
+          },
+          null,
+          2
+        )
+      );
+      toast.info('Loaded GitHub Pull Request Merged payload preset');
+    } else if (type === 'github_push') {
+      setMethod('POST');
+      setUrl('https://api.projectflow.internal/webhooks/github');
+      setHeaders([
+        { key: 'Content-Type', value: 'application/json', enabled: true },
+        { key: 'X-GitHub-Event', value: 'push', enabled: true },
+      ]);
+      setBodyContent(
+        JSON.stringify(
+          {
+            event: 'push',
+            ref: 'refs/heads/main',
+            head_commit: {
+              id: 'a89c201',
+              message: 'feat: production release ready for deployment',
+              timestamp: new Date().toISOString(),
+            },
+          },
+          null,
+          2
+        )
+      );
+      toast.info('Loaded GitHub Push event preset');
+    } else {
+      setMethod('GET');
+      setUrl('https://jsonplaceholder.typicode.com/todos/1');
+      setHeaders([{ key: 'Accept', value: 'application/json', enabled: true }]);
+      setBodyContent('');
+      toast.info('Loaded GET diagnostic preset');
+    }
+  };
+
+  // Dispatch API Request or Execute Internal Webhook Simulation
   const handleSendRequest = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!url.trim()) {
@@ -78,7 +160,7 @@ export default function ApiPlayground() {
     // Security Gate: Disallow outbound mutating methods for unverified users
     if (!isVerified && method !== 'GET') {
       toast.error('Identity Verification Required', {
-        description: `Unverified accounts can only execute GET requests. Verify your email to send ${method} requests and custom payloads.`,
+        description: `Unverified accounts can only execute GET diagnostic requests. Verify your email to dispatch ${method} calls.`,
         action: {
           label: 'Verify Now',
           onClick: () => navigate('/settings'),
@@ -89,9 +171,46 @@ export default function ApiPlayground() {
 
     setLoading(true);
     setResponse(null);
-
     const startTime = performance.now();
 
+    // 1. Simulate internal workspace webhook handling
+    if (url.includes('api.projectflow.internal')) {
+      await new Promise((r) => setTimeout(r, 450));
+      const endTime = performance.now();
+
+      await recordAuditLog('Executed webhook simulation dispatch', 'integrations', {
+        method,
+        target: url,
+      });
+
+      const simulatedResponse = {
+        status: 200,
+        statusText: 'OK',
+        timeMs: Math.round(endTime - startTime),
+        sizeKb: 0.85,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'x-projectflow-delivered': 'true',
+        },
+        data: JSON.stringify(
+          {
+            delivered: true,
+            status: 'success',
+            action: 'Automated tasks updated and audit event registered',
+            timestamp: new Date().toISOString(),
+          },
+          null,
+          2
+        ),
+      };
+
+      setResponse(simulatedResponse);
+      toast.success('Internal webhook simulation delivered successfully!');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Real external HTTP fetch
     try {
       const activeHeaders: Record<string, string> = {};
       headers.forEach((h) => {
@@ -123,7 +242,7 @@ export default function ApiPlayground() {
       try {
         formatted = JSON.stringify(JSON.parse(textData), null, 2);
       } catch {
-        // Plain text response fallback
+        // Raw text fallback
       }
 
       const sizeKb = parseFloat((new Blob([textData]).size / 1024).toFixed(2));
@@ -146,14 +265,14 @@ export default function ApiPlayground() {
       const endTime = performance.now();
       setResponse({
         status: 0,
-        statusText: 'Failed to fetch',
+        statusText: 'Network Failure',
         timeMs: Math.round(endTime - startTime),
         sizeKb: 0,
         headers: {},
-        data: `// Client Error: ${err.message || 'CORS restriction or network unreachable'}`,
+        data: `// Network or CORS Error: ${err.message || 'Host unreachable'}`,
         error: err.message,
       });
-      toast.error('Network request failed. Verify CORS policies or URL accessibility.');
+      toast.error('Network request failed. Check CORS constraints or endpoint validity.');
     } finally {
       setLoading(false);
     }
@@ -222,11 +341,11 @@ print(response.json())`;
             <h1 className="text-2xl font-bold text-white tracking-tight">API Console & Webhook Tester</h1>
           </div>
           <p className="text-xs text-gray-400 mt-1">
-            Dispatch HTTP requests, inspect headers, evaluate roundtrip latency, and simulate outbound webhooks.
+            Dispatch HTTP calls, test webhook payloads, and simulate GitHub repository automation triggers.
           </p>
         </div>
 
-        {/* Snippet Language Selectors */}
+        {/* Action Controls & Snippet Language Selectors */}
         <div className="flex items-center gap-2 bg-[#161b22] border border-gray-800 rounded-xl p-1">
           {(['curl', 'fetch', 'python'] as const).map((lang) => (
             <button
@@ -249,6 +368,36 @@ print(response.json())`;
             {copiedSnippet ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
           </button>
         </div>
+      </div>
+
+      {/* Preset Webhook Loaders */}
+      <div className="flex flex-wrap items-center gap-2 bg-[#161b22] border border-gray-800 p-2.5 rounded-2xl text-xs">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 px-2">
+          <Webhook size={13} className={theme.textAccent} /> Webhook Presets:
+        </span>
+        <button
+          type="button"
+          onClick={() => loadPreset('github_pr')}
+          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
+        >
+          <GitPullRequest size={12} className="text-indigo-400" />
+          <span>GitHub PR Merged</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => loadPreset('github_push')}
+          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
+        >
+          <GitCommit size={12} className="text-emerald-400" />
+          <span>GitHub Commit Push</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => loadPreset('sample_get')}
+          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
+        >
+          <span>GET Diagnostic</span>
+        </button>
       </div>
 
       {/* Main Request Dispatcher Bar */}
@@ -317,20 +466,27 @@ print(response.json())`;
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* Left Side: Request Config Tabs */}
-        <div className="lg:col-span-6 bg-[#161b22] border border-gray-800 rounded-3xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center gap-2 border-b border-gray-800/80 pb-3">
+       <div className="lg:col-span-6 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-xl space-y-4">
+         {/* Tabs with Adaptive Light/Dark Colors */}
+          <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-gray-800 w-fit">
             <button
+              type="button"
               onClick={() => setActiveTab('headers')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'headers' ? `${theme.bgSubtle}${theme.textAccent}` : 'text-gray-400 hover:text-white'
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
+                activeTab === 'headers'
+                  ? `${theme.bgSubtle} ${theme.textAccent} shadow-xs border${theme.borderAccent}/30`
+                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
               }`}
             >
               Headers ({headers.filter((h) => h.enabled).length})
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('body')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'body' ? `${theme.bgSubtle}${theme.textAccent}` : 'text-gray-400 hover:text-white'
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
+                activeTab === 'body'
+                  ? `${theme.bgSubtle} ${theme.textAccent} shadow-xs border${theme.borderAccent}/30`
+                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
               }`}
             >
               Body JSON
@@ -408,7 +564,7 @@ print(response.json())`;
         {/* Right Side: Response Telemetry & Data */}
         <div className="lg:col-span-6 bg-[#161b22] border border-gray-800 rounded-3xl p-6 shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Response</h3>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Response Telemetry</h3>
             
             {response && (
               <div className="flex items-center gap-3 text-xs font-mono">
@@ -434,7 +590,7 @@ print(response.json())`;
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
                 <RefreshCw size={24} className={`animate-spin ${theme.textAccent}`} />
-                <p className="text-xs">Dispatching request...</p>
+                <p className="text-xs">Dispatching request payload...</p>
               </div>
             ) : response ? (
               <Editor
@@ -453,7 +609,7 @@ print(response.json())`;
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-2 p-6 text-center">
                 <Terminal size={32} className="text-gray-600" />
-                <p className="text-xs">Send a request to inspect response body, status headers, and roundtrip telemetry.</p>
+                <p className="text-xs">Send a request or load a webhook preset to evaluate roundtrip telemetry and task mutations.</p>
               </div>
             )}
           </div>

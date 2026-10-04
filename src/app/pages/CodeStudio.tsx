@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
-  GitPullRequest, Lock, FileDiff
+  GitPullRequest, Lock, Unlock, FileDiff, Users
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
@@ -25,12 +25,22 @@ interface Project {
   id: string;
   name: string;
   github_repo?: string;
+  locked_file?: string | null;
+  locked_by?: string | null;
 }
 
 interface FileTreeItem {
   path: string;
   type: 'tree' | 'blob';
   sha: string;
+}
+
+interface PeerCursor {
+  userId: string;
+  userName: string;
+  lineNumber: number;
+  column: number;
+  file: string;
 }
 
 export default function CodeStudio() {
@@ -42,6 +52,7 @@ export default function CodeStudio() {
   const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   // Persisted state from localStorage
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
@@ -74,7 +85,7 @@ export default function CodeStudio() {
 
   // Diff Modal & Terminal States
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
-  const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true); // Default open to verify immediately
+  const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true);
 
   // AI Assistant States
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
@@ -83,15 +94,18 @@ export default function CodeStudio() {
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [copiedResponse, setCopiedResponse] = useState<boolean>(false);
 
-  // Real-time team presence
+  // Real-time team presence & Cursors
   const activePeers = useStudioPresence(selectedProjectId, activeFile);
+  const editorRef = useRef<any>(null);
+  const decorationsRef = useRef<string[]>([]);
+  const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>({});
 
   // 1. Fetch available projects
   useEffect(() => {
     async function loadProjects() {
       const { data, error } = await supabase
         .from('projects')
-        .select('id, name, github_repo')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
@@ -102,6 +116,7 @@ export default function CodeStudio() {
 
         if (activeProj) {
           setSelectedProjectId(activeProj.id);
+          setActiveProject(activeProj);
           localStorage.setItem('pf_selected_project_id', activeProj.id);
 
           const savedRepo = localStorage.getItem('pf_active_repo');
@@ -115,7 +130,77 @@ export default function CodeStudio() {
     loadProjects();
   }, []);
 
-  // 2. Fetch branches when repo updates
+  // 2. Real-time Cursor Broadcast Listener
+  useEffect(() => {
+    if (!selectedProjectId) return;
+
+    const cursorChannel = supabase
+      .channel(`studio_cursor_${selectedProjectId}`)
+      .on('broadcast', { event: 'cursor_move' }, (payload: any) => {
+        const { userId, userName, lineNumber, column, file } = payload.payload;
+        if (userId === user?.id) return; // Ignore own cursor echo
+
+        setPeerCursors((prev) => ({
+          ...prev,
+          [userId]: { userId, userName, lineNumber, column, file },
+        }));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(cursorChannel);
+    };
+  }, [selectedProjectId, user?.id]);
+
+  // Render Monaco Remote Cursor Annotations
+  useEffect(() => {
+    if (!editorRef.current || !activeFile) return;
+
+    const activeRemoteCursors = Object.values(peerCursors).filter(
+      (c) => c.file === activeFile
+    );
+
+    const newDecorations = activeRemoteCursors.map((cursor) => ({
+      range: {
+        startLineNumber: cursor.lineNumber,
+        startColumn: cursor.column,
+        endLineNumber: cursor.lineNumber,
+        endColumn: cursor.column + 1,
+      },
+      options: {
+        className: 'bg-indigo-500/30 border-l-2 border-indigo-400',
+        hoverMessage: { value: `**${cursor.userName}** is editing here` },
+      },
+    }));
+
+    decorationsRef.current = editorRef.current.deltaDecorations(
+      decorationsRef.current,
+      newDecorations
+    );
+  }, [peerCursors, activeFile]);
+
+  // Handle Monaco Mount & Local Cursor Tracking
+  const handleEditorDidMount: OnMount = (editor) => {
+    editorRef.current = editor;
+
+    editor.onDidChangeCursorPosition((e) => {
+      if (!selectedProjectId || !user?.id || !activeFile) return;
+
+      supabase.channel(`studio_cursor_${selectedProjectId}`).send({
+        type: 'broadcast',
+        event: 'cursor_move',
+        payload: {
+          userId: user.id,
+          userName: user.name || 'Team Member',
+          lineNumber: e.position.lineNumber,
+          column: e.position.column,
+          file: activeFile,
+        },
+      });
+    });
+  };
+
+  // 3. Fetch branches when repo updates
   useEffect(() => {
     async function loadBranches() {
       if (!repoInput.includes('/')) return;
@@ -137,7 +222,7 @@ export default function CodeStudio() {
     loadBranches();
   }, [repoInput, githubToken]);
 
-  // 3. Fetch Repository Tree
+  // 4. Fetch Repository Tree
   const fetchRepoFiles = async (repoName: string, branchName: string) => {
     if (!repoName.includes('/') || !branchName) return;
     setLoadingFiles(true);
@@ -195,7 +280,7 @@ export default function CodeStudio() {
     }
   }, [repoInput, selectedBranch, githubToken]);
 
-  // 4. Fetch file content
+  // 5. Fetch file content
   const loadFileContent = async (item: FileTreeItem) => {
     setActiveFile(item.path);
     setActiveFileSha(item.sha);
@@ -244,7 +329,37 @@ export default function CodeStudio() {
     toast.info('Opening desktop VS Code...');
   };
 
-  // Commit & Push
+  // Toggle File Lease Lock
+  const handleToggleFileLock = async () => {
+    if (!selectedProjectId || !activeFile) return;
+
+    const isCurrentlyLocked = activeProject?.locked_file === activeFile;
+    const isLockedByMe = activeProject?.locked_by === user?.id;
+
+    if (isCurrentlyLocked && !isLockedByMe && !isSuperAdmin) {
+      toast.error('This file is locked by another engineer.');
+      return;
+    }
+
+    try {
+      const payload = isCurrentlyLocked
+        ? { locked_file: null, locked_by: null, locked_at: null }
+        : { locked_file: activeFile, locked_by: user?.id, locked_at: new Date().toISOString() };
+
+      const { error } = await supabase
+        .from('projects')
+        .update(payload)
+        .eq('id', selectedProjectId);
+
+      if (error) throw error;
+
+      setActiveProject((prev: any) => ({ ...prev, ...payload }));
+      toast.success(isCurrentlyLocked ? 'File lock released' : 'File locked for review lease');
+    } catch {
+      toast.error('Failed to toggle file lease');
+    }
+  };
+
   // Commit & Push
   const handleCommitAndPush = async () => {
     if (!isVerified) {
@@ -309,7 +424,7 @@ export default function CodeStudio() {
           event: 'code_pushed',
           title: `Code Push: ${activeFile}`,
           description: `Committed changes to \`${activeFile}\` on branch \`${selectedBranch}\` in \`${repoInput}\`.`,
-          user: localStorage.getItem('pf_user_name') || 'Team Member',
+          user: user?.name || 'Authenticated Member',
         });
       } else {
         toast.error(resData.message || 'Push failed');
@@ -358,6 +473,11 @@ export default function CodeStudio() {
     return 'plaintext';
   };
 
+  const isFileLockedByOther =
+    Boolean(activeProject?.locked_file === activeFile) &&
+    activeProject?.locked_by !== user?.id &&
+    !isSuperAdmin;
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] bg-[#0d1117] text-gray-200 overflow-hidden">
       {/* Top Studio Bar */}
@@ -373,6 +493,7 @@ export default function CodeStudio() {
               const projId = e.target.value;
               const proj = projects.find((p) => p.id === projId);
               setSelectedProjectId(projId);
+              setActiveProject(proj || null);
               localStorage.setItem('pf_selected_project_id', projId);
 
               if (proj?.github_repo) {
@@ -418,10 +539,46 @@ export default function CodeStudio() {
               ))}
             </select>
           </div>
+
+          {/* Active Presence Peer Badges */}
+          {activePeers.length > 0 && (
+            <div className="hidden xl:flex items-center gap-1.5 pl-2 border-l border-gray-700">
+              <Users size={13} className="text-emerald-400" />
+              <div className="flex -space-x-1.5">
+                {activePeers.slice(0, 3).map((peer: any, i: number) => (
+                  <img
+                    key={i}
+                    src={peer.avatar || '/pfp.jpg'}
+                    alt={peer.name}
+                    title={`${peer.name} viewing ${peer.activeFile || 'project'}`}
+                    className="w-5 h-5 rounded-full border border-gray-800 object-cover"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* File Lock Lease Toggle */}
+          {activeFile && (
+            <button
+              onClick={handleToggleFileLock}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
+                activeProject?.locked_file === activeFile
+                  ? 'bg-amber-950/40 border-amber-800 text-amber-400'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+              }`}
+              title={activeProject?.locked_file === activeFile ? 'Release file review lock' : 'Acquire lock lease for review'}
+            >
+              {activeProject?.locked_file === activeFile ? <Lock size={13} /> : <Unlock size={13} />}
+              <span className="hidden sm:inline">
+                {activeProject?.locked_file === activeFile ? 'Locked' : 'Lock Lease'}
+              </span>
+            </button>
+          )}
+
           {/* Review Diff Button */}
           <button
             onClick={() => setIsDiffModalOpen(true)}
@@ -476,13 +633,13 @@ export default function CodeStudio() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition-all active:scale-95"
           >
             <Laptop size={14} />
-            <span className="hidden lg:inline">Open in VS Code</span>
+            <span className="hidden lg:inline">VS Code</span>
           </button>
 
           {/* Commit & Push Button */}
           <button
             onClick={handleCommitAndPush}
-            disabled={savingFile || !activeFile}
+            disabled={savingFile || !activeFile || isFileLockedByOther}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 active:scale-95"
             title={!isVerified ? 'Verification required to commit & push changes' : 'Commit & push file'}
           >
@@ -537,6 +694,16 @@ export default function CodeStudio() {
         </div>
       )}
 
+      {/* Lock Lease Warning Ribbon */}
+      {isFileLockedByOther && (
+        <div className="bg-amber-950/60 border-b border-amber-800/80 px-4 py-2 flex items-center justify-between text-xs text-amber-300 font-medium">
+          <div className="flex items-center gap-2">
+            <Lock size={14} className="shrink-0" />
+            <span>This file is currently checked out with a review lock. Buffer is in read-only mode.</span>
+          </div>
+        </div>
+      )}
+
       {/* Main Studio Area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* File Explorer Sidebar */}
@@ -559,186 +726,131 @@ export default function CodeStudio() {
                 {selectedBranch ? `No files found on branch ${selectedBranch}.` : 'Select a branch to explore files.'}
               </div>
             ) : (
-              files.map((file) => {
-                const isSelected = activeFile === file.path;
-                return (
-                  <button
-                    key={file.path}
-                    onClick={() => loadFileContent(file)}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 truncate transition-colors font-mono text-[11px] ${
-                      isSelected
-                        ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
-                        : 'text-gray-300 hover:bg-[#1f242c]'
-                    }`}
-                  >
-                    <FileCode size={13} className="shrink-0 text-gray-400" />
-                    <span className="truncate">{file.path}</span>
-                  </button>
-                );
-              })
+              files.map((file) => (
+                <button
+                  key={file.sha}
+                  onClick={() => loadFileContent(file)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left truncate transition-colors ${
+                    activeFile === file.path 
+                      ? `${theme.bgSubtle} ${theme.textAccent} font-semibold border${theme.borderAccent}/30` 
+                      : 'text-gray-300 hover:bg-gray-800/60 hover:text-white'
+                  }`}
+                >
+                  <FileCode size={14} className={activeFile === file.path ? theme.textAccent : 'text-gray-500'} />
+                  <span className="truncate">{file.path}</span>
+                </button>
+              ))
             )}
           </div>
         </div>
 
-        {/* Editor Center & AI Drawer */}
-        <div className="flex-1 flex min-h-0 overflow-hidden">
-          {/* Monaco Editor + Bottom Terminal Canvas */}
-          <div className="flex-1 flex flex-col bg-[#0d1117] min-h-0 overflow-hidden">
-            {/* Active File Bar */}
-            <div className="h-9 bg-[#0d1117] border-b border-gray-800 px-4 flex items-center justify-between text-xs shrink-0">
-              <span className="font-mono text-gray-400">{activeFile || 'No file selected'}</span>
-              
-              <div className="flex items-center gap-3">
-                {loadingContent && (
-                  <span className="text-indigo-400 flex items-center gap-1 text-[11px]">
-                    <Loader2 size={12} className="animate-spin" /> Loading...
-                  </span>
-                )}
-
-                {activeFile && (
-                  <div className="flex items-center gap-1">
-                    {activePeers
-                      .filter((p) => p.activeFile === activeFile)
-                      .map((peer, i) => (
-                        <span
-                          key={i}
-                          title={`${peer.name} is looking at this file`}
-                          className="w-5 h-5 rounded-full bg-indigo-600/40 border border-indigo-400 text-[10px] font-bold text-indigo-200 flex items-center justify-center uppercase cursor-default"
-                        >
-                          {peer.name?.charAt(0) || 'D'}
-                        </span>
-                      ))}
-                  </div>
-                )}
+        {/* Editor + Terminal Workspace */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="flex-1 min-h-0 relative">
+            {loadingContent ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1117] z-10 space-y-2">
+                <Loader2 size={24} className={`animate-spin ${theme.textAccent}`} />
+                <span className="text-xs text-gray-400">Reading remote blob...</span>
               </div>
-            </div>
+            ) : null}
 
-            {/* Monaco Editor Container */}
-            <div className="flex-1 min-h-0 relative overflow-hidden">
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language={getLanguageFromPath(activeFile)}
-                value={activeFileContent}
-                onChange={(val) => setActiveFileContent(val || '')}
-                options={{
-                  fontSize: 13,
-                  minimap: { enabled: true },
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  tabSize: 2,
-                }}
-              />
-            </div>
-
-            {/* In-Studio Terminal Sandbox Bar (Fixed at bottom) */}
-            <StudioTerminal
-              isOpen={isTerminalOpen}
-              onToggle={() => setIsTerminalOpen(!isTerminalOpen)}
-              activeCode={activeFileContent}
+            <Editor
+              height="100%"
+              theme="vs-dark"
+              language={getLanguageFromPath(activeFile)}
+              value={activeFileContent}
+              onMount={handleEditorDidMount}
+              onChange={(val) => setActiveFileContent(val || '')}
+              options={{
+                fontSize: 13,
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                readOnly: isFileLockedByOther,
+                tabSize: 2,
+              }}
             />
           </div>
 
-          {/* AI Code Assistant Drawer */}
-          {showAiDrawer && (
-            <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0">
-              <div className="p-3 border-b border-gray-800 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 text-purple-400">
-                  <Bot size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider text-white">ProjectFlow AI</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {aiResponse && (
+          {/* Interactive Sandboxed Terminal CLI */}
+          <StudioTerminal
+            isOpen={isTerminalOpen}
+            onToggle={() => setIsTerminalOpen(!isTerminalOpen)}
+            activeCode={activeFileContent}
+            activeFilePath={activeFile}
+          />
+        </div>
+
+        {/* Gemini AI Assistant Side Drawer */}
+        {showAiDrawer && (
+          <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0 shadow-2xl animate-in slide-in-from-right-10 duration-200">
+            <div className="p-3.5 border-b border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-purple-400 text-xs font-bold">
+                <Bot size={16} />
+                <span>Gemini Code Assistant</span>
+              </div>
+              <button onClick={() => setShowAiDrawer(false)} className="text-gray-400 hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0 text-xs">
+              {aiResponse ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-800">
+                    <span className="text-[10px] font-bold uppercase text-gray-400">Analysis & Recommendation</span>
                     <button
                       onClick={copyAiResponse}
+                      className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white"
                       title="Copy response"
-                      className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
                     >
-                      {copiedResponse ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                      {copiedResponse ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                     </button>
-                  )}
-                  <button onClick={() => setShowAiDrawer(false)} className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white">
-                    <X size={15} />
-                  </button>
+                  </div>
+                  <div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-gray-200 bg-[#0d1117] p-3 rounded-xl border border-gray-800">
+                    {aiResponse}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 space-y-2">
+                  <Sparkles size={28} className="mx-auto text-purple-400/50" />
+                  <p className="text-xs">Ask Gemini to refactor, write unit tests, or review security in {activeFile || 'the buffer'}.</p>
+                </div>
+              )}
+            </div>
 
-              {/* Quick Prompt Action Chips */}
-              <div className="p-2 border-b border-gray-800 flex flex-wrap gap-1.5 bg-[#0d1117]/50 shrink-0">
-                <button
-                  onClick={() => {
-                    const prompt = 'Find any potential bugs, unhandled null checks, or edge cases in this code.';
-                    setAiPrompt(prompt);
-                    handleAskAi(undefined, prompt);
-                  }}
-                  className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-                >
-                  Find Bugs
-                </button>
-                <button
-                  onClick={() => {
-                    const prompt = 'Add clean TypeScript types and JSDoc comments to this code.';
-                    setAiPrompt(prompt);
-                    handleAskAi(undefined, prompt);
-                  }}
-                  className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-                >
-                  Add Docs
-                </button>
-                <button
-                  onClick={() => {
-                    const prompt = 'Optimize this file for cleaner performance and modern best practices.';
-                    setAiPrompt(prompt);
-                    handleAskAi(undefined, prompt);
-                  }}
-                  className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
-                >
-                  Optimize
-                </button>
-              </div>
-
-              {/* AI Output Area */}
-              <div className="flex-1 overflow-y-auto p-3 text-xs font-sans text-gray-300 space-y-3 custom-scrollbar min-h-0">
-                {aiLoading ? (
-                  <div className="p-8 text-center text-purple-400 space-y-2">
-                    <Loader2 className="animate-spin mx-auto text-purple-400" size={24} />
-                    <p className="text-xs text-gray-400">Analyzing code with pooled Gemini keys...</p>
-                  </div>
-                ) : aiResponse ? (
-                  <div className="space-y-2">
-                    <div className="bg-[#0d1117] p-3 rounded-xl border border-gray-800 text-[12px] whitespace-pre-wrap font-mono leading-relaxed select-text">
-                      {aiResponse}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-gray-500 py-16 px-4 text-xs">
-                    Select a quick action above or type a question to inspect <span className="font-mono text-gray-400">{activeFile || 'this file'}</span>.
-                  </div>
-                )}
-              </div>
-
-              {/* Input Prompt Box */}
-              <form onSubmit={handleAskAi} className="p-3 border-t border-gray-800 bg-[#161b22] flex gap-2 shrink-0">
+            <form onSubmit={(e) => handleAskAi(e)} className="p-3 border-t border-gray-800 bg-[#0d1117] space-y-2">
+              <div className="relative">
                 <input
                   type="text"
-                  placeholder="Ask AI about this code..."
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  className="flex-1 bg-[#0d1117] border border-gray-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 placeholder-gray-500"
+                  placeholder="Ask a technical question..."
+                  className="w-full bg-[#161b22] border border-gray-800 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white outline-none focus:border-purple-500"
                 />
                 <button
                   type="submit"
                   disabled={aiLoading || !aiPrompt.trim()}
-                  className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl transition-all"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-purple-400 hover:text-purple-300 disabled:opacity-40"
                 >
-                  <Send size={15} />
+                  {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 </button>
-              </form>
-            </div>
-          )}
-        </div>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
+
+      {/* Monaco Diff Modal */}
+      <MonacoDiffModal
+        isOpen={isDiffModalOpen}
+        onClose={() => setIsDiffModalOpen(false)}
+        filePath={activeFile}
+        originalContent={originalShaContent}
+        modifiedContent={activeFileContent}
+        onConfirmPush={handleCommitAndPush}
+        isPushing={savingFile}
+      />
 
       {/* Pull Request Creation Modal */}
       <CodeStudioPRModal
@@ -750,20 +862,6 @@ export default function CodeStudio() {
         defaultBaseBranch="main"
         activeFile={activeFile}
         activeFileContent={activeFileContent}
-      />
-
-      {/* Monaco Diff Modal */}
-      <MonacoDiffModal
-        isOpen={isDiffModalOpen}
-        onClose={() => setIsDiffModalOpen(false)}
-        filePath={activeFile}
-        originalContent={originalShaContent}
-        modifiedContent={activeFileContent}
-        onConfirmPush={() => {
-          setIsDiffModalOpen(false);
-          handleCommitAndPush();
-        }}
-        isPushing={savingFile}
       />
     </div>
   );

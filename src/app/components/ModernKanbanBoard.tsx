@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Loader2, ShieldAlert, Sparkles } from 'lucide-react';
+import { Loader2, ShieldAlert, AlertCircle, Link as LinkIcon } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
 import { supabase } from '../../lib/supabaseClient';
@@ -9,13 +9,19 @@ import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { toast } from 'sonner';
 
+export interface ExtendedModernTask extends ModernTask {
+  blocked_by?: string | null;
+  blocker_title?: string | null;
+  blocker_status?: string | null;
+}
+
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
 
 interface ColumnData {
-  todo: ModernTask[];
-  inProgress: ModernTask[];
-  review: ModernTask[];
-  done: ModernTask[];
+  todo: ExtendedModernTask[];
+  inProgress: ExtendedModernTask[];
+  review: ExtendedModernTask[];
+  done: ExtendedModernTask[];
 }
 
 interface ModernKanbanBoardProps {
@@ -34,7 +40,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     done: [],
   });
 
-  // 1. Load sandbox tasks or live Supabase tasks
+  // 1. Fetch live or sandbox tasks with dependency joins
   const fetchTasks = async () => {
     if (isSandboxActive) {
       const grouped: ColumnData = {
@@ -65,7 +71,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     try {
       let query = supabase
         .from('tasks')
-        .select('*, assigned_user:users(id, name, avatar)')
+        .select('*, assigned_user:users(id, name, avatar), blocker:tasks!blocked_by(id, title, status)')
         .order('created_at', { ascending: false });
 
       if (projectId) {
@@ -93,7 +99,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
             ? 'done'
             : 'todo';
 
-        const taskItem: ModernTask = {
+        const taskItem: ExtendedModernTask = {
           id: t.id,
           title: t.title,
           description: t.description || '',
@@ -105,6 +111,9 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
           comments: t.comments_count || 0,
           attachments: 0,
           tags: t.tags || [t.priority || 'Task'],
+          blocked_by: t.blocked_by || null,
+          blocker_title: t.blocker?.title || null,
+          blocker_status: t.blocker?.status || null,
         };
 
         if (grouped[colKey]) {
@@ -151,27 +160,36 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       return;
     }
 
-    // B. Handle Production Database Update
-    setColumns((prevColumns) => {
-      let sourceColumn: ColumnType | null = null;
-      let taskToMove: ModernTask | null = null;
+    // Find the task across all columns to evaluate dependency gates
+    let movingTask: ExtendedModernTask | null = null;
+    let sourceColumn: ColumnType | null = null;
 
-      for (const [columnName, tasks] of Object.entries(prevColumns)) {
-        const task = tasks.find((t: ModernTask) => t.id === taskId);
-        if (task) {
-          sourceColumn = columnName as ColumnType;
-          taskToMove = task;
-          break;
-        }
+    (Object.entries(columns) as [ColumnType, ExtendedModernTask[]][]).forEach(([col, items]) => {
+      const match = items.find((i: ExtendedModernTask) => i.id === taskId);
+      if (match) {
+        movingTask = match;
+        sourceColumn = col;
       }
+    });
 
-      if (!sourceColumn || !taskToMove || sourceColumn === targetColumn) {
-        return prevColumns;
+    if (!movingTask || !sourceColumn || sourceColumn === targetColumn) return;
+
+    // Dependency Guard: Prevent moving to 'done' if blocker is unfinished
+    const taskToCheck = movingTask as ExtendedModernTask;
+    if (targetColumn === 'done' && taskToCheck.blocked_by) {
+      if (taskToCheck.blocker_status !== 'done') {
+        toast.error('Task Dependency Blocker', {
+          description: `Cannot mark "${taskToCheck.title}" as Done until blocker "${taskToCheck.blocker_title || 'predecessor'}" is completed first.`,
+        });
+        return;
       }
+    }
 
-      const next = { ...prevColumns };
-      next[sourceColumn] = next[sourceColumn].filter((t) => t.id !== taskId);
-      next[targetColumn] = [taskToMove, ...next[targetColumn]];
+    // Optimistic UI Reorder
+    setColumns((prev) => {
+      const next = { ...prev };
+      next[sourceColumn!] = next[sourceColumn!].filter((t) => t.id !== taskId);
+      next[targetColumn] = [movingTask!, ...next[targetColumn]];
       return next;
     });
 
