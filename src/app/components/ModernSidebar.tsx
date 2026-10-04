@@ -15,6 +15,8 @@ import {
   Code2,
   Sparkles,
   Terminal,
+  BookOpen,
+  MessageSquareCode
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -88,7 +90,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
       )}
 
       <aside className={sidebarClasses}>
-        {/* Mobile Close Button (Brand Logo has migrated to ModernHeader center) */}
+        {/* Mobile Close Button */}
         {onClose && (
           <div className="h-12 flex-shrink-0 flex items-center justify-end px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
             <button 
@@ -147,12 +149,31 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
             onClick={onClose} 
           />
 
+          <NavItem 
+            to="/docs" 
+            icon={<BookOpen size={18} />} 
+            label="API Docs" 
+            isActive={location.pathname === '/docs'} 
+            theme={theme}
+            onClick={onClose} 
+          />
+
           <NavItem to="/timesheets" icon={<Clock size={18} />} label="Timesheets" isActive={location.pathname === '/timesheets'} theme={theme} onClick={onClose} />
           <NavItem to="/automations" icon={<Zap size={18} />} label="Automations" isActive={location.pathname === '/automations'} theme={theme} onClick={onClose} />
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</div>
           <NavItem to="/messages/room_1" icon={<MessageSquare size={18} />} label="Team Chat" isActive={location.pathname.startsWith('/messages')} theme={theme} onClick={onClose} />
           <NavItem to="/team" icon={<Users size={18} />} label="Team" isActive={location.pathname === '/team'} theme={theme} onClick={onClose} />
+          
+          <NavItem 
+            to="/retrospectives" 
+            icon={<MessageSquareCode size={18} />} 
+            label="Retrospectives" 
+            isActive={location.pathname === '/retrospectives'} 
+            theme={theme}
+            onClick={onClose} 
+          />
+
           <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} />
         </nav>
 

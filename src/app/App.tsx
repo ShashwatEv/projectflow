@@ -35,6 +35,9 @@ import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
 import CodeStudio from './pages/CodeStudio';
 import SprintPlanner from './pages/SprintPlanner';
+import ApiDocs from './pages/ApiDocs';
+import Retrospectives from './pages/Retrospectives';
+import TeamVelocity from './pages/TeamVelocity';
 
 // Exact Casing for Render / Linux Rollup compatibility
 const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ 
@@ -90,7 +93,7 @@ function Layout() {
         </div>
       )}
 
-      {/* Modern Header with Clickable Workspace Toggle */}
+      {/* Modern Header with Centered Brand and Clickable Workspace Toggle */}
       <ModernHeader 
         onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
         isSidebarOpen={isSidebarOpen}
@@ -146,6 +149,7 @@ export default function App() {
                   <Route path="/sprint-planner" element={<SprintPlanner />} />
                   <Route path="/code" element={<CodeStudio />} />
                   <Route path="/api-playground" element={<ApiPlayground />} />
+                  <Route path="/docs" element={<ApiDocs />} />
                   <Route path="/timesheets" element={<Timesheets />} />
                   <Route path="/automations" element={<Automations />} />
                   
@@ -153,6 +157,8 @@ export default function App() {
                   <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
                   <Route path="/messages/:roomId" element={<Messages />} />
                   <Route path="/team" element={<Team />} />
+                  <Route path="/retrospectives" element={<Retrospectives />} />
+                  <Route path="/retrospectives/velocity" element={<TeamVelocity />} />
                   <Route path="/calendar" element={<Calendar />} />
 
                   {/* Account & Analytics */}
