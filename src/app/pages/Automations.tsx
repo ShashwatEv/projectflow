@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Zap, Mail, Github, MoreVertical, Clock, CheckCircle, 
-  AlertTriangle, Loader2, Slack, Plus, Play, Trash2, X, Sparkles
+  AlertTriangle, Loader2, Slack, Plus, Play, Trash2, X, Lock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 const PLATFORM_ICONS: Record<string, JSX.Element> = {
   internal: <CheckCircle className="text-emerald-500" size={20} />,
@@ -27,8 +30,12 @@ interface Automation {
 }
 
 export default function Automations() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const theme = useAccentTheme();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
   
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,8 +87,25 @@ export default function Automations() {
     };
   }, [user]);
 
+  // Gate check helper
+  const checkVerifiedAction = (actionDesc: string): boolean => {
+    if (!isVerified) {
+      toast.error('Identity Verification Required', {
+        description: `Please verify your email address to ${actionDesc}.`,
+        action: {
+          label: 'Verify Now',
+          onClick: () => navigate('/settings'),
+        },
+      });
+      return false;
+    }
+    return true;
+  };
+
   // 3. Toggle Status (Active / Paused)
   const handleToggleStatus = async (id: string, currentStatus: string) => {
+    if (!checkVerifiedAction('toggle automation states')) return;
+
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
 
     setAutomations((prev) =>
@@ -104,6 +128,8 @@ export default function Automations() {
 
   // 4. Manually Run Automation (Simulate Execution)
   const handleRunNow = async (automation: Automation) => {
+    if (!checkVerifiedAction('trigger automation workflows')) return;
+
     setRunningId(automation.id);
     const nowIso = new Date().toISOString();
 
@@ -115,7 +141,6 @@ export default function Automations() {
 
       if (error) throw error;
 
-      // Add to user notifications
       await supabase.from('notifications').insert({
         user_id: user?.id,
         title: `Automation Executed: ${automation.title}`,
@@ -137,6 +162,8 @@ export default function Automations() {
 
   // 5. Delete Automation
   const handleDelete = async (id: string) => {
+    if (!checkVerifiedAction('delete automation rules')) return;
+
     try {
       const { error } = await supabase.from('automations').delete().eq('id', id);
       if (error) throw error;
@@ -153,6 +180,7 @@ export default function Automations() {
   // 6. Create New Automation Rule
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkVerifiedAction('publish new automation webhooks')) return;
     if (!newTitle.trim() || !newTrigger.trim() || !newAction.trim()) return;
 
     setIsSubmitting(true);
@@ -217,11 +245,16 @@ export default function Automations() {
         </div>
 
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            if (checkVerifiedAction('create new automations')) {
+              setIsModalOpen(true);
+            }
+          }}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95`}
         >
           <Plus size={16} />
           <span>New Automation</span>
+          {!isVerified && <Lock size={12} className="opacity-75 ml-0.5" />}
         </button>
       </div>
 
@@ -251,14 +284,14 @@ export default function Automations() {
                 className="bg-white dark:bg-[#161b22] rounded-3xl p-6 border border-gray-200 dark:border-gray-800/90 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative"
               >
                 <div>
-                  {/* Top Bar (Icon, Toggle, Actions) */}
+                  {/* Top Bar */}
                   <div className="flex items-start justify-between gap-3 mb-5">
                     <div className="p-3.5 bg-gray-50 dark:bg-[#0d1117] border border-gray-100 dark:border-gray-800 rounded-2xl shrink-0">
                       {PLATFORM_ICONS[a.platform] || PLATFORM_ICONS.default}
                     </div>
                     
                     <div className="flex items-center gap-2 relative">
-                      {/* Active/Pause Switch Toggle */}
+                      {/* Active/Pause Switch */}
                       <button
                         type="button"
                         role="switch"
@@ -287,7 +320,10 @@ export default function Automations() {
                         {isMenuOpen && (
                           <div className="absolute right-0 top-8 w-36 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-20 py-1 text-xs animate-in fade-in zoom-in-95">
                             <button
-                              onClick={() => handleRunNow(a)}
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                handleRunNow(a);
+                              }}
                               className="w-full px-3 py-2 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
                             >
                               <Play size={13} className="text-emerald-500" /> Run Trigger
@@ -309,7 +345,7 @@ export default function Automations() {
                     {a.title}
                   </h3>
 
-                  {/* IF -> THEN Flow Sequence */}
+                  {/* Flow Sequence */}
                   <div className="space-y-2.5 relative">
                     <div className="absolute left-3.5 top-8 bottom-4 w-px bg-gray-200 dark:bg-gray-800" />
 
@@ -331,7 +367,7 @@ export default function Automations() {
                   </div>
                 </div>
 
-                {/* Footer Metrics & Run Now Button */}
+                {/* Footer Metrics & Run Trigger Button */}
                 <div className="pt-5 mt-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-[11px] font-medium text-gray-400">
                   <div className="flex items-center gap-3">
                     <div className={`flex items-center gap-1.5 ${isActive ? 'text-emerald-500' : 'text-gray-400'}`}>
@@ -343,17 +379,17 @@ export default function Automations() {
                   </div>
 
                   <button
-  onClick={() => handleRunNow(a)}
-  disabled={runningId === a.id}
-  title="Simulate trigger execution"
-  className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#0d1117] dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-800 text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
->
-  {runningId === a.id ? (
-    <Loader2 size={13} className="animate-spin text-emerald-500" />
-  ) : (
-    <Play size={13} className="fill-current text-gray-600 dark:text-gray-300" />
-  )}
-</button>
+                    onClick={() => handleRunNow(a)}
+                    disabled={runningId === a.id}
+                    title={isVerified ? "Simulate trigger execution" : "Verification required to run triggers"}
+                    className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-[#0d1117] dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-800 text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {runningId === a.id ? (
+                      <Loader2 size={13} className="animate-spin text-emerald-500" />
+                    ) : (
+                      <Play size={13} className="fill-current text-gray-600 dark:text-gray-300" />
+                    )}
+                  </button>
                 </div>
               </div>
             );

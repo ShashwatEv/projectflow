@@ -1,8 +1,8 @@
 import { useState, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
-import { AuthProvider } from '../context/AuthContext';
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
 
 // Component Imports
 import { ModernHeader } from './components/ModernHeader';
@@ -33,10 +33,19 @@ import ProjectDetail from './pages/ProjectDetail';
 import CodeStudio from './pages/CodeStudio';
 import SprintPlanner from './pages/SprintPlanner';
 
-// Future Expansion Pages (Lazy loaded)
-const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ default: () => <PlaceholderPage title="API Console & Webhook Tester" description="Interactive API console coming right up..." /> })));
+// Exact Casing for Render / Linux Rollup compatibility
+const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ 
+  default: () => (
+    <div className="p-8 max-w-4xl mx-auto space-y-3 animate-in fade-in duration-200">
+      <h1 className="text-2xl font-bold text-white tracking-tight">API Console & Webhook Tester</h1>
+      <p className="text-xs text-gray-400">Interactive API playground module.</p>
+    </div>
+  ) 
+})));
 
 import { Toaster } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 function PageLoader() {
   return (
@@ -46,21 +55,13 @@ function PageLoader() {
   );
 }
 
-function PlaceholderPage({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="p-8 max-w-4xl mx-auto space-y-3 animate-in fade-in duration-200">
-      <h1 className="text-2xl font-bold text-white tracking-tight">{title}</h1>
-      <p className="text-xs text-gray-400">{description}</p>
-      <div className="p-12 text-center bg-[#161b22] border border-gray-800 rounded-3xl mt-4">
-        <p className="text-sm font-semibold text-gray-300">Feature Ready to Implement</p>
-        <p className="text-xs text-gray-500 mt-1">Say "next" whenever you want to code this screen.</p>
-      </div>
-    </div>
-  );
-}
-
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -68,6 +69,25 @@ function Layout() {
       {/* First-time Guided Onboarding Tour */}
       <OnboardingTour />
       
+      {/* Ambient Identity Verification Warning Banner */}
+      {!isVerified && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-500 dark:text-amber-400 font-medium z-30">
+          <div className="flex items-center gap-2 truncate">
+            <ShieldAlert size={15} className="shrink-0" />
+            <span className="truncate">
+              Your account is unverified. Advanced features (unlimited projects, webhooks, and sprint publications) are locked.
+            </span>
+          </div>
+          <button
+            onClick={() => navigate('/settings')}
+            className="flex items-center gap-1 font-bold underline hover:text-amber-300 transition-colors ml-4 shrink-0"
+          >
+            <span>Verify Email</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
       <ModernHeader onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       
       <div className="flex flex-1 overflow-hidden relative">

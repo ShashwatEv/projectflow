@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { 
   Terminal, Play, Clock, Database, Copy, Check, Plus, 
-  Trash2, Code2, RefreshCw, Send, ShieldCheck, AlertCircle 
+  Trash2, RefreshCw, Send, Lock, ShieldAlert 
 } from 'lucide-react';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -26,7 +30,12 @@ interface ResponseState {
 }
 
 export default function ApiPlayground() {
+  const navigate = useNavigate();
   const theme = useAccentTheme();
+  const { user } = useAuth();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
   // Request State
   const [method, setMethod] = useState<HttpMethod>('GET');
@@ -44,7 +53,6 @@ export default function ApiPlayground() {
   const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
   const [selectedSnippetLang, setSelectedSnippetLang] = useState<'curl' | 'fetch' | 'python'>('curl');
 
-  // Add / Remove Header Row
   const addHeader = () => {
     setHeaders((prev) => [...prev, { key: '', value: '', enabled: true }]);
   };
@@ -59,11 +67,23 @@ export default function ApiPlayground() {
     );
   };
 
-  // Dispatch API Request
+  // Dispatch API Request with verification gate check on mutating HTTP verbs
   const handleSendRequest = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!url.trim()) {
       toast.error('Please specify a valid URL');
+      return;
+    }
+
+    // Security Gate: Disallow outbound mutating methods for unverified users
+    if (!isVerified && method !== 'GET') {
+      toast.error('Identity Verification Required', {
+        description: `Unverified accounts can only execute GET requests. Verify your email to send ${method} requests and custom payloads.`,
+        action: {
+          label: 'Verify Now',
+          onClick: () => navigate('/settings'),
+        },
+      });
       return;
     }
 
@@ -103,7 +123,7 @@ export default function ApiPlayground() {
       try {
         formatted = JSON.stringify(JSON.parse(textData), null, 2);
       } catch {
-        // Leave as plain text if not JSON
+        // Plain text response fallback
       }
 
       const sizeKb = parseFloat((new Blob([textData]).size / 1024).toFixed(2));
@@ -133,7 +153,7 @@ export default function ApiPlayground() {
         data: `// Client Error: ${err.message || 'CORS restriction or network unreachable'}`,
         error: err.message,
       });
-      toast.error('Network request failed. Check CORS or URL validity.');
+      toast.error('Network request failed. Verify CORS policies or URL accessibility.');
     } finally {
       setLoading(false);
     }
@@ -186,7 +206,7 @@ print(response.json())`;
     navigator.clipboard.writeText(generateSnippet());
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2000);
-    toast.success('Snippet copied!');
+    toast.success('Snippet copied to clipboard!');
   };
 
   return (
@@ -202,11 +222,11 @@ print(response.json())`;
             <h1 className="text-2xl font-bold text-white tracking-tight">API Console & Webhook Tester</h1>
           </div>
           <p className="text-xs text-gray-400 mt-1">
-            Test backend endpoints, Supabase functions, and third-party webhooks directly in your workspace[cite: 2].
+            Dispatch HTTP requests, inspect headers, evaluate roundtrip latency, and simulate outbound webhooks.
           </p>
         </div>
 
-        {/* Snippet Language Pills */}
+        {/* Snippet Language Selectors */}
         <div className="flex items-center gap-2 bg-[#161b22] border border-gray-800 rounded-xl p-1">
           {(['curl', 'fetch', 'python'] as const).map((lang) => (
             <button
@@ -247,10 +267,10 @@ print(response.json())`;
           }`}
         >
           <option value="GET" className="bg-[#161b22] text-white">GET</option>
-          <option value="POST" className="bg-[#161b22] text-white">POST</option>
-          <option value="PUT" className="bg-[#161b22] text-white">PUT</option>
-          <option value="PATCH" className="bg-[#161b22] text-white">PATCH</option>
-          <option value="DELETE" className="bg-[#161b22] text-white">DELETE</option>
+          <option value="POST" className="bg-[#161b22] text-white">POST {!isVerified ? '🔒' : ''}</option>
+          <option value="PUT" className="bg-[#161b22] text-white">PUT {!isVerified ? '🔒' : ''}</option>
+          <option value="PATCH" className="bg-[#161b22] text-white">PATCH {!isVerified ? '🔒' : ''}</option>
+          <option value="DELETE" className="bg-[#161b22] text-white">DELETE {!isVerified ? '🔒' : ''}</option>
         </select>
 
         <input
@@ -266,10 +286,32 @@ print(response.json())`;
           disabled={loading}
           className={`flex items-center justify-center gap-2 px-7 py-3 rounded-2xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
         >
-          {loading ? <RefreshCw size={15} className="animate-spin" /> : <Send size={15} />}
+          {loading ? (
+            <RefreshCw size={15} className="animate-spin" />
+          ) : !isVerified && method !== 'GET' ? (
+            <Lock size={15} />
+          ) : (
+            <Send size={15} />
+          )}
           <span>Send</span>
         </button>
       </form>
+
+      {/* Unverified Method Notice */}
+      {!isVerified && method !== 'GET' && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400">
+          <div className="flex items-center gap-2">
+            <ShieldAlert size={14} className="shrink-0" />
+            <span>Mutating HTTP method selected. Outbound write requests require verified email credentials.</span>
+          </div>
+          <button
+            onClick={() => navigate('/settings')}
+            className="underline font-bold hover:text-amber-300 ml-2 shrink-0"
+          >
+            Verify Now
+          </button>
+        </div>
+      )}
 
       {/* Workspace Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -370,7 +412,6 @@ print(response.json())`;
             
             {response && (
               <div className="flex items-center gap-3 text-xs font-mono">
-                {/* Status Pill */}
                 <span className={`px-2 py-0.5 rounded-md font-bold ${
                   response.status && response.status >= 200 && response.status < 300
                     ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/60'
@@ -379,7 +420,6 @@ print(response.json())`;
                   {response.status} {response.statusText}
                 </span>
 
-                {/* Time & Size */}
                 <span className="text-gray-400 flex items-center gap-1">
                   <Clock size={12} /> {response.timeMs}ms
                 </span>
@@ -390,7 +430,6 @@ print(response.json())`;
             )}
           </div>
 
-          {/* Response Payload Viewer */}
           <div className="h-72 rounded-2xl overflow-hidden border border-gray-800 bg-[#0d1117]">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
-  Sparkles, Calendar, Clock, Loader2, Trash2, FolderKanban, Plus
+  Sparkles, Calendar, Clock, Loader2, Trash2, FolderKanban, Plus, Lock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 interface Project {
   id: string;
@@ -27,7 +31,12 @@ interface GeneratedTask {
 }
 
 export default function SprintPlanner() {
+  const navigate = useNavigate();
   const theme = useAccentTheme();
+  const { user } = useAuth();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -131,6 +140,17 @@ Feature description: "${prompt}"
 
   // 4. Save Sprint and Batch Insert Tasks to Supabase
   const handleSaveSprint = async () => {
+    if (!isVerified) {
+      toast.error('Identity Verification Required', {
+        description: 'Please verify your email address to publish sprint milestones and batch tasks to project boards.',
+        action: {
+          label: 'Verify Now',
+          onClick: () => navigate('/settings'),
+        },
+      });
+      return;
+    }
+
     if (!selectedProjectId || !sprintTitle.trim()) {
       toast.error('Please specify a project and sprint title');
       return;
@@ -196,7 +216,7 @@ Feature description: "${prompt}"
             <h1 className="text-2xl font-bold text-white tracking-tight">AI Sprint Architect</h1>
           </div>
           <p className="text-xs text-gray-400 mt-1">
-            Generate milestone epics, technical tasks, and work estimates via Google Gemini[cite: 2].
+            Generate milestone epics, technical tasks, and work estimates via Google Gemini.
           </p>
         </div>
 
@@ -293,7 +313,13 @@ Feature description: "${prompt}"
                 disabled={savingSprint}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl ${theme.btnPrimary} font-bold text-xs transition-all shadow-md active:scale-95 disabled:opacity-50`}
               >
-                {savingSprint ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                {savingSprint ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : !isVerified ? (
+                  <Lock size={13} />
+                ) : (
+                  <Plus size={13} />
+                )}
                 <span>Publish to Project</span>
               </button>
             )}

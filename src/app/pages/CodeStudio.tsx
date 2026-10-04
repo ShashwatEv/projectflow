@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
-  Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, GitPullRequest
+  Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
+  GitPullRequest, Lock, ShieldAlert
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
@@ -10,7 +12,11 @@ import { fetchBranches } from '../../lib/githubService';
 import CodeStudioPRModal from '../components/CodeStudioPRModal';
 import { useStudioPresence } from '../../lib/useStudioPresence';
 import { dispatchAutomation } from '../../lib/automationTrigger';
+import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 interface Project {
   id: string;
@@ -25,6 +31,13 @@ interface FileTreeItem {
 }
 
 export default function CodeStudio() {
+  const navigate = useNavigate();
+  const theme = useAccentTheme();
+  const { user } = useAuth();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
+
   const [projects, setProjects] = useState<Project[]>([]);
 
   // Persisted state from localStorage
@@ -39,7 +52,7 @@ export default function CodeStudio() {
   );
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
 
-  // Branches & PR Modal (start empty to prevent blind 404 requests)
+  // Branches & PR Modal
   const [branches, setBranches] = useState<string[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isPrModalOpen, setIsPrModalOpen] = useState<boolean>(false);
@@ -102,7 +115,6 @@ export default function CodeStudio() {
         const branchList = await fetchBranches(repoInput, githubToken);
         if (branchList && branchList.length > 0) {
           setBranches(branchList);
-          // Prefer main if available, else first branch (e.g. master)
           const targetBranch = branchList.includes('main') ? 'main' : (branchList[0] || 'main');
           setSelectedBranch(targetBranch);
         } else {
@@ -225,8 +237,19 @@ export default function CodeStudio() {
     toast.info('Opening desktop VS Code...');
   };
 
-  // 7. Commit, Push, and Trigger Automations
+  // 7. Commit, Push, and Trigger Automations with Verification Guard
   const handleCommitAndPush = async () => {
+    if (!isVerified) {
+      toast.error('Identity Verification Required', {
+        description: 'Please verify your email address to commit and push code changes directly to GitHub repositories.',
+        action: {
+          label: 'Verify Now',
+          onClick: () => navigate('/settings'),
+        },
+      });
+      return;
+    }
+
     if (!githubToken.trim()) {
       toast.error('Please configure a GitHub Token first to push changes');
       setShowTokenInput(true);
@@ -263,7 +286,7 @@ export default function CodeStudio() {
 
       const resData = await res.json();
       if (res.ok) {
-        toast.success(`Committed & pushed ${activeFile}! 🚀`);
+        toast.success(`Committed & pushed ${activeFile}!`);
         if (resData.content?.sha) {
           setActiveFileSha(resData.content.sha);
         }
@@ -388,12 +411,25 @@ export default function CodeStudio() {
         <div className="flex items-center gap-2">
           {/* Create PR Button */}
           <button
-            onClick={() => setIsPrModalOpen(true)}
+            onClick={() => {
+              if (!isVerified) {
+                toast.error('Identity Verification Required', {
+                  description: 'Please verify your email address to open pull requests.',
+                  action: {
+                    label: 'Verify Now',
+                    onClick: () => navigate('/settings'),
+                  },
+                });
+                return;
+              }
+              setIsPrModalOpen(true);
+            }}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 text-xs font-semibold transition-all active:scale-95"
             title="Create Pull Request"
           >
             <GitPullRequest size={13} className="text-indigo-400" />
             <span className="hidden sm:inline">Open PR</span>
+            {!isVerified && <Lock size={11} className="opacity-70 ml-0.5" />}
           </button>
 
           {/* AI Assist Button */}
@@ -423,9 +459,16 @@ export default function CodeStudio() {
           <button
             onClick={handleCommitAndPush}
             disabled={savingFile || !activeFile}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 active:scale-95"
+            title={!isVerified ? 'Verification required to commit & push changes' : 'Commit & push file'}
           >
-            {savingFile ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {savingFile ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : !isVerified ? (
+              <Lock size={13} />
+            ) : (
+              <Save size={14} />
+            )}
             <span>Push</span>
           </button>
 
@@ -600,7 +643,7 @@ export default function CodeStudio() {
                   }}
                   className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                 >
-                  🔍 Find Bugs
+                  Find Bugs
                 </button>
                 <button
                   onClick={() => {
@@ -610,7 +653,7 @@ export default function CodeStudio() {
                   }}
                   className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                 >
-                  📝 Add Docs
+                  Add Docs
                 </button>
                 <button
                   onClick={() => {
@@ -620,7 +663,7 @@ export default function CodeStudio() {
                   }}
                   className="px-2 py-0.5 rounded text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
                 >
-                  ⚡ Optimize
+                  Optimize
                 </button>
               </div>
 

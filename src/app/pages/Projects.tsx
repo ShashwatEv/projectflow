@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FolderKanban, Plus, Calendar, ArrowRight, MoreVertical, 
   Trash2, Loader2, Search, Code2, Sparkles, Github, 
-  CheckCircle2, Clock, PauseCircle, PlayCircle, ExternalLink 
+  CheckCircle2, Clock, PauseCircle, PlayCircle, ExternalLink, Lock 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
 interface Project {
   id: string;
@@ -27,6 +30,10 @@ interface Project {
 export default function Projects() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
+  const { user: currentUser } = useAuth();
+
+  const isSuperAdmin = currentUser?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isVerified = Boolean(currentUser?.is_verified || isSuperAdmin);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +85,6 @@ export default function Projects() {
   useEffect(() => {
     fetchProjects();
 
-    // Realtime Postgres listener
     const channel = supabase
       .channel('projects_live')
       .on(
@@ -92,6 +98,25 @@ export default function Projects() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const handleOpenCreateModal = () => {
+    // Quota restriction: Unverified users can only own 1 project
+    if (!isVerified) {
+      const ownedProjects = projects.filter((p) => p.owner_id === currentUser?.id);
+      if (ownedProjects.length >= 1) {
+        toast.error('Verification Required', {
+          description: 'Unverified accounts are limited to 1 project container. Please verify your email to unlock unlimited projects.',
+          action: {
+            label: 'Verify Now',
+            onClick: () => navigate('/settings'),
+          },
+        });
+        return;
+      }
+    }
+
+    setIsCreateModalOpen(true);
+  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +171,17 @@ export default function Projects() {
   };
 
   const handleDeleteProject = async (projectId: string) => {
+    if (!isVerified) {
+      toast.error('Verification Required', {
+        description: 'You must verify your email address before deleting projects.',
+        action: {
+          label: 'Verify Now',
+          onClick: () => navigate('/settings'),
+        },
+      });
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this project? All associated tasks will be removed.')) {
       return;
     }
@@ -174,7 +210,6 @@ export default function Projects() {
     return matchesSearch && matchesFilter;
   });
 
-  // Calculate Quick Metric Stats
   const activeCount = projects.filter((p) => p.status === 'active').length;
   const completedCount = projects.filter((p) => p.status === 'completed').length;
   const avgProgress = projects.length > 0 
@@ -199,11 +234,12 @@ export default function Projects() {
         </div>
 
         <button
-          onClick={() => setIsCreateModalOpen(true)}
+          onClick={handleOpenCreateModal}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95`}
         >
           <Plus size={16} />
           <span>New Project</span>
+          {!isVerified && <Lock size={12} className="opacity-75 ml-0.5" />}
         </button>
       </div>
 
@@ -299,7 +335,7 @@ export default function Projects() {
                 className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700/80 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative"
               >
                 <div className="space-y-4">
-                  {/* Top Bar (Icon, Status Badge, More Menu) */}
+                  {/* Top Bar */}
                   <div className="flex items-start justify-between">
                     <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
                       <FolderKanban size={22} />
@@ -394,7 +430,6 @@ export default function Projects() {
                 {/* Card Footer: Quick Actions + Deep Links */}
                 <div className="pt-5 mt-5 border-t border-gray-100 dark:border-gray-800/80 space-y-3">
                   <div className="flex items-center justify-between">
-                    {/* Owner Info */}
                     <div className="flex items-center gap-2">
                       <img
                         src={p.owner?.avatar || '/pfp.jpg'}
@@ -406,7 +441,6 @@ export default function Projects() {
                       </span>
                     </div>
 
-                    {/* Direct Project Tools (Code Studio & Sprint Planner Shortcuts) */}
                     <div className="flex items-center gap-2">
                       <button
                         type="button"

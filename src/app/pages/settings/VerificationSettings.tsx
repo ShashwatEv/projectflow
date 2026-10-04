@@ -8,9 +8,13 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
+const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+
 export default function VerificationSettings() {
   const { user } = useAuth();
   const theme = useAccentTheme();
+
+  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
 
   const [loading, setLoading] = useState(true);
   const [emailVerified, setEmailVerified] = useState(false);
@@ -40,12 +44,16 @@ export default function VerificationSettings() {
           .single();
 
         if (!error && data) {
-          // If Supabase auth already confirmed the email, reflect it immediately
-          const isEmailConfirmed = Boolean(authUser?.email_confirmed_at || data.email_verified);
+          const isEmailConfirmed = Boolean(
+            authUser?.email_confirmed_at || data.email_verified || isSuperAdmin
+          );
           setEmailVerified(isEmailConfirmed);
           setPhoneVerified(Boolean(data.phone_verified));
-          setIsFullyVerified(Boolean(data.is_verified || isEmailConfirmed));
+          setIsFullyVerified(Boolean(data.is_verified || isEmailConfirmed || isSuperAdmin));
           setPhoneNumber(data.phone || '');
+        } else if (isSuperAdmin) {
+          setEmailVerified(true);
+          setIsFullyVerified(true);
         }
       } catch (err) {
         console.error(err);
@@ -55,7 +63,7 @@ export default function VerificationSettings() {
     }
 
     loadVerificationStatus();
-  }, [user?.id]);
+  }, [user?.id, isSuperAdmin]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -82,7 +90,6 @@ export default function VerificationSettings() {
 
     setSendingOtp(true);
     try {
-      // Sends a real one-time token directly to user's inbox
       const { error } = await supabase.auth.signInWithOtp({
         email: user.email,
         options: {
@@ -110,8 +117,7 @@ export default function VerificationSettings() {
 
     setVerifying(true);
     try {
-      // Cryptographically verify code against Supabase Auth service
-      const { data, error } = await supabase.auth.verifyOtp({
+      const { error } = await supabase.auth.verifyOtp({
         email: user.email,
         token: otpCode.trim(),
         type: 'email',
@@ -119,7 +125,6 @@ export default function VerificationSettings() {
 
       if (error) throw error;
 
-      // Update public.users database flags
       const { error: dbError } = await supabase
         .from('users')
         .update({
@@ -137,7 +142,15 @@ export default function VerificationSettings() {
       setOtpCode('');
       setActiveChannel(null);
 
+      // Trigger global event so the App banner and headers update immediately
+      window.dispatchEvent(new Event('storage'));
+
       toast.success('Your email is officially verified! Verified badge awarded.');
+
+      // Soft refresh state to reflect verified banner dismissal
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (err: any) {
       toast.error(err.message || 'Invalid or expired code. Please try again.');
     } finally {
