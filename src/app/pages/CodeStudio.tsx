@@ -4,12 +4,14 @@ import Editor from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
-  GitPullRequest, Lock, ShieldAlert
+  GitPullRequest, Lock, FileDiff
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { fetchBranches } from '../../lib/githubService';
 import CodeStudioPRModal from '../components/CodeStudioPRModal';
+import MonacoDiffModal from '../components/MonacoDiffModal';
+import StudioTerminal from '../components/StudioTerminal';
 import { useStudioPresence } from '../../lib/useStudioPresence';
 import { dispatchAutomation } from '../../lib/automationTrigger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -63,10 +65,15 @@ export default function CodeStudio() {
   const [activeFileContent, setActiveFileContent] = useState<string>(
     '// Select a file to view and edit'
   );
+  const [originalShaContent, setOriginalShaContent] = useState<string>('');
   const [activeFileSha, setActiveFileSha] = useState<string>('');
   const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
   const [loadingContent, setLoadingContent] = useState<boolean>(false);
   const [savingFile, setSavingFile] = useState<boolean>(false);
+
+  // Diff Modal & Terminal States
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
+  const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true); // Default open to verify immediately
 
   // AI Assistant States
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
@@ -107,7 +114,7 @@ export default function CodeStudio() {
     loadProjects();
   }, []);
 
-  // 2. Fetch branches when repo updates and determine default branch first
+  // 2. Fetch branches when repo updates
   useEffect(() => {
     async function loadBranches() {
       if (!repoInput.includes('/')) return;
@@ -129,13 +136,14 @@ export default function CodeStudio() {
     loadBranches();
   }, [repoInput, githubToken]);
 
-  // 3. Fetch Repository Tree only when repo and resolved branch are available
+  // 3. Fetch Repository Tree
   const fetchRepoFiles = async (repoName: string, branchName: string) => {
     if (!repoName.includes('/') || !branchName) return;
     setLoadingFiles(true);
     setFiles([]);
     setActiveFile('');
     setActiveFileContent('// Select a file from the explorer on the left');
+    setOriginalShaContent('');
 
     const [owner, repo] = repoName.split('/');
 
@@ -152,7 +160,6 @@ export default function CodeStudio() {
         { headers }
       );
 
-      // Fallback if branch is master instead of main
       if (res.status === 404 && branchName === 'main') {
         const fallbackRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
@@ -175,7 +182,7 @@ export default function CodeStudio() {
         toast.success(`Connected to ${repoName} (${branchName})`);
       }
     } catch {
-      // Quiet fail to avoid unhandled rejections
+      // Handled silently
     } finally {
       setLoadingFiles(false);
     }
@@ -213,6 +220,7 @@ export default function CodeStudio() {
           escape(window.atob(data.content.replace(/\s/g, '')))
         );
         setActiveFileContent(decoded);
+        setOriginalShaContent(decoded);
       }
     } catch {
       toast.error('Failed to read file content');
@@ -221,7 +229,6 @@ export default function CodeStudio() {
     }
   };
 
-  // 5. Save Token Locally
   const handleSaveToken = (val: string) => {
     setGithubToken(val);
     localStorage.setItem('pf_github_token', val);
@@ -229,7 +236,6 @@ export default function CodeStudio() {
     toast.success('GitHub Token configured!');
   };
 
-  // 6. Open in Local Desktop VS Code
   const openInLocalVSCode = () => {
     if (!repoInput) return;
     const gitUrl = `https://github.com/${repoInput}.git`;
@@ -237,7 +243,7 @@ export default function CodeStudio() {
     toast.info('Opening desktop VS Code...');
   };
 
-  // 7. Commit, Push, and Trigger Automations with Verification Guard
+  // Commit & Push
   const handleCommitAndPush = async () => {
     if (!isVerified) {
       toast.error('Identity Verification Required', {
@@ -289,6 +295,7 @@ export default function CodeStudio() {
         toast.success(`Committed & pushed ${activeFile}!`);
         if (resData.content?.sha) {
           setActiveFileSha(resData.content.sha);
+          setOriginalShaContent(activeFileContent);
         }
 
         await dispatchAutomation({
@@ -307,7 +314,6 @@ export default function CodeStudio() {
     }
   };
 
-  // 8. Ask AI Assistant
   const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const query = customQuery || aiPrompt;
@@ -346,9 +352,9 @@ export default function CodeStudio() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117] text-gray-200">
+    <div className="flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] bg-[#0d1117] text-gray-200 overflow-hidden">
       {/* Top Studio Bar */}
-      <div className="h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0">
+      <div className="h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
         <div className="flex items-center gap-2.5">
           <Code2 className="text-indigo-400" size={20} />
           <h2 className="font-bold text-sm text-white hidden md:block">Code Studio</h2>
@@ -409,6 +415,17 @@ export default function CodeStudio() {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {/* Review Diff Button */}
+          <button
+            onClick={() => setIsDiffModalOpen(true)}
+            disabled={!activeFile}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-purple-400 border border-gray-700 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
+            title="Inspect Monaco Diff against remote base"
+          >
+            <FileDiff size={13} />
+            <span className="hidden sm:inline">Review Diff</span>
+          </button>
+
           {/* Create PR Button */}
           <button
             onClick={() => {
@@ -489,7 +506,7 @@ export default function CodeStudio() {
 
       {/* GitHub Token Config Dropdown */}
       {showTokenInput && (
-        <div className="bg-[#1f242c] border-b border-gray-700 px-4 py-3 flex items-center justify-between gap-4 text-xs">
+        <div className="bg-[#1f242c] border-b border-gray-700 px-4 py-3 flex items-center justify-between gap-4 text-xs shrink-0">
           <div className="flex items-center gap-2">
             <Key size={15} className="text-amber-400" />
             <span className="text-gray-300">GitHub Personal Access Token:</span>
@@ -514,17 +531,17 @@ export default function CodeStudio() {
       )}
 
       {/* Main Studio Area */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* File Explorer Sidebar */}
-        <div className="w-56 md:w-64 bg-[#161b22] border-r border-gray-800 flex flex-col shrink-0">
-          <div className="p-3 border-b border-gray-800 flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
+        <div className="w-56 md:w-64 bg-[#161b22] border-r border-gray-800 flex flex-col shrink-0 min-h-0">
+          <div className="p-3 border-b border-gray-800 flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider shrink-0">
             <span>Files ({files.length})</span>
             <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white">
               <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-0.5 custom-scrollbar text-xs">
+          <div className="flex-1 overflow-y-auto p-2 space-y-0.5 custom-scrollbar text-xs min-h-0">
             {loadingFiles ? (
               <div className="p-8 text-center text-gray-400">
                 <Loader2 className="animate-spin mx-auto mb-2 text-indigo-400" size={20} />
@@ -557,11 +574,11 @@ export default function CodeStudio() {
         </div>
 
         {/* Editor Center & AI Drawer */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Monaco Editor Canvas */}
-          <div className="flex-1 flex flex-col bg-[#0d1117] overflow-hidden">
-            {/* Active File Bar & Team Presence Avatars */}
-            <div className="h-9 bg-[#0d1117] border-b border-gray-800 px-4 flex items-center justify-between text-xs">
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          {/* Monaco Editor + Bottom Terminal Canvas */}
+          <div className="flex-1 flex flex-col bg-[#0d1117] min-h-0 overflow-hidden">
+            {/* Active File Bar */}
+            <div className="h-9 bg-[#0d1117] border-b border-gray-800 px-4 flex items-center justify-between text-xs shrink-0">
               <span className="font-mono text-gray-400">{activeFile || 'No file selected'}</span>
               
               <div className="flex items-center gap-3">
@@ -589,8 +606,8 @@ export default function CodeStudio() {
               </div>
             </div>
 
-            {/* Monaco Editor */}
-            <div className="flex-1">
+            {/* Monaco Editor Container */}
+            <div className="flex-1 min-h-0 relative overflow-hidden">
               <Editor
                 height="100%"
                 theme="vs-dark"
@@ -607,12 +624,19 @@ export default function CodeStudio() {
                 }}
               />
             </div>
+
+            {/* In-Studio Terminal Sandbox Bar (Fixed at bottom) */}
+            <StudioTerminal
+              isOpen={isTerminalOpen}
+              onToggle={() => setIsTerminalOpen(!isTerminalOpen)}
+              activeCode={activeFileContent}
+            />
           </div>
 
           {/* AI Code Assistant Drawer */}
           {showAiDrawer && (
-            <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0">
-              <div className="p-3 border-b border-gray-800 flex items-center justify-between">
+            <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0">
+              <div className="p-3 border-b border-gray-800 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 text-purple-400">
                   <Bot size={16} />
                   <span className="text-xs font-bold uppercase tracking-wider text-white">ProjectFlow AI</span>
@@ -634,7 +658,7 @@ export default function CodeStudio() {
               </div>
 
               {/* Quick Prompt Action Chips */}
-              <div className="p-2 border-b border-gray-800 flex flex-wrap gap-1.5 bg-[#0d1117]/50">
+              <div className="p-2 border-b border-gray-800 flex flex-wrap gap-1.5 bg-[#0d1117]/50 shrink-0">
                 <button
                   onClick={() => {
                     const prompt = 'Find any potential bugs, unhandled null checks, or edge cases in this code.';
@@ -668,7 +692,7 @@ export default function CodeStudio() {
               </div>
 
               {/* AI Output Area */}
-              <div className="flex-1 overflow-y-auto p-3 text-xs font-sans text-gray-300 space-y-3 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-3 text-xs font-sans text-gray-300 space-y-3 custom-scrollbar min-h-0">
                 {aiLoading ? (
                   <div className="p-8 text-center text-purple-400 space-y-2">
                     <Loader2 className="animate-spin mx-auto text-purple-400" size={24} />
@@ -688,7 +712,7 @@ export default function CodeStudio() {
               </div>
 
               {/* Input Prompt Box */}
-              <form onSubmit={handleAskAi} className="p-3 border-t border-gray-800 bg-[#161b22] flex gap-2">
+              <form onSubmit={handleAskAi} className="p-3 border-t border-gray-800 bg-[#161b22] flex gap-2 shrink-0">
                 <input
                   type="text"
                   placeholder="Ask AI about this code..."
@@ -717,6 +741,20 @@ export default function CodeStudio() {
         token={githubToken}
         currentBranch={selectedBranch}
         defaultBaseBranch="main"
+      />
+
+      {/* Monaco Diff Modal */}
+      <MonacoDiffModal
+        isOpen={isDiffModalOpen}
+        onClose={() => setIsDiffModalOpen(false)}
+        filePath={activeFile}
+        originalContent={originalShaContent}
+        modifiedContent={activeFileContent}
+        onConfirmPush={() => {
+          setIsDiffModalOpen(false);
+          handleCommitAndPush();
+        }}
+        isPushing={savingFile}
       />
     </div>
   );

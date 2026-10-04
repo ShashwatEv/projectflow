@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Bell, Shield, CreditCard, Palette, BadgeCheck } from 'lucide-react';
+import { User, Bell, Shield, CreditCard, Palette, BadgeCheck, ShieldCheck } from 'lucide-react';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 
 // Import settings components
@@ -9,6 +9,7 @@ import NotificationsSettings from './NotificationsSettings';
 import SecuritySettings from './SecuritySettings';
 import BillingSettings from './BillingSettings';
 import AppearanceSettings from './AppearanceSettings';
+import AuditLogSettings from './AuditLogSettings';
 
 export default function SettingsLayout() {
   const [activeTab, setActiveTab] = useState('profile');
@@ -17,6 +18,7 @@ export default function SettingsLayout() {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: <User size={18} /> },
     { id: 'verification', label: 'Verification', icon: <BadgeCheck size={18} /> },
+    { id: 'audit', label: 'Audit Trail', icon: <ShieldCheck size={18} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={18} /> },
     { id: 'appearance', label: 'Appearance', icon: <Palette size={18} /> },
     { id: 'billing', label: 'Billing', icon: <CreditCard size={18} /> },
@@ -55,6 +57,7 @@ export default function SettingsLayout() {
         <div className="flex-1 bg-white dark:bg-[#161b22] rounded-3xl border border-gray-200 dark:border-gray-800/80 p-8 shadow-sm w-full">
           {activeTab === 'profile' && <ProfileSettings />}
           {activeTab === 'verification' && <VerificationSettings />}
+          {activeTab === 'audit' && <AuditLogSettings />}
           {activeTab === 'notifications' && <NotificationsSettings />}
           {activeTab === 'security' && <SecuritySettings />}
           {activeTab === 'billing' && <BillingSettings />}
