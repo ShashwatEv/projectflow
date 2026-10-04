@@ -19,6 +19,7 @@ export interface UserProfile {
   is_verified?: boolean;
   email_verified?: boolean;
   phone_verified?: boolean;
+  is_2fa_enabled?: boolean;
 }
 
 interface AuthContextType {

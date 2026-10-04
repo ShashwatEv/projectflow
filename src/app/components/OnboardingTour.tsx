@@ -1,99 +1,103 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
-  Compass, ArrowRight, ArrowLeft, X, Check, ShieldCheck, 
-  Sparkles, FolderKanban, CheckSquare, Code2, BarChart2 
+  ShieldCheck, Check, Sparkles, FolderKanban, 
+  CheckSquare, Code2, BarChart2, ShieldAlert,
+  ArrowRight, Layers
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
+import { useAccentTheme } from '../../lib/useAccentTheme';
+import OnboardingSpotlight from './OnboardingSpotlight';
 import { toast } from 'sonner';
 
 interface TourStep {
   title: string;
   path: string;
+  selector: string;
   description: string;
   actionHint: string;
-  icon: React.ReactNode;
 }
 
 const TOUR_STEPS: TourStep[] = [
   {
-    title: 'Welcome to ProjectFlow Dashboard',
+    title: 'Workspace Command Hub',
     path: '/dashboard',
-    description: 'Your central command hub. Monitor real-time project counts, active workspace members, overall velocity, and high-level deliverables at a glance.',
-    actionHint: 'Review quick metrics and recent workspace activity.',
-    icon: <Sparkles className="text-orange-500" size={22} />,
+    selector: 'main',
+    description: 'Your central command center. Monitor overall sprint velocity, active team contributors, and upcoming milestones at a glance.',
+    actionHint: 'Look over top-level metrics and your daily delivery timeline.',
   },
   {
-    title: 'Manage & Collaborate on Projects',
-    path: '/projects',
-    description: 'Organize your team goals into dedicated workspaces. Track progress meters, assign owners, and drill down into individual Kanban boards.',
-    actionHint: 'Create or inspect a project board to view sprint tasks.',
-    icon: <FolderKanban className="text-orange-500" size={22} />,
-  },
-  {
-    title: 'Track Personal & Team Deliverables',
+    title: 'Safe Sandbox Kanban Board',
     path: '/tasks',
-    description: 'Switch between an agile Kanban board and a compact List view. Filter by due date, prioritize urgent blockers, and manage sub-tasks with one click.',
-    actionHint: 'Click any task to view discussions or drag across columns.',
-    icon: <CheckSquare className="text-orange-500" size={22} />,
+    selector: '[data-tour="kanban-board"], main',
+    description: 'Interactive sprint board. As a new user, actions taken here remain in Safe Sandbox Mode until your identity and 2FA are validated.',
+    actionHint: 'Drag demo cards between columns to test real-time state changes.',
   },
   {
-    title: 'Code Studio & AI Assistant',
+    title: 'Collaborative Projects',
+    path: '/projects',
+    selector: 'main',
+    description: 'Organize work into repositories and initiatives. Connect GitHub repositories to synchronize commit trees and branches.',
+    actionHint: 'Create or inspect workspaces linked with repository remotes.',
+  },
+  {
+    title: 'In-Browser Code Studio',
     path: '/code',
-    description: 'Inspect GitHub repositories in-browser, open desktop VS Code deep-links, test edits in Monaco Editor, and ask the pooled Gemini AI assistant for instant reviews.',
-    actionHint: 'Commit files, switch branches, or open pull requests.',
-    icon: <Code2 className="text-orange-500" size={22} />,
+    selector: 'main',
+    description: 'Inspect code buffers, review git diffs against remote HEAD, execute sandboxed terminal tasks, and get Gemini AI assistance.',
+    actionHint: 'Test the Monaco editor and the in-memory JS terminal sandbox.',
   },
   {
-    title: 'Monitor Velocity & Analytics',
+    title: 'Team Velocity & Analytics',
     path: '/analytics',
-    description: 'Real-time charts powered by Supabase. Review your team completion rate, workload distribution by priority, and progress milestones.',
-    actionHint: 'Analyze team performance graphs updated live.',
-    icon: <BarChart2 className="text-orange-500" size={22} />,
+    selector: 'main',
+    description: 'Real-time telemetry showing workload distribution by priority and completion ratios across all active repositories.',
+    actionHint: 'Inspect velocity charts powered by Supabase realtime feeds.',
   },
 ];
 
 export default function OnboardingTour() {
   const { user } = useAuth();
+  const theme = useAccentTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isTourOpen, startTour, closeTour, isSandboxActive, promoteUserToLive, canMutateDatabase } = useOnboardingSandbox();
 
-  const [isVisible, setIsVisible] = useState<boolean>(false);
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
   const [agreedTerms, setAgreedTerms] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Check if user has already finished onboarding
+  // Auto-prompt tour on first visit if not yet completed
   useEffect(() => {
-    async function checkStatus() {
+    async function checkTourStatus() {
       if (!user?.id) return;
 
-      const localCompleted = localStorage.getItem(`pf_tour_${user.id}`);
-      if (localCompleted === 'true') return;
+      const localDone = localStorage.getItem(`pf_tour_${user.id}`);
+      if (localDone === 'true') return;
 
       try {
         const { data } = await supabase
           .from('users')
           .select('onboarding_completed')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (!data?.onboarding_completed) {
-          setIsVisible(true);
+          startTour();
         } else {
           localStorage.setItem(`pf_tour_${user.id}`, 'true');
         }
       } catch {
-        setIsVisible(true);
+        startTour();
       }
     }
 
-    checkStatus();
-  }, [user]);
+    checkTourStatus();
+  }, [user?.id]);
 
-  // Navigate when step changes
   const goToStep = (index: number) => {
     if (index >= 0 && index < TOUR_STEPS.length) {
       setCurrentStepIndex(index);
@@ -102,8 +106,7 @@ export default function OnboardingTour() {
         navigate(targetPath);
       }
     } else if (index >= TOUR_STEPS.length) {
-      // Reached the end -> open terms modal
-      setIsVisible(false);
+      closeTour();
       setShowTermsModal(true);
     }
   };
@@ -119,13 +122,13 @@ export default function OnboardingTour() {
   };
 
   const handleSkip = () => {
-    setIsVisible(false);
+    closeTour();
     setShowTermsModal(true);
   };
 
-  const handleCompleteOnboarding = async () => {
+  const handleCompleteTerms = async () => {
     if (!agreedTerms) {
-      toast.error('Please check the box to agree to the Terms & Conditions.');
+      toast.error('Please accept the workspace safety and collaboration agreement');
       return;
     }
 
@@ -138,8 +141,15 @@ export default function OnboardingTour() {
           .update({ onboarding_completed: true })
           .eq('id', user.id);
       }
+
+      if (canMutateDatabase) {
+        await promoteUserToLive();
+        toast.success('Onboarding complete! Full production workspace active.');
+      } else {
+        toast.info('Tour completed! You are in Safe Sandbox mode until 2FA & email verification are verified.');
+      }
+
       setShowTermsModal(false);
-      toast.success('Welcome aboard! You have completed workspace onboarding. 🚀');
       navigate('/dashboard');
     } catch {
       setShowTermsModal(false);
@@ -152,132 +162,106 @@ export default function OnboardingTour() {
 
   return (
     <>
-      {/* 1. Interactive Walkthrough Floating Guide Box */}
-      {isVisible && step && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 max-w-[calc(100vw-3rem)] bg-[#161b22] border-2 border-orange-500/80 rounded-2xl shadow-2xl p-5 text-xs text-gray-200 animate-in slide-in-from-bottom-5 duration-300">
-          {/* Header Row */}
-          <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-orange-950/40 border border-orange-500/30">
-                {step.icon}
-              </div>
-              <div>
-                <span className="font-bold text-[10px] uppercase text-orange-400 tracking-wider">
-                  Step {currentStepIndex + 1} of {TOUR_STEPS.length}
-                </span>
-                <h4 className="font-bold text-sm text-white line-clamp-1">{step.title}</h4>
-              </div>
-            </div>
-
-            <button
-              onClick={handleSkip}
-              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
-              title="Skip Tour"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Description & Action Hint */}
-          <div className="py-3.5 space-y-2">
-            <p className="text-gray-300 leading-relaxed text-xs">{step.description}</p>
-            <div className="bg-[#0d1117] p-2.5 rounded-xl border border-gray-800 text-[11px] text-gray-400 flex items-center gap-2">
-              <Compass size={14} className="text-orange-400 shrink-0" />
-              <span>{step.actionHint}</span>
-            </div>
-          </div>
-
-          {/* Footer Navigation Bar */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-            <button
-              type="button"
-              onClick={handleSkip}
-              className="text-gray-400 hover:text-white font-semibold text-[11px] hover:underline"
-            >
-              Skip Tour
-            </button>
-
-            <div className="flex items-center gap-2">
-              {currentStepIndex > 0 && (
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  className="px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold flex items-center gap-1 transition-all"
-                >
-                  <ArrowLeft size={13} />
-                  <span>Back</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleNext}
-                className="px-4 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95"
-              >
-                <span>{currentStepIndex === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}</span>
-                <ArrowRight size={13} />
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* 1. Dynamic Element Spotlight Mask */}
+      {isTourOpen && step && (
+        <OnboardingSpotlight
+          targetSelector={step.selector}
+          title={step.title}
+          description={step.description}
+          actionHint={step.actionHint}
+          stepIndex={currentStepIndex}
+          totalSteps={TOUR_STEPS.length}
+          onNext={handleNext}
+          onBack={handleBack}
+          onSkip={handleSkip}
+        />
       )}
 
-      {/* 2. Terms & Conditions Mandatory Agreement Modal */}
+      {/* 2. Workspace Access & Collaboration Agreement Modal */}
       {showTermsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl space-y-0">
             {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-800 bg-[#0d1117]/80 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-950/40 border border-orange-500/30 text-orange-400 flex items-center justify-center shrink-0">
-                <ShieldCheck size={20} />
+            <div className="px-6 py-5 border-b border-gray-800 bg-[#0d1117]/80 flex items-center gap-3.5">
+              <div className={`w-11 h-11 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 flex items-center justify-center shrink-0`}>
+                <ShieldCheck size={22} />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">Terms of Use & Community Agreement</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Please review and confirm to enter your workspace.</p>
+                <h3 className="font-bold text-base text-white">Workspace Security & Sandbox Policy</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Understand your access tier and workspace authority</p>
               </div>
             </div>
 
-            {/* Scrollable Terms Content */}
+            {/* Terms Explanations */}
             <div className="p-6 space-y-4 text-xs text-gray-300">
               <div className="bg-[#0d1117] p-4 rounded-2xl border border-gray-800 max-h-52 overflow-y-auto space-y-3 custom-scrollbar text-[11px] leading-relaxed">
-                <p className="font-semibold text-white">1. Workspace & Code Integrity</p>
-                <p className="text-gray-400">
-                  You agree to use ProjectFlow Code Studio, Monaco editor buffers, and integrated repositories in compliance with all relevant software licenses and security policies. Sensitive secrets and credentials should be stored securely using environment variables.
-                </p>
+                <div>
+                  <p className="font-bold text-white flex items-center gap-1.5">
+                    <Layers size={13} className={theme.textAccent} />
+                    1. Safe Sandbox Isolation
+                  </p>
+                  <p className="text-gray-400 mt-0.5">
+                    New accounts operate in an isolated draft sandbox. Card reordering and draft task edits do not overwrite production team data until you satisfy full account verification and 2FA.
+                  </p>
+                </div>
 
-                <p className="font-semibold text-white">2. AI Assistance Quotas</p>
-                <p className="text-gray-400">
-                  Integrated Gemini assistant queries are pooled across team members on the Developer tier. Automated queries must adhere to fair usage and non-abuse guidelines.
-                </p>
+                <div>
+                  <p className="font-bold text-white flex items-center gap-1.5">
+                    <Code2 size={13} className={theme.textAccent} />
+                    2. Code Studio & Terminal Security
+                  </p>
+                  <p className="text-gray-400 mt-0.5">
+                    Terminal commands run inside a sandboxed browser runtime. Outbound git commits and push requests require personal GitHub tokens and a verified identity badge.
+                  </p>
+                </div>
 
-                <p className="font-semibold text-white">3. Collaboration & Communication</p>
-                <p className="text-gray-400">
-                  Shared channels, direct messages, and task comments must remain respectful and constructive. Workspace administrators reserve the right to moderate shared content.
-                </p>
+                <div>
+                  <p className="font-bold text-white flex items-center gap-1.5">
+                    <Sparkles size={13} className={theme.textAccent} />
+                    3. Gemini AI Rate Limits
+                  </p>
+                  <p className="text-gray-400 mt-0.5">
+                    Integrated code review and pull request generation quotas are shared across the team. Automated queries adhere to workspace fair-use policies.
+                  </p>
+                </div>
               </div>
 
-              {/* Checkbox agreement */}
-              <label className="flex items-start gap-3 p-3 rounded-xl bg-[#0d1117]/50 border border-gray-800 cursor-pointer hover:border-gray-700 transition-colors">
+              {/* Status Warning Pill if unverified */}
+              {isSandboxActive && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-2.5 text-amber-400 text-[11px]">
+                  <ShieldAlert size={16} className="shrink-0" />
+                  <span>
+                    Your account is currently in <strong>Safe Sandbox Mode</strong>. Verify your email and configure 2FA in Settings to unlock direct database write authority.
+                  </span>
+                </div>
+              )}
+
+              {/* Checkbox */}
+              <label className="flex items-start gap-3 p-3 rounded-2xl bg-[#0d1117]/60 border border-gray-800 cursor-pointer hover:border-gray-700 transition-colors">
                 <input
                   type="checkbox"
                   checked={agreedTerms}
                   onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-700 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                  className={`mt-0.5 w-4 h-4 rounded border-gray-700 ${theme.toggleActive} focus:ring-0 cursor-pointer`}
                 />
                 <span className="text-xs text-gray-300 font-medium select-none">
-                  I have read and agree to the <strong>Terms of Service</strong> and <strong>Workspace Collaboration Guidelines</strong>.
+                  I understand the sandbox security policy and agree to the <strong>Community Terms of Service</strong>.
                 </span>
               </label>
 
-              {/* Submit Button */}
+              {/* Confirm Button */}
               <button
                 type="button"
-                onClick={handleCompleteOnboarding}
+                onClick={handleCompleteTerms}
                 disabled={!agreedTerms || submitting}
-                className="w-full py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold rounded-xl transition-all shadow-md active:scale-95 text-xs flex items-center justify-center gap-2"
+                className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-40 text-white font-bold rounded-2xl transition-all shadow-md active:scale-95 text-xs flex items-center justify-center gap-2`}
               >
-                <Check size={16} />
-                <span>Agree & Enter ProjectFlow</span>
+                {submitting ? (
+                  <Sparkles size={16} className="animate-spin" />
+                ) : (
+                  <Check size={16} />
+                )}
+                <span>Enter ProjectFlow Workspace</span>
               </button>
             </div>
           </div>

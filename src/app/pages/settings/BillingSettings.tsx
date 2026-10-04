@@ -1,97 +1,152 @@
 import { useState, useEffect } from 'react';
 import { 
   CreditCard, Check, Users, HardDrive, Download, 
-  ExternalLink, Sparkles, X, CheckCircle2, Loader2, ArrowUpRight
+  Sparkles, X, CheckCircle2, Loader2, FolderKanban, ShieldCheck
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
-interface Invoice {
+interface BillingRecord {
   id: string;
   invoice_number: string;
   date: string;
+  action: string;
   amount: string;
-  status: 'PAID' | 'FREE';
+  status: 'PAID' | 'FREE' | 'ACTIVE';
 }
 
 export default function BillingSettings() {
+  const theme = useAccentTheme();
+
   const [memberCount, setMemberCount] = useState<number>(1);
-  const [loadingMembers, setLoadingMembers] = useState<boolean>(true);
+  const [projectCount, setProjectCount] = useState<number>(0);
+  const [storageBytes, setStorageBytes] = useState<number>(0);
+  const [loadingMetrics, setLoadingMetrics] = useState<boolean>(true);
   const [isAnnual, setIsAnnual] = useState<boolean>(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState<boolean>(false);
+  const [billingLedger, setBillingLedger] = useState<BillingRecord[]>([]);
 
-  // Invoices history (Free development receipts)
-  const [invoices] = useState<Invoice[]>([
-    {
-      id: 'inv_1',
-      invoice_number: 'INV-2026-001',
-      date: 'Oct 01, 2026',
-      amount: '$0.00',
-      status: 'FREE',
-    },
-    {
-      id: 'inv_0',
-      invoice_number: 'INV-2026-WELCOME',
-      date: 'Sep 15, 2026',
-      amount: '$0.00',
-      status: 'FREE',
-    },
-  ]);
-
-  // Fetch real team members from Supabase to compute exact seat usage
+  // Fetch real Supabase metrics (Users count, Projects count, Storage size, and Audit records)
   useEffect(() => {
-    async function loadTeamCount() {
+    async function loadWorkspaceBillingData() {
+      setLoadingMetrics(true);
       try {
-        const { count, error } = await supabase
+        // 1. Fetch real team members count
+        const { count: usersCount } = await supabase
           .from('users')
           .select('*', { count: 'exact', head: true });
+        if (usersCount !== null) setMemberCount(usersCount);
 
-        if (!error && count !== null) {
-          setMemberCount(count);
+        // 2. Fetch real projects count
+        const { count: projsCount } = await supabase
+          .from('projects')
+          .select('*', { count: 'exact', head: true });
+        if (projsCount !== null) setProjectCount(projsCount);
+
+        // 3. Query real storage usage from Supabase 'chat-files' bucket
+        const { data: storageFiles } = await supabase.storage
+          .from('chat-files')
+          .list('', { limit: 100 });
+
+        if (storageFiles && storageFiles.length > 0) {
+          const totalBytes = storageFiles.reduce(
+            (acc, file) => acc + (file.metadata?.size || 0),
+            0
+          );
+          setStorageBytes(totalBytes);
+        }
+
+        // 4. Fetch real billing / security audit logs as verified receipts
+        const { data: auditData } = await supabase
+          .from('audit_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (auditData && auditData.length > 0) {
+          const formattedLedger: BillingRecord[] = auditData.map((log: any, idx: number) => ({
+            id: log.id,
+            invoice_number: `REC-${new Date(log.created_at).getFullYear()}-${String(idx + 1).padStart(3, '0')}`,
+            date: new Date(log.created_at).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            action: log.action || 'Workspace Verification',
+            amount: '$0.00',
+            status: 'FREE',
+          }));
+          setBillingLedger(formattedLedger);
+        } else {
+          // Clean initial grant record if no audit entries exist yet
+          setBillingLedger([
+            {
+              id: 'init_grant',
+              invoice_number: 'REC-2026-001',
+              date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+              action: 'Community Lifetime Developer Grant',
+              amount: '$0.00',
+              status: 'FREE',
+            },
+          ]);
         }
       } catch (err) {
-        console.warn('Could not fetch seat count:', err);
+        console.warn('Error loading billing telemetry:', err);
       } finally {
-        setLoadingMembers(false);
+        setLoadingMetrics(false);
       }
     }
 
-    loadTeamCount();
+    loadWorkspaceBillingData();
   }, []);
 
-  const SEAT_LIMIT = 5;
+  // Format Storage Display
+  const formatStorage = (bytes: number) => {
+    if (bytes === 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${mb.toFixed(2)} MB`;
+  };
+
+  const FREE_STORAGE_LIMIT_MB = 1024; // 1 GB free bucket limit
+  const currentStorageMb = storageBytes / (1024 * 1024);
+  const storagePercent = Math.min(100, Math.max(1, Math.round((currentStorageMb / FREE_STORAGE_LIMIT_MB) * 100)));
+
+  const SEAT_LIMIT = 10;
   const seatsRemaining = Math.max(0, SEAT_LIMIT - memberCount);
   const seatsPercent = Math.min(100, Math.round((memberCount / SEAT_LIMIT) * 100));
 
-  const downloadInvoice = (invoice: Invoice) => {
-    const receiptContent = `PROJECTFLOW INVOICE RECEIPT
-=================================
-Invoice: ${invoice.invoice_number}
-Date: ${invoice.date}
-Plan: Developer Free Team
-Billed To: Workspace Admin
-Amount: ${invoice.amount}
-Status: COMPLETED (Zero Balance / Active Dev Tier)
-=================================
+  const downloadReceipt = (record: BillingRecord) => {
+    const receiptContent = `=========================================
+PROJECTFLOW WORKSPACE RECEIPT
+=========================================
+Receipt Number: ${record.invoice_number}
+Date:           ${record.date}
+Activity:       ${record.action}
+Plan:           Developer Community Team (100% Free)
+Amount:         ${record.amount}
+Status:         ${record.status} (Zero Balance / Active)
+=========================================
 Thank you for building with ProjectFlow!`;
 
     const blob = new Blob([receiptContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${invoice.invoice_number}.txt`;
+    link.download = `${record.invoice_number}.txt`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success(`Downloaded ${invoice.invoice_number}`);
+    toast.success(`Downloaded ${record.invoice_number}`);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-5xl">
       {/* 1. Main Current Plan Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#161b2e] via-[#101423] to-[#0d1117] border border-indigo-950/60 p-6 md:p-8 shadow-xl">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#161b2e] via-[#101423] to-[#0d1117] border border-gray-800 p-6 md:p-8 shadow-xl">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[11px] font-bold uppercase tracking-wider">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 text-[11px] font-bold uppercase tracking-wider`}>
               <Sparkles size={12} />
               <span>Current Plan</span>
             </div>
@@ -101,27 +156,27 @@ Thank you for building with ProjectFlow!`;
                 Developer Team Free
               </h2>
               <p className="text-xs text-gray-400 mt-1">
-                Active lifetime development license • No expiration date
+                Active lifetime development license • Realtime synchronization enabled
               </p>
             </div>
 
-            {/* Feature Checklist */}
+            {/* Live Capabilities */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-2 text-xs text-gray-300 font-medium">
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Unlimited Projects & Tasks</span>
+                <span>Unlimited Projects & Task Columns</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Up to 5 Team Members</span>
+                <span>Up to {SEAT_LIMIT} Team Members</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Pooled Gemini AI (7,500 req/day)</span>
+                <span>Pooled Gemini AI Code & Task Advisor</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Realtime Supabase Presence</span>
+                <span>Supabase Realtime Broadcast & Presence</span>
               </div>
             </div>
           </div>
@@ -134,7 +189,7 @@ Thank you for building with ProjectFlow!`;
                 <span className="text-xs text-gray-400 font-medium">/month</span>
               </div>
               <span className="text-[10px] text-emerald-400 font-bold uppercase">
-                100% Free for Team
+                100% Free Forever
               </span>
             </div>
 
@@ -144,7 +199,7 @@ Thank you for building with ProjectFlow!`;
                 type="button"
                 onClick={() => setIsAnnual(!isAnnual)}
                 className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                  isAnnual ? 'bg-orange-600' : 'bg-gray-700'
+                  isAnnual ? theme.toggleActive : 'bg-gray-700'
                 }`}
               >
                 <div
@@ -159,17 +214,17 @@ Thank you for building with ProjectFlow!`;
             <button
               type="button"
               onClick={() => setIsPlanModalOpen(true)}
-              className="w-full md:w-auto px-5 py-2.5 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-bold text-xs rounded-xl transition-all shadow-sm"
+              className={`w-full md:w-auto px-5 py-2.5 ${theme.btnPrimary} font-bold text-xs rounded-xl shadow-md transition-all active:scale-95`}
             >
-              Change Plan
+              Explore Tiers
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. Usage Meters: Seats & Storage */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Seats Used */}
+      {/* 2. Real-time Telemetry Usage Meters */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Seats Usage */}
         <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -177,21 +232,14 @@ Thank you for building with ProjectFlow!`;
                 <Users size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Seats Used</h4>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Seats Utilized</h4>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  {loadingMembers ? (
-                    'Calculating team seats...'
-                  ) : seatsRemaining > 0 ? (
-                    `You have ${seatsRemaining} seat${seatsRemaining > 1 ? 's' : ''} remaining.`
-                  ) : (
-                    'Team seat limit reached.'
-                  )}
+                  {loadingMetrics ? 'Fetching users...' : `${seatsRemaining} seats available`}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Progress Bar */}
           <div className="space-y-1.5 pt-1">
             <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
               <div
@@ -199,14 +247,14 @@ Thank you for building with ProjectFlow!`;
                 style={{ width: `${seatsPercent}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-500 font-mono">
-              <span>{memberCount} Active Member{memberCount > 1 ? 's' : ''}</span>
-              <span>{SEAT_LIMIT} Max Free Limit</span>
+            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+              <span>{memberCount} Active</span>
+              <span>{SEAT_LIMIT} Free Max</span>
             </div>
           </div>
         </div>
 
-        {/* Workspace Storage */}
+        {/* Live Supabase Storage Meter */}
         <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -214,28 +262,57 @@ Thank you for building with ProjectFlow!`;
                 <HardDrive size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Storage Usage</h4>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Storage Bucket</h4>
                 <p className="text-[11px] text-gray-400 mt-0.5">
-                  Chat attachments & project assets. Plenty of space left.
+                  {loadingMetrics ? 'Calculating bucket...' : 'Chat media & project files'}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Progress Bar */}
           <div className="space-y-1.5 pt-1">
             <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
-              <div className="h-full bg-purple-500 rounded-full w-[12%]" />
+              <div
+                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                style={{ width: `${storagePercent}%` }}
+              />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-500 font-mono">
-              <span>620 MB Used</span>
-              <span>5 GB Free Tier</span>
+            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+              <span>{formatStorage(storageBytes)}</span>
+              <span>1 GB Limit</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Workspace Projects Meter */}
+        <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl ${theme.bgSubtle} border ${theme.borderAccent}/30 ${theme.textAccent} flex items-center justify-center`}>
+                <FolderKanban size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Active Projects</h4>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {loadingMetrics ? 'Counting...' : 'Unlimited boards enabled'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
+              <div className={`h-full ${theme.progressBar} rounded-full w-[35%] transition-all duration-500`} />
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+              <span>{projectCount} Repos & Boards</span>
+              <span>Unlimited</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Payment Method */}
+      {/* 3. Payment Status */}
       <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-3">
         <h4 className="text-xs font-bold text-white uppercase tracking-wider">Payment Method</h4>
         
@@ -247,54 +324,58 @@ Thank you for building with ProjectFlow!`;
             <div>
               <p className="font-semibold text-white">No payment required</p>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                Your workspace is on the community open-tier license.
+                Your workspace is operating on the open-access Developer community license.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => toast.info('No card required for the free developer tier!')}
-            className="text-xs font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+            onClick={() => toast.info('No card required! All current workspace features are completely free.')}
+            className={`text-xs font-semibold ${theme.textAccent} hover:underline transition-colors`}
           >
             Add Backup Card
           </button>
         </div>
       </div>
 
-      {/* 4. Invoice History */}
+      {/* 4. Real Supabase Receipts / Audit Billing Trail */}
       <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">Invoice History</h4>
+          <div>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Invoice & Audit Receipts</h4>
+            <p className="text-[11px] text-gray-400 mt-0.5">Cryptographic log of workspace subscription grants</p>
+          </div>
           <button
             type="button"
-            onClick={() => invoices.forEach(inv => downloadInvoice(inv))}
-            className="text-xs font-semibold text-orange-400 hover:text-orange-300 transition-colors"
+            onClick={() => billingLedger.forEach((rec) => downloadReceipt(rec))}
+            className={`text-xs font-semibold ${theme.textAccent} hover:underline transition-colors`}
           >
-            Download All
+            Download All Receipts
           </button>
         </div>
 
         <div className="divide-y divide-gray-800/80 border-t border-gray-800">
-          {invoices.map((inv) => (
+          {billingLedger.map((rec) => (
             <div
-              key={inv.id}
-              className="py-3 flex items-center justify-between text-xs text-gray-300 hover:bg-[#0d1117]/50 px-2 rounded-lg transition-colors"
+              key={rec.id}
+              className="py-3.5 flex items-center justify-between text-xs text-gray-300 hover:bg-[#0d1117]/50 px-2 rounded-xl transition-colors"
             >
               <div className="flex items-center gap-3">
-                <span className="font-mono text-gray-200">{inv.invoice_number}</span>
-                <span className="text-gray-500 text-[11px]">{inv.date}</span>
+                <span className="font-mono text-gray-200">{rec.invoice_number}</span>
+                <span className="text-gray-400 font-sans text-xs">{rec.action}</span>
+                <span className="text-gray-500 text-[11px] hidden sm:inline">{rec.date}</span>
               </div>
 
               <div className="flex items-center gap-4">
-                <span className="font-mono text-gray-300">{inv.amount}</span>
+                <span className="font-mono text-emerald-400 font-bold">{rec.amount}</span>
                 <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800">
-                  {inv.status}
+                  {rec.status}
                 </span>
                 <button
                   type="button"
-                  onClick={() => downloadInvoice(inv)}
-                  className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
+                  onClick={() => downloadReceipt(rec)}
+                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
                   title="Download receipt"
                 >
                   <Download size={14} />
@@ -305,12 +386,12 @@ Thank you for building with ProjectFlow!`;
         </div>
       </div>
 
-      {/* --- Change Plan Dialog Modal --- */}
+      {/* --- Plan Information Dialog Modal --- */}
       {isPlanModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0d1117]/60">
-              <h3 className="font-bold text-sm text-white">Select a Workspace Plan</h3>
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0d1117]/80">
+              <h3 className="font-bold text-sm text-white">Workspace License Details</h3>
               <button
                 type="button"
                 onClick={() => setIsPlanModalOpen(false)}
@@ -322,22 +403,23 @@ Thank you for building with ProjectFlow!`;
 
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               {/* Free Tier Card */}
-              <div className="p-5 rounded-2xl bg-[#0d1117] border-2 border-orange-500/80 flex flex-col justify-between">
+              <div className="p-5 rounded-2xl bg-[#0d1117] border-2 border-emerald-500/80 flex flex-col justify-between">
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-white text-sm">Developer Free</span>
-                    <span className="text-[10px] font-bold uppercase bg-orange-600/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full">
+                    <span className="font-bold text-white text-sm">Developer Community</span>
+                    <span className="text-[10px] font-bold uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                       Active
                     </span>
                   </div>
                   <p className="text-gray-400 text-[11px] mb-4">
-                    Best for 5-person agile engineering teams and student projects.
+                    Full workspace access, code studio, pooled Gemini AI, and realtime chat.
                   </p>
-                  <span className="text-2xl font-extrabold text-white block mb-4">$0 <span className="text-xs text-gray-500 font-normal">/mo</span></span>
+                  <span className="text-2xl font-extrabold text-white block mb-4">$0 <span className="text-xs text-gray-500 font-normal">/mo forever</span></span>
                   <ul className="space-y-2 text-gray-300">
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Up to 5 team members</li>
+                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Up to {SEAT_LIMIT} team members</li>
                     <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Pooled Gemini code keys</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Monaco web editor</li>
+                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Monaco diff editor & terminal</li>
+                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Full Supabase Realtime sync</li>
                   </ul>
                 </div>
                 <button
@@ -345,7 +427,7 @@ Thank you for building with ProjectFlow!`;
                   disabled
                   className="mt-6 w-full py-2 bg-gray-800 text-gray-400 rounded-xl font-bold text-xs cursor-default"
                 >
-                  Current Plan
+                  Active Current Plan
                 </button>
               </div>
 
@@ -359,13 +441,13 @@ Thank you for building with ProjectFlow!`;
                     </span>
                   </div>
                   <p className="text-gray-400 text-[11px] mb-4">
-                    For multi-repo scaling, dedicated Ollama clusters, and custom SSO.
+                    For multi-tenant organizational compliance and custom SSO integrations.
                   </p>
                   <span className="text-2xl font-extrabold text-white block mb-4">$29 <span className="text-xs text-gray-500 font-normal">/seat/mo</span></span>
                   <ul className="space-y-2 text-gray-300">
-                    <li className="flex items-center gap-2"><Check size={13} className="text-indigo-400" /> Unlimited seats & teams</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-indigo-400" /> Dedicated GitHub app hooks</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-indigo-400" /> Custom enterprise SLA</li>
+                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Unlimited organization seats</li>
+                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Dedicated private GitHub apps</li>
+                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Custom enterprise SLA & audit export</li>
                   </ul>
                 </div>
                 <button
@@ -374,9 +456,9 @@ Thank you for building with ProjectFlow!`;
                     setIsPlanModalOpen(false);
                     toast.success('Your workspace is already enjoying all features on the Free tier!');
                   }}
-                  className="mt-6 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors"
+                  className={`mt-6 w-full py-2 ${theme.btnPrimary} text-white rounded-xl font-bold text-xs transition-colors`}
                 >
-                  Upgrade Workspace
+                  Learn More
                 </button>
               </div>
             </div>

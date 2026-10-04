@@ -2,7 +2,9 @@ import { useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
+import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
 import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Toaster } from 'sonner';
 
 // Component Imports
 import { ModernHeader } from './components/ModernHeader';
@@ -16,6 +18,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
+import TwoFactorVerify from './pages/TwoFactorVerify';
 import SettingsLayout from './pages/settings/SettingsLayout';
 
 // Feature Pages
@@ -42,8 +45,6 @@ const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({
     </div>
   ) 
 })));
-
-import { Toaster } from 'sonner';
 
 const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
@@ -110,52 +111,55 @@ export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Toaster richColors position="top-right" />
-        <BrowserRouter>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+        <OnboardingSandboxProvider>
+          <Toaster richColors position="top-right" />
+          <BrowserRouter>
+            <Routes>
+              {/* Public Authentication Routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/2fa" element={<TwoFactorVerify />} />
 
-            {/* Protected Workspace Routes */}
-            <Route element={<RequireAuth />}>
-              <Route element={<Layout />}>
-                {/* Redirect root to Dashboard */}
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                
-                {/* Work & Sprint Engineering */}
-                <Route path="/tasks" element={<MyTasks />} />
-                <Route path="/projects" element={<Projects />} />
-                <Route path="/projects/:id" element={<ProjectDetail />} />
-                <Route path="/sprint-planner" element={<SprintPlanner />} />
-                <Route path="/code" element={<CodeStudio />} />
-                <Route path="/api-playground" element={<ApiPlayground />} />
-                <Route path="/timesheets" element={<Timesheets />} />
-                <Route path="/automations" element={<Automations />} />
-                
-                {/* Team & Collaboration */}
-                <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
-                <Route path="/messages/:roomId" element={<Messages />} />
-                <Route path="/team" element={<Team />} />
-                <Route path="/calendar" element={<Calendar />} />
+              {/* Protected Workspace Routes */}
+              <Route element={<RequireAuth />}>
+                <Route element={<Layout />}>
+                  {/* Redirect root to Dashboard */}
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  
+                  {/* Work & Sprint Engineering */}
+                  <Route path="/tasks" element={<MyTasks />} />
+                  <Route path="/projects" element={<Projects />} />
+                  <Route path="/projects/:id" element={<ProjectDetail />} />
+                  <Route path="/sprint-planner" element={<SprintPlanner />} />
+                  <Route path="/code" element={<CodeStudio />} />
+                  <Route path="/api-playground" element={<ApiPlayground />} />
+                  <Route path="/timesheets" element={<Timesheets />} />
+                  <Route path="/automations" element={<Automations />} />
+                  
+                  {/* Team & Collaboration */}
+                  <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
+                  <Route path="/messages/:roomId" element={<Messages />} />
+                  <Route path="/team" element={<Team />} />
+                  <Route path="/calendar" element={<Calendar />} />
 
-                {/* Account & Analytics */}
-                <Route path="/notifications" element={<Notifications />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/profile/:id" element={<Profile />} />
-                <Route path="/analytics" element={<Analytics />} />
+                  {/* Account & Analytics */}
+                  <Route path="/notifications" element={<Notifications />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile/:id" element={<Profile />} />
+                  <Route path="/analytics" element={<Analytics />} />
 
-                {/* Settings */}
-                <Route path="/settings" element={<SettingsLayout />} />
+                  {/* Settings */}
+                  <Route path="/settings" element={<SettingsLayout />} />
+                </Route>
               </Route>
-            </Route>
-            
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </BrowserRouter>
+              
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </OnboardingSandboxProvider>
       </ThemeProvider>
     </AuthProvider>
   );

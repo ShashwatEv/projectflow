@@ -15,11 +15,11 @@ import {
   Code2,
   Sparkles,
   Terminal,
-  Activity
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import GettingStartedWidget from './GettingStartedWidget';
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -156,6 +156,11 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
           <NavItem to="/team" icon={<Users size={18} />} label="Team" isActive={location.pathname === '/team'} theme={theme} onClick={onClose} />
           <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} />
         </nav>
+
+        {/* Getting Started Sandbox Checklist Widget */}
+        <div className="px-3 pb-2">
+          <GettingStartedWidget />
+        </div>
 
         <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-1">
           <NavItem to="/settings" icon={<Settings size={18} />} label="Settings" isActive={location.pathname.startsWith('/settings')} theme={theme} onClick={onClose} />

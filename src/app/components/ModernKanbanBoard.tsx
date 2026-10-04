@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShieldAlert, Sparkles } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { toast } from 'sonner';
 
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
@@ -23,6 +24,8 @@ interface ModernKanbanBoardProps {
 
 export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   const theme = useAccentTheme();
+  const { isSandboxActive, sandboxTasks, updateSandboxTaskStatus } = useOnboardingSandbox();
+
   const [loading, setLoading] = useState(true);
   const [columns, setColumns] = useState<ColumnData>({
     todo: [],
@@ -31,7 +34,34 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     done: [],
   });
 
+  // 1. Load sandbox tasks or live Supabase tasks
   const fetchTasks = async () => {
+    if (isSandboxActive) {
+      const grouped: ColumnData = {
+        todo: [],
+        inProgress: [],
+        review: [],
+        done: [],
+      };
+
+      sandboxTasks.forEach((t) => {
+        const hasTag = (tag: string) => t.tags.includes(tag);
+        if (hasTag('inProgress') || hasTag('in_progress')) {
+          grouped.inProgress.push(t);
+        } else if (hasTag('review')) {
+          grouped.review.push(t);
+        } else if (hasTag('done')) {
+          grouped.done.push(t);
+        } else {
+          grouped.todo.push(t);
+        }
+      });
+
+      setColumns(grouped);
+      setLoading(false);
+      return;
+    }
+
     try {
       let query = supabase
         .from('tasks')
@@ -54,7 +84,6 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
       (data || []).forEach((t: any) => {
         const rawStatus = (t.status || 'todo') as string;
-        // Normalize status names to match column keys
         const colKey: ColumnType =
           rawStatus === 'in_progress' || rawStatus === 'inProgress'
             ? 'inProgress'
@@ -96,6 +125,8 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   useEffect(() => {
     fetchTasks();
 
+    if (isSandboxActive) return;
+
     const channel = supabase
       .channel('kanban_realtime_stream')
       .on(
@@ -110,10 +141,17 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [projectId]);
+  }, [projectId, isSandboxActive, sandboxTasks]);
 
   const handleDrop = async (taskId: string, targetColumn: ColumnType) => {
-    // 1. Optimistic UI update
+    // A. Handle Safe Sandbox Drag & Drop
+    if (isSandboxActive) {
+      updateSandboxTaskStatus(taskId, targetColumn);
+      toast.info('Card moved locally (Safe Sandbox Mode)');
+      return;
+    }
+
+    // B. Handle Production Database Update
     setColumns((prevColumns) => {
       let sourceColumn: ColumnType | null = null;
       let taskToMove: ModernTask | null = null;
@@ -137,22 +175,17 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       return next;
     });
 
-    // 2. Persist to Supabase
     try {
-      const dbStatus =
-        targetColumn === 'inProgress'
-          ? 'in_progress'
-          : targetColumn;
-
+      const dbStatus = targetColumn === 'inProgress' ? 'in_progress' : targetColumn;
       const { error } = await supabase
         .from('tasks')
         .update({ status: dbStatus })
         .eq('id', taskId);
 
       if (error) throw error;
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to update task status');
-      fetchTasks(); // Rollback on network failure
+      fetchTasks();
     }
   };
 
@@ -166,33 +199,50 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar">
-        <ModernKanbanColumn
-          title="To Do"
-          tasks={columns.todo}
-          color="bg-slate-400"
-          onDrop={(taskId) => handleDrop(taskId, 'todo')}
-        />
-        <ModernKanbanColumn
-          title="In Progress"
-          tasks={columns.inProgress}
-          color="bg-blue-500"
-          onDrop={(taskId) => handleDrop(taskId, 'inProgress')}
-        />
-        <ModernKanbanColumn
-          title="Review"
-          tasks={columns.review}
-          color="bg-amber-500"
-          onDrop={(taskId) => handleDrop(taskId, 'review')}
-        />
-        <ModernKanbanColumn
-          title="Done"
-          tasks={columns.done}
-          color="bg-emerald-500"
-          onDrop={(taskId) => handleDrop(taskId, 'done')}
-        />
-      </div>
-    </DndProvider>
+    <div data-tour="kanban-board" className="space-y-4">
+      {/* Sandbox Isolation Header Banner */}
+      {isSandboxActive && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <ShieldAlert size={16} className="shrink-0" />
+            <span>
+              <strong>Safe Sandbox Active:</strong> Tasks shown here are isolated mock drafts. Drag and test without affecting the team.
+            </span>
+          </div>
+          <span className="text-[10px] font-bold font-mono uppercase bg-amber-500/20 px-2 py-0.5 rounded-lg shrink-0">
+            Isolated
+          </span>
+        </div>
+      )}
+
+      <DndProvider backend={HTML5Backend}>
+        <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar">
+          <ModernKanbanColumn
+            title="To Do"
+            tasks={columns.todo}
+            color="bg-slate-400"
+            onDrop={(taskId) => handleDrop(taskId, 'todo')}
+          />
+          <ModernKanbanColumn
+            title="In Progress"
+            tasks={columns.inProgress}
+            color="bg-blue-500"
+            onDrop={(taskId) => handleDrop(taskId, 'inProgress')}
+          />
+          <ModernKanbanColumn
+            title="Review"
+            tasks={columns.review}
+            color="bg-amber-500"
+            onDrop={(taskId) => handleDrop(taskId, 'review')}
+          />
+          <ModernKanbanColumn
+            title="Done"
+            tasks={columns.done}
+            color="bg-emerald-500"
+            onDrop={(taskId) => handleDrop(taskId, 'done')}
+          />
+        </div>
+      </DndProvider>
+    </div>
   );
 }

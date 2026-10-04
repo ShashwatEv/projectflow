@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
+import { recordAuditLog } from '../../lib/auditLogger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
@@ -19,14 +20,71 @@ export default function Login() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim();
+
+      // 1. Authenticate credentials via Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
       });
 
       if (error) throw error;
 
-      if (data.session) {
+      if (data.user) {
+        // 2. Query 2FA status for this account
+        const { data: userProfile } = await supabase
+          .from('users')
+          .select('id, is_2fa_enabled, two_factor_channel, two_factor_target')
+          .eq('id', data.user.id)
+          .maybeSingle();
+
+        // If 2FA is active, challenge user with 6-digit OTP
+        if (userProfile?.is_2fa_enabled) {
+          const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+          const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+          // Store temporary verification challenge in users row
+          await supabase
+            .from('users')
+            .update({
+              two_factor_otp: generatedOtp,
+              two_factor_otp_expires_at: expiresAt,
+            })
+            .eq('id', data.user.id);
+
+          // Dispatch authentication token
+          await supabase.auth.signInWithOtp({
+            email: cleanEmail,
+          });
+
+          await recordAuditLog('2FA challenge initiated on sign-in', 'security', {
+            target: userProfile.two_factor_target || cleanEmail,
+          });
+
+          const channel = userProfile.two_factor_channel || 'email';
+          const target = userProfile.two_factor_target || cleanEmail;
+          const masked =
+            channel === 'phone'
+              ? target.slice(0, 3) + '••••' + target.slice(-3)
+              : target.replace(/(.{2})(.*)(?=@)/, (_: string, a: string, b: string) => a + '•'.repeat(b.length));
+
+          toast.info(`Two-Factor Authentication required. Code sent to your ${channel}.`);
+
+          // Redirect to 2FA challenge page
+          navigate('/2fa', {
+            state: {
+              userId: data.user.id,
+              email: cleanEmail,
+              channel,
+              maskedTarget: masked,
+            },
+            replace: true,
+          });
+          return;
+        }
+
+        // Standard login without 2FA
+        await recordAuditLog('User signed in', 'security');
         toast.success('Welcome back!');
         navigate('/dashboard');
       }
