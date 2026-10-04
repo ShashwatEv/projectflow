@@ -10,6 +10,8 @@ import SecuritySettings from './SecuritySettings';
 import BillingSettings from './BillingSettings';
 import AppearanceSettings from './AppearanceSettings';
 import AuditLogSettings from './AuditLogSettings';
+import DataPortabilitySettings from './DataPortabilitySettings';
+import { Database } from 'lucide-react';
 
 export default function SettingsLayout() {
   const [activeTab, setActiveTab] = useState('profile');
@@ -23,6 +25,7 @@ export default function SettingsLayout() {
     { id: 'appearance', label: 'Appearance', icon: <Palette size={18} /> },
     { id: 'billing', label: 'Billing', icon: <CreditCard size={18} /> },
     { id: 'security', label: 'Security', icon: <Shield size={18} /> },
+    { id: 'portability', label: 'Data Portability', icon: <Database size={18} /> },
   ];
 
   return (
@@ -62,6 +65,7 @@ export default function SettingsLayout() {
           {activeTab === 'security' && <SecuritySettings />}
           {activeTab === 'billing' && <BillingSettings />}
           {activeTab === 'appearance' && <AppearanceSettings />}
+          {activeTab === 'portability' && <DataPortabilitySettings />}
         </div>
       </div>
     </div>

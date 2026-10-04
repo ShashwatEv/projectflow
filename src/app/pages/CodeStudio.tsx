@@ -17,6 +17,7 @@ import { dispatchAutomation } from '../../lib/automationTrigger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import { recordAuditLog } from '../../lib/auditLogger';
 
 const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
@@ -244,6 +245,7 @@ export default function CodeStudio() {
   };
 
   // Commit & Push
+  // Commit & Push
   const handleCommitAndPush = async () => {
     if (!isVerified) {
       toast.error('Identity Verification Required', {
@@ -297,6 +299,11 @@ export default function CodeStudio() {
           setActiveFileSha(resData.content.sha);
           setOriginalShaContent(activeFileContent);
         }
+
+        await recordAuditLog(`Pushed commit to ${activeFile}`, 'integrations', {
+          branch: selectedBranch,
+          repo: repoInput,
+        });
 
         await dispatchAutomation({
           event: 'code_pushed',
@@ -741,6 +748,8 @@ export default function CodeStudio() {
         token={githubToken}
         currentBranch={selectedBranch}
         defaultBaseBranch="main"
+        activeFile={activeFile}
+        activeFileContent={activeFileContent}
       />
 
       {/* Monaco Diff Modal */}

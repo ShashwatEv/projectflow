@@ -21,7 +21,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabaseClient';
-import HeaderTaskTimer from '../components/HeaderTaskTimer';
+import HeaderTaskTimer from './HeaderTaskTimer';
 
 interface SearchProject {
   id: string;

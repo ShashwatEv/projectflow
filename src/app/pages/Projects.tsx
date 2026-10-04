@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+import { recordAuditLog } from '../../lib/auditLogger';
 
 const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
@@ -127,7 +128,7 @@ export default function Projects() {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id;
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('projects')
         .insert({
           name: newProjectName.trim(),
@@ -136,9 +137,16 @@ export default function Projects() {
           status: 'active',
           progress: 0,
           owner_id: currentUserId,
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      await recordAuditLog(`Created project "${newProjectName.trim()}"`, 'projects', {
+        repo: newProjectRepo.trim() || null,
+        projectId: data?.id,
+      });
 
       toast.success('Project created successfully!');
       setIsCreateModalOpen(false);

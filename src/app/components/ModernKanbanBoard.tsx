@@ -1,148 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { Loader2 } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
-
-const initialTasks: ModernTask[] = [
-  {
-    id: '1',
-    title: 'Redesign Dashboard UI',
-    description: 'Update the main dashboard with new design system',
-    priority: 'high',
-    assignees: [
-      { name: 'Sarah', avatar: '' },
-      { name: 'Mike', avatar: '' },
-    ],
-    dueDate: 'Jan 12',
-    comments: 5,
-    attachments: 3,
-    tags: ['Design', 'UI/UX'],
-  },
-  {
-    id: '2',
-    title: 'Implement Authentication',
-    description: 'Add OAuth2.0 and JWT token support',
-    priority: 'urgent',
-    assignees: [
-      { name: 'John', avatar: '' },
-    ],
-    dueDate: 'Jan 8',
-    comments: 8,
-    attachments: 2,
-    tags: ['Backend', 'Security'],
-  },
-  {
-    id: '3',
-    title: 'Database Migration',
-    description: 'Migrate from PostgreSQL to distributed database',
-    priority: 'medium',
-    assignees: [
-      { name: 'Emma', avatar: '' },
-      { name: 'Chris', avatar: '' },
-    ],
-    dueDate: 'Jan 15',
-    comments: 3,
-    attachments: 1,
-    tags: ['Backend', 'DevOps'],
-  },
-  {
-    id: '4',
-    title: 'Mobile App Testing',
-    description: 'Complete QA testing for iOS and Android builds',
-    priority: 'high',
-    assignees: [
-      { name: 'Lisa', avatar: '' },
-      { name: 'Tom', avatar: '' },
-      { name: 'Jake', avatar: '' },
-    ],
-    dueDate: 'Jan 10',
-    comments: 12,
-    attachments: 5,
-    tags: ['QA', 'Mobile'],
-  },
-  {
-    id: '5',
-    title: 'API Documentation',
-    description: 'Write comprehensive API docs with examples',
-    priority: 'low',
-    assignees: [
-      { name: 'Alex', avatar: '' },
-    ],
-    dueDate: 'Jan 18',
-    comments: 2,
-    attachments: 0,
-    tags: ['Documentation'],
-  },
-  {
-    id: '6',
-    title: 'Performance Optimization',
-    description: 'Reduce page load time and improve Core Web Vitals',
-    priority: 'high',
-    assignees: [
-      { name: 'Sarah', avatar: '' },
-      { name: 'Mike', avatar: '' },
-    ],
-    dueDate: 'Jan 14',
-    comments: 7,
-    attachments: 4,
-    tags: ['Frontend', 'Performance'],
-  },
-  {
-    id: '7',
-    title: 'Code Review Sprint 3',
-    description: 'Review all PRs from Sprint 3 before deployment',
-    priority: 'medium',
-    assignees: [
-      { name: 'John', avatar: '' },
-      { name: 'Emma', avatar: '' },
-    ],
-    dueDate: 'Jan 9',
-    comments: 15,
-    attachments: 0,
-    tags: ['Review'],
-  },
-  {
-    id: '8',
-    title: 'Deploy to Production',
-    description: 'Final deployment with monitoring setup',
-    priority: 'urgent',
-    assignees: [
-      { name: 'Chris', avatar: '' },
-    ],
-    dueDate: 'Jan 20',
-    comments: 4,
-    attachments: 2,
-    tags: ['DevOps', 'Deployment'],
-  },
-  {
-    id: '9',
-    title: 'User Feedback Analysis',
-    description: 'Analyze user feedback from beta testing',
-    priority: 'medium',
-    assignees: [
-      { name: 'Lisa', avatar: '' },
-    ],
-    dueDate: 'Jan 16',
-    comments: 6,
-    attachments: 1,
-    tags: ['Research'],
-  },
-  {
-    id: '10',
-    title: 'Fix Critical Bugs',
-    description: 'Address high-priority bugs reported by QA',
-    priority: 'urgent',
-    assignees: [
-      { name: 'Mike', avatar: '' },
-      { name: 'John', avatar: '' },
-    ],
-    dueDate: 'Jan 7',
-    comments: 10,
-    attachments: 3,
-    tags: ['Bug Fix', 'Critical'],
-  },
-];
+import { supabase } from '../../lib/supabaseClient';
+import { useAccentTheme } from '../../lib/useAccentTheme';
+import { toast } from 'sonner';
 
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
 
@@ -153,20 +17,107 @@ interface ColumnData {
   done: ModernTask[];
 }
 
-export function ModernKanbanBoard() {
+interface ModernKanbanBoardProps {
+  projectId?: string;
+}
+
+export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
+  const theme = useAccentTheme();
+  const [loading, setLoading] = useState(true);
   const [columns, setColumns] = useState<ColumnData>({
-    todo: initialTasks.slice(0, 3),
-    inProgress: initialTasks.slice(3, 6),
-    review: initialTasks.slice(6, 8),
-    done: initialTasks.slice(8, 10),
+    todo: [],
+    inProgress: [],
+    review: [],
+    done: [],
   });
 
-  const handleDrop = (taskId: string, targetColumn: ColumnType) => {
+  const fetchTasks = async () => {
+    try {
+      let query = supabase
+        .from('tasks')
+        .select('*, assigned_user:users(id, name, avatar)')
+        .order('created_at', { ascending: false });
+
+      if (projectId) {
+        query = query.eq('project_id', projectId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const grouped: ColumnData = {
+        todo: [],
+        inProgress: [],
+        review: [],
+        done: [],
+      };
+
+      (data || []).forEach((t: any) => {
+        const rawStatus = (t.status || 'todo') as string;
+        // Normalize status names to match column keys
+        const colKey: ColumnType =
+          rawStatus === 'in_progress' || rawStatus === 'inProgress'
+            ? 'inProgress'
+            : rawStatus === 'review'
+            ? 'review'
+            : rawStatus === 'done'
+            ? 'done'
+            : 'todo';
+
+        const taskItem: ModernTask = {
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          priority: (t.priority?.toLowerCase() || 'medium') as any,
+          assignees: t.assigned_user
+            ? [{ name: t.assigned_user.name || 'User', avatar: t.assigned_user.avatar || '/pfp.jpg' }]
+            : [],
+          dueDate: t.due_date ? new Date(t.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No date',
+          comments: t.comments_count || 0,
+          attachments: 0,
+          tags: t.tags || [t.priority || 'Task'],
+        };
+
+        if (grouped[colKey]) {
+          grouped[colKey].push(taskItem);
+        } else {
+          grouped.todo.push(taskItem);
+        }
+      });
+
+      setColumns(grouped);
+    } catch (err: any) {
+      console.error('Failed to load board tasks:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+
+    const channel = supabase
+      .channel('kanban_realtime_stream')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => {
+          fetchTasks();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [projectId]);
+
+  const handleDrop = async (taskId: string, targetColumn: ColumnType) => {
+    // 1. Optimistic UI update
     setColumns((prevColumns) => {
       let sourceColumn: ColumnType | null = null;
       let taskToMove: ModernTask | null = null;
 
-      // Find the task and its current column
       for (const [columnName, tasks] of Object.entries(prevColumns)) {
         const task = tasks.find((t: ModernTask) => t.id === taskId);
         if (task) {
@@ -176,20 +127,47 @@ export function ModernKanbanBoard() {
         }
       }
 
-      if (!sourceColumn || !taskToMove) return prevColumns;
+      if (!sourceColumn || !taskToMove || sourceColumn === targetColumn) {
+        return prevColumns;
+      }
 
-      // Move task to new column
-      const newColumns = { ...prevColumns };
-      newColumns[sourceColumn] = newColumns[sourceColumn].filter((t) => t.id !== taskId);
-      newColumns[targetColumn] = [...newColumns[targetColumn], taskToMove];
-
-      return newColumns;
+      const next = { ...prevColumns };
+      next[sourceColumn] = next[sourceColumn].filter((t) => t.id !== taskId);
+      next[targetColumn] = [taskToMove, ...next[targetColumn]];
+      return next;
     });
+
+    // 2. Persist to Supabase
+    try {
+      const dbStatus =
+        targetColumn === 'inProgress'
+          ? 'in_progress'
+          : targetColumn;
+
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: dbStatus })
+        .eq('id', taskId);
+
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error('Failed to update task status');
+      fetchTasks(); // Rollback on network failure
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
+        <Loader2 size={30} className={`animate-spin ${theme.textAccent}`} />
+        <p className="text-xs">Synchronizing Kanban board...</p>
+      </div>
+    );
+  }
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="flex gap-6 overflow-x-auto pb-6">
+      <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar">
         <ModernKanbanColumn
           title="To Do"
           tasks={columns.todo}

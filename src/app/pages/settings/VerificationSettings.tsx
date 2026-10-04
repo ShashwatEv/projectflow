@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
+import { recordAuditLog } from '../../../lib/auditLogger';
 
 const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
 
@@ -111,6 +112,7 @@ export default function VerificationSettings() {
   };
 
   // Verify the genuine Supabase OTP
+  // Verify the genuine Supabase OTP
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.email || otpCode.trim().length < 6) return;
@@ -136,18 +138,18 @@ export default function VerificationSettings() {
 
       if (dbError) throw dbError;
 
+      await recordAuditLog(`User identity email verified: ${user.email}`, 'security');
+
       setEmailVerified(true);
       setIsFullyVerified(true);
       setOtpSent(false);
       setOtpCode('');
       setActiveChannel(null);
 
-      // Trigger global event so the App banner and headers update immediately
       window.dispatchEvent(new Event('storage'));
 
       toast.success('Your email is officially verified! Verified badge awarded.');
 
-      // Soft refresh state to reflect verified banner dismissal
       setTimeout(() => {
         window.location.reload();
       }, 1000);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Send, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import SmartTaskAdvisor from './SmartTaskAdvisor';
 
 interface Comment {
   id: string;
@@ -116,18 +117,31 @@ export default function TaskDetailModal({ taskId, onClose, onUpdate }: TaskDetai
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
           
           {/* Description Section */}
-          <section>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-              Description
-            </h3>
-            <textarea
-              className="w-full min-h-[100px] p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:text-gray-200"
-              placeholder="Add a more detailed description..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={saveDescription} // Auto-save on click away
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                Description
+              </h3>
+              <textarea
+                className="w-full min-h-[100px] p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none dark:text-gray-200"
+                placeholder="Add a more detailed description..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onBlur={saveDescription}
+              />
+              <p className="text-xs text-gray-400 mt-1">Changes are saved automatically when you click outside.</p>
+            </div>
+
+            {/* AI Advisor for Velocity & Duplicate Insights */}
+            <SmartTaskAdvisor
+              currentTitle={task.title}
+              currentDescription={description}
+              existingTasks={[]}
+              onApplyEstimate={async (hrs) => {
+                await supabase.from('tasks').update({ estimate_hours: hrs }).eq('id', taskId);
+                onUpdate();
+              }}
             />
-            <p className="text-xs text-gray-400 mt-1">Changes are saved automatically when you click outside.</p>
           </section>
 
           {/* Comments Section */}
