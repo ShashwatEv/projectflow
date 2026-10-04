@@ -20,6 +20,8 @@ export interface UserProfile {
   email_verified?: boolean;
   phone_verified?: boolean;
   is_2fa_enabled?: boolean;
+  two_factor_channel?: 'email' | 'phone';
+  two_factor_target?: string;
 }
 
 interface AuthContextType {

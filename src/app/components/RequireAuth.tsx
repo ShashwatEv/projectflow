@@ -1,8 +1,8 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext'; // Fixed import path based on App.tsx
+import { useAuth } from '../../context/AuthContext';
 
 export default function RequireAuth() {
-  const { session, loading } = useAuth(); 
+  const { session, user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -14,8 +14,24 @@ export default function RequireAuth() {
   }
 
   if (!session) {
-    // 🟢 FIXED: Redirect to '/login', not '/'
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Enforce 2FA verification gate on existing sessions
+  const is2FaVerified = sessionStorage.getItem('pf_2fa_verified') === 'true';
+  if (user?.is_2fa_enabled && !is2FaVerified) {
+    return (
+      <Navigate 
+        to="/2fa" 
+        state={{ 
+          userId: user.id, 
+          email: user.email,
+          channel: user.two_factor_channel || 'email',
+          maskedTarget: user.two_factor_target || user.email 
+        }} 
+        replace 
+      />
+    );
   }
 
   return <Outlet />;

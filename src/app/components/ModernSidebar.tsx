@@ -177,7 +177,7 @@ function NavItem({ icon, label, to, isActive, badge, theme, onClick }: any) {
       onClick={onClick}
       className={`flex items-center px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
         isActive 
-          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border${theme.borderAccent}/30` 
+          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border ${theme.borderAccent}/30`
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200'
       }`}
     >
