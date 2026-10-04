@@ -42,7 +42,13 @@ interface SearchPage {
   icon: React.ReactNode;
 }
 
-export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
+interface ModernHeaderProps {
+  onMenuClick?: () => void;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
+}
+
+export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
@@ -179,6 +185,7 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
 
   return (
     <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
+      {/* Left Area: Mobile Menu + Workspace Toggle */}
       <div className="flex items-center gap-4">
         <button
           type="button"
@@ -189,18 +196,43 @@ export function ModernHeader({ onMenuClick }: { onMenuClick?: () => void }) {
           <Menu size={20} />
         </button>
 
-        <div className="hidden items-center text-sm text-gray-500 dark:text-gray-400 md:flex">
-          <span className="font-medium text-gray-900 dark:text-white">Workspace</span>
-          <ChevronRight size={14} className="mx-2 opacity-50" />
+        <div className="hidden items-center text-sm md:flex">
+          {/* Clickable Workspace Toggle (No Show/Hide Pill) */}
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title={isSidebarOpen ? "Collapse sidebar (Full view)" : "Expand sidebar"}
+            className="flex items-center gap-1 text-gray-900 dark:text-white font-bold tracking-tight hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors select-none cursor-pointer"
+          >
+            Workspace
+          </button>
+
+          <ChevronRight size={14} className="mx-2 opacity-50 text-gray-400" />
+          
           <Link
             to={location.pathname}
-            className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400"
+            className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-xs text-gray-500 dark:text-gray-400"
           >
             {getPageTitle()}
           </Link>
         </div>
       </div>
 
+      {/* Centered Brand Block */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none select-none">
+        <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
+          <img 
+            src="/favicon.ico" 
+            alt="ProjectFlow Logo" 
+            className="w-full h-full object-contain" 
+          />
+        </div>
+        <span className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
+          ProjectFlow
+        </span>
+      </div>
+
+      {/* Right Area: Search, Timer, Theme, Profile */}
       <div className="flex items-center gap-2 sm:gap-4">
         {/* Search */}
         <div className="relative hidden sm:block" ref={searchRef}>

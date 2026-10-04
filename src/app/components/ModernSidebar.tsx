@@ -26,7 +26,7 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
+export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
   const theme = useAccentTheme();
@@ -67,15 +67,20 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
     };
   }, [user?.id]);
 
+  // Dynamic slide & shrink classes for both desktop and mobile
   const sidebarClasses = `
-    fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-gray-800 
-    transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-full flex flex-col
-    ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+    fixed inset-y-0 left-0 z-40 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-gray-800 
+    transition-all duration-300 ease-in-out lg:static lg:h-full flex flex-col overflow-hidden shrink-0
+    ${isOpen 
+      ? 'w-64 translate-x-0 opacity-100' 
+      : 'w-0 -translate-x-full lg:w-0 lg:translate-x-0 opacity-0 pointer-events-none border-none'
+    }
   `;
 
   return (
     <>
-      {isOpen && (
+      {/* Mobile Backdrop Overlay */}
+      {isOpen && onClose && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm transition-opacity"
           onClick={onClose}
@@ -83,24 +88,18 @@ export function ModernSidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       <aside className={sidebarClasses}>
-        {/* Logo Section */}
-        <div className="h-16 flex-shrink-0 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center">
-            <div className="w-8 h-8 rounded-lg bg-white p-1 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-3 shrink-0">
-              <img 
-                src="/favicon.ico" 
-                alt="ProjectFlow Logo" 
-                className="w-full h-full object-contain" 
-              />
-            </div>
-            <span className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">ProjectFlow</span>
-          </div>
-          {onClose && (
-            <button onClick={onClose} className="lg:hidden text-gray-500 hover:text-gray-700">
-              <X size={20} />
+        {/* Mobile Close Button (Brand Logo has migrated to ModernHeader center) */}
+        {onClose && (
+          <div className="h-12 flex-shrink-0 flex items-center justify-end px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
+            <button 
+              type="button"
+              onClick={onClose} 
+              className="p-1 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
+            >
+              <X size={18} />
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Main Navigation */}
         <nav className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
@@ -177,7 +176,7 @@ function NavItem({ icon, label, to, isActive, badge, theme, onClick }: any) {
       onClick={onClick}
       className={`flex items-center px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
         isActive 
-          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border ${theme.borderAccent}/30`
+          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border${theme.borderAccent}/30` 
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200'
       }`}
     >

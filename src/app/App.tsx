@@ -58,6 +58,7 @@ function PageLoader() {
 
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -89,15 +90,25 @@ function Layout() {
         </div>
       )}
 
-      <ModernHeader onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+      {/* Modern Header with Clickable Workspace Toggle */}
+      <ModernHeader 
+        onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+      />
       
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Dynamic Expandable/Collapsible Sidebar */}
         <ModernSidebar 
-          isOpen={isMobileMenuOpen} 
-          onClose={() => setIsMobileMenuOpen(false)} 
+          isOpen={isSidebarOpen || isMobileMenuOpen} 
+          onClose={() => {
+            setIsMobileMenuOpen(false);
+            setIsSidebarOpen(false);
+          }} 
         />
         
-        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full">
+        {/* Main Content Area: Smoothly transitions into full-width canvas view when sidebar is closed */}
+        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-all duration-300 ease-in-out">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
           </Suspense>
