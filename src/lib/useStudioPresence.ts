@@ -1,44 +1,60 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
-export interface PresenceUser {
-  userId: string;
-  name: string;
-  activeFile: string;
-}
-
-export function useStudioPresence(projectId: string, activeFile: string) {
-  const [activePeers, setActivePeers] = useState<PresenceUser[]>([]);
+export function useStudioPresence(projectId?: string, activeFile?: string) {
+  const { user } = useAuth();
+  const [activePeers, setActivePeers] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !user?.id) return;
 
-    const channelName = `studio_presence_${projectId}`;
-    const room = supabase.channel(channelName);
+    // Use authentic profile avatar from AuthContext
+    const userAny = user as any;
+    const myAvatar = 
+      user.avatar || 
+      userAny.user_metadata?.avatar_url || 
+      userAny.avatar_url || 
+      '';
 
-    room
+    const channel = supabase.channel(`studio_presence_${projectId}`, {
+      config: {
+        presence: {
+          key: user.id, // Keying by user.id deduplicates multiple tabs or strict-mode sessions
+        },
+      },
+    });
+
+    channel
       .on('presence', { event: 'sync' }, () => {
-        const state = room.presenceState();
-        const users: PresenceUser[] = [];
-        Object.values(state).forEach((items: any) => {
-          items.forEach((u: PresenceUser) => users.push(u));
+        const state = channel.presenceState();
+        const peers: any[] = [];
+
+        Object.entries(state).forEach(([key, presences]: [string, any]) => {
+          // EXCLUDE YOURSELF: Only show real teammates who are not you
+          if (key !== user.id) {
+            presences.forEach((p: any) => peers.push(p));
+          }
         });
-        setActivePeers(users);
+
+        setActivePeers(peers);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await room.track({
-            userId: localStorage.getItem('pf_user_id') || 'guest',
-            name: localStorage.getItem('pf_user_name') || 'Team Member',
-            activeFile,
+          await channel.track({
+            userId: user.id,
+            name: user.name || user.email?.split('@')[0] || 'Engineer',
+            avatar: myAvatar,
+            activeFile: activeFile || '',
+            onlineAt: new Date().toISOString(),
           });
         }
       });
 
     return () => {
-      supabase.removeChannel(room);
+      supabase.removeChannel(channel);
     };
-  }, [projectId, activeFile]);
+  }, [projectId, user?.id, activeFile]);
 
   return activePeers;
 }

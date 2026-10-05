@@ -50,7 +50,6 @@ interface ChatMessage {
   timestamp: string;
 }
 
-// Build clean, authorized headers without sending invalid tokens
 function getGitHubHeaders(token: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
@@ -87,6 +86,9 @@ export default function CodeStudio() {
   );
   const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
 
+  // Dynamic Repository Owner Avatar
+  const [repoOwnerAvatar, setRepoOwnerAvatar] = useState<string>('');
+
   // Branches & PR Modal
   const [branches, setBranches] = useState<string[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
@@ -108,7 +110,7 @@ export default function CodeStudio() {
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true);
 
-  // AI Assistant States (Multi-turn conversation transcript)
+  // AI Assistant States (Multi-turn transcript)
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -122,7 +124,21 @@ export default function CodeStudio() {
   const decorationsRef = useRef<string[]>([]);
   const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>({});
 
-  // Auto-scroll chat to bottom
+  // Resolve Repository Owner GitHub Avatar dynamically
+  useEffect(() => {
+    if (repoInput && repoInput.includes('/')) {
+      const owner = repoInput.split('/')[0]?.trim();
+      if (owner) {
+        setRepoOwnerAvatar(`https://github.com/${owner}.png`);
+      } else {
+        setRepoOwnerAvatar('');
+      }
+    } else {
+      setRepoOwnerAvatar('');
+    }
+  }, [repoInput]);
+
+  // Auto-scroll chat transcript to bottom
   useEffect(() => {
     if (showAiDrawer) {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -269,7 +285,7 @@ export default function CodeStudio() {
         { headers }
       );
 
-      // Branch fallback check (main -> master)
+      // Fallback check (main -> master)
       if (res.status === 404 && branchName === 'main') {
         const fallbackRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
@@ -454,7 +470,7 @@ export default function CodeStudio() {
     }
   };
 
-  // AI Assistant Handler with immediate user message render
+  // Multi-turn AI Assistant Handler
   const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const query = (customQuery || aiPrompt).trim();
@@ -582,23 +598,52 @@ export default function CodeStudio() {
             </select>
           </div>
 
-          {/* Active Presence Peer Badges */}
-          {activePeers.length > 0 && (
-            <div className="hidden xl:flex items-center gap-1.5 pl-2 border-l border-gray-700">
-              <Users size={13} className="text-emerald-400" />
-              <div className="flex -space-x-1.5">
-                {activePeers.slice(0, 3).map((peer: any, i: number) => (
-                  <img
-                    key={i}
-                    src={peer.avatar || '/pfp.jpg'}
-                    alt={peer.name}
-                    title={`${peer.name} viewing ${peer.activeFile || 'project'}`}
-                    className="w-5 h-5 rounded-full border border-gray-800 object-cover"
-                  />
-                ))}
+          {/* Active Repository Owner Avatar & Collaborator Presence */}
+          <div className="flex items-center gap-2 pl-2.5 border-l border-gray-700/80">
+            {repoOwnerAvatar ? (
+              <a
+                href={`https://github.com/${repoInput.split('/')[0]}`}
+                target="_blank"
+                rel="noreferrer"
+                title={`Repository Owner: ${repoInput.split('/')[0]}`}
+                className="relative group block"
+              >
+                <img
+                  src={repoOwnerAvatar}
+                  alt={repoInput.split('/')[0]}
+                  onError={(e) => {
+                    e.currentTarget.src = user?.avatar || '/pfp.jpg';
+                  }}
+                  className="w-6 h-6 rounded-full border border-gray-700 object-cover ring-1 ring-emerald-500/40 hover:ring-emerald-400 transition-all shadow-xs"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-[#161b22]" />
+              </a>
+            ) : (
+              <img
+                src={user?.avatar || '/pfp.jpg'}
+                alt="Profile"
+                className="w-6 h-6 rounded-full border border-gray-700 object-cover"
+              />
+            )}
+
+            {/* Active Collaborators */}
+            {activePeers.length > 0 && (
+              <div className="hidden xl:flex items-center gap-1.5 pl-1.5 border-l border-gray-700/60">
+                <Users size={13} className="text-emerald-400" />
+                <div className="flex -space-x-1.5">
+                  {activePeers.slice(0, 3).map((peer: any, i: number) => (
+                    <img
+                      key={i}
+                      src={peer.avatar || '/pfp.jpg'}
+                      alt={peer.name}
+                      title={`${peer.name} viewing ${peer.activeFile || 'project'}`}
+                      className="w-5 h-5 rounded-full border border-gray-800 object-cover"
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Action Controls */}
