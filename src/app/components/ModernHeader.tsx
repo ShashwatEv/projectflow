@@ -16,10 +16,12 @@ import {
   Users,
   X,
   Code2,
+  Sparkles,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { supabase } from '../../lib/supabaseClient';
 import HeaderTaskTimer from './HeaderTaskTimer';
 
@@ -51,6 +53,7 @@ interface ModernHeaderProps {
 export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { startTour } = useOnboardingSandbox();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -60,7 +63,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   const [projects, setProjects] = useState<SearchProject[]>([]);
   const [users, setUsers] = useState<SearchUser[]>([]);
 
-  // Local state to keep navbar avatar and name synchronized with database updates
   const [currentAvatar, setCurrentAvatar] = useState<string>(user?.avatar || '/pfp.jpg');
   const [currentName, setCurrentName] = useState<string>(user?.name || 'Guest');
   const [currentRole, setCurrentRole] = useState<string>(user?.role || 'Viewer');
@@ -68,7 +70,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Sync profile data on mount and whenever user changes
   useEffect(() => {
     if (user) {
       setCurrentAvatar(user.avatar || '/pfp.jpg');
@@ -77,7 +78,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     }
   }, [user]);
 
-  // Real-time synchronization when profile is updated from Profile.tsx
   useEffect(() => {
     const syncProfile = async () => {
       if (!user?.id) return;
@@ -91,12 +91,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         setCurrentAvatar(data.avatar || '/pfp.jpg');
         setCurrentName(data.name || 'Guest');
         setCurrentRole(data.role || 'Viewer');
-
-        if (user) {
-          user.avatar = data.avatar;
-          user.name = data.name;
-          user.role = data.role;
-        }
       }
     };
 
@@ -106,21 +100,11 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('id, name, status');
+      const { data: projectsData } = await supabase.from('projects').select('id, name, status');
+      if (projectsData) setProjects(projectsData);
 
-      if (!projectsError && projectsData) {
-        setProjects(projectsData);
-      }
-
-      const { data: usersData, error: usersError } = await supabase
-        .from('users')
-        .select('id, name, avatar, role');
-
-      if (!usersError && usersData) {
-        setUsers(usersData);
-      }
+      const { data: usersData } = await supabase.from('users').select('id, name, avatar, role');
+      if (usersData) setUsers(usersData);
     };
 
     fetchData();
@@ -131,7 +115,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
       }
-
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false);
       }
@@ -147,8 +130,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
     { name: 'Projects', path: '/projects', icon: <FolderKanban size={14} /> },
     { name: 'Team', path: '/team', icon: <Users size={14} /> },
-    { name: 'Calendar', path: '/calendar', icon: <Sun size={14} /> },
-    { name: 'Analytics', path: '/analytics', icon: <Sun size={14} /> },
     { name: 'Settings', path: '/settings', icon: <Settings size={14} /> },
   ];
 
@@ -197,18 +178,15 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         </button>
 
         <div className="hidden items-center text-sm md:flex">
-          {/* Clickable Workspace Toggle (No Show/Hide Pill) */}
           <button
             type="button"
             onClick={onToggleSidebar}
-            title={isSidebarOpen ? "Collapse sidebar (Full view)" : "Expand sidebar"}
+            title={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             className="flex items-center gap-1 text-gray-900 dark:text-white font-bold tracking-tight hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors select-none cursor-pointer"
           >
             Workspace
           </button>
-
           <ChevronRight size={14} className="mx-2 opacity-50 text-gray-400" />
-          
           <Link
             to={location.pathname}
             className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400 font-medium text-xs text-gray-500 dark:text-gray-400"
@@ -221,11 +199,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       {/* Centered Brand Block */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none select-none">
         <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
-          <img 
-            src="/favicon.ico" 
-            alt="ProjectFlow Logo" 
-            className="w-full h-full object-contain" 
-          />
+          <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
         </div>
         <span className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
           ProjectFlow
@@ -249,8 +223,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
               type="text"
               placeholder="Search or jump to... (Ctrl + K)"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
+              onChange={(e) => {
+                setQuery(e.target.value);
                 setShowResults(true);
               }}
               onFocus={() => setShowResults(true)}
@@ -259,12 +233,11 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             {query && (
               <button
                 type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
+                onClick={(e) => {
+                  e.stopPropagation();
                   setQuery('');
                   setShowResults(false);
                 }}
-                aria-label="Clear search"
                 className="absolute right-2.5 top-2.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
               >
                 <X size={14} />
@@ -283,9 +256,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                 <div className="max-h-[70vh] overflow-y-auto py-2">
                   {filteredPages.length > 0 && (
                     <div className="mb-2">
-                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                        Pages
-                      </h4>
+                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Pages</h4>
                       {filteredPages.map((page) => (
                         <button
                           type="button"
@@ -293,9 +264,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                           onClick={() => handleSearchResultClick(page.path)}
                           className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
                         >
-                          <div className="rounded-md bg-gray-100 p-1.5 text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-                            {page.icon}
-                          </div>
+                          <div className="rounded-md bg-gray-100 p-1.5 text-gray-500 dark:bg-gray-700 dark:text-gray-300">{page.icon}</div>
                           {page.name}
                         </button>
                       ))}
@@ -304,9 +273,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
                   {filteredProjects.length > 0 && (
                     <div className="mb-2">
-                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                        Projects
-                      </h4>
+                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Projects</h4>
                       {filteredProjects.map((project) => (
                         <button
                           type="button"
@@ -314,79 +281,35 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                           onClick={() => handleSearchResultClick(`/projects/${project.id}`)}
                           className="flex w-full items-center justify-between px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
                         >
-                          <div className="flex items-center gap-3">
-                            <div className="rounded-md bg-indigo-50 p-1.5 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-                              <FileText size={14} />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                              {project.name}
-                            </span>
-                          </div>
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500 dark:bg-gray-700">
-                            {project.status}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {filteredUsers.length > 0 && (
-                    <div>
-                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                        Team
-                      </h4>
-                      {filteredUsers.map((searchUser) => (
-                        <button
-                          type="button"
-                          key={searchUser.id}
-                          onClick={() => handleSearchResultClick(`/profile/${searchUser.id}`)}
-                          className="flex w-full items-center gap-3 px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                        >
-                          <img
-                            src={searchUser.avatar || '/pfp.jpg'}
-                            onError={(e) => { e.currentTarget.src = '/pfp.jpg'; }}
-                            className="h-7 w-7 rounded-full object-cover bg-gray-200"
-                            alt=""
-                          />
-                          <div>
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                              {searchUser.name}
-                            </p>
-                            <p className="text-xs text-gray-400">{searchUser.role}</p>
-                          </div>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{project.name}</span>
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500 dark:bg-gray-700">{project.status}</span>
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                  No results found for "{query}"
-                </div>
+                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">No results for "{query}"</div>
               )}
             </div>
           )}
         </div>
 
-        {/* Live Active Task / Pomodoro Timer */}
+        {/* Task Timer */}
         <HeaderTaskTimer />
 
         {/* Theme Toggle */}
         <button
           type="button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-          title="Toggle Theme"
           className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
-        {/* Notifications Link */}
+        {/* Notifications */}
         <Link
           to="/notifications"
-          aria-label="Notifications"
-          title="Notifications"
           className="relative rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           <Bell size={20} />
@@ -395,13 +318,11 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
         <div className="mx-1 h-8 w-px bg-gray-200 dark:bg-gray-700" />
 
-        {/* User Profile Button with Synchronized Local Avatar */}
+        {/* User Profile Button */}
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             onClick={() => setIsProfileOpen((current) => !current)}
-            aria-expanded={isProfileOpen}
-            aria-label="Open profile menu"
             className="flex items-center gap-3 rounded-xl border border-transparent p-1.5 transition-all hover:border-gray-200 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-gray-800"
           >
             <div className="hidden text-right md:block">
@@ -411,9 +332,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
             <img
               src={currentAvatar}
-              onError={(e) => {
-                e.currentTarget.src = '/pfp.jpg';
-              }}
+              onError={(e) => { e.currentTarget.src = '/pfp.jpg'; }}
               alt={currentName}
               className="h-9 w-9 rounded-lg object-cover bg-gray-800 border border-gray-700/60"
             />
@@ -448,7 +367,21 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                   <Settings size={16} />
                   Settings
                 </button>
+                
+                {/* Re-trigger Guided Tour from Header */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    startTour();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                >
+                  <Sparkles size={16} />
+                  Restart Onboarding Tour
+                </button>
               </div>
+
               <div className="border-t border-gray-100 p-2 dark:border-gray-700">
                 <button
                   type="button"

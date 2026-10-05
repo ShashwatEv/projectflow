@@ -4,7 +4,8 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
-  GitPullRequest, Lock, Unlock, FileDiff, Users, User
+  GitPullRequest, Lock, Unlock, FileDiff, Users, User,
+  Plus, ArrowDownToLine, GitFork
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
@@ -50,6 +51,14 @@ interface ChatMessage {
   timestamp: string;
 }
 
+interface OpenTab {
+  path: string;
+  sha: string;
+  content: string;
+  originalContent: string;
+  isDirty: boolean;
+}
+
 function getGitHubHeaders(token: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.v3+json',
@@ -89,19 +98,20 @@ export default function CodeStudio() {
   // Dynamic Repository Owner Avatar
   const [repoOwnerAvatar, setRepoOwnerAvatar] = useState<string>('');
 
-  // Branches & PR Modal
+  // Branches & New Branch Modal
   const [branches, setBranches] = useState<string[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isPrModalOpen, setIsPrModalOpen] = useState<boolean>(false);
+  const [showNewBranchModal, setShowNewBranchModal] = useState<boolean>(false);
+  const [newBranchName, setNewBranchName] = useState<string>('');
+  const [isCreatingBranch, setIsCreatingBranch] = useState<boolean>(false);
 
-  // File tree and active file states
-  const [files, setFiles] = useState<FileTreeItem[]>([]);
+  // Multi-tab buffer state
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
   const [activeFile, setActiveFile] = useState<string>('');
-  const [activeFileContent, setActiveFileContent] = useState<string>(
-    '// Select a file to view and edit'
-  );
-  const [originalShaContent, setOriginalShaContent] = useState<string>('');
-  const [activeFileSha, setActiveFileSha] = useState<string>('');
+
+  // File tree states
+  const [files, setFiles] = useState<FileTreeItem[]>([]);
   const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
   const [loadingContent, setLoadingContent] = useState<boolean>(false);
   const [savingFile, setSavingFile] = useState<boolean>(false);
@@ -110,7 +120,7 @@ export default function CodeStudio() {
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true);
 
-  // AI Assistant States (Multi-turn transcript)
+  // AI Assistant States
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -123,6 +133,12 @@ export default function CodeStudio() {
   const editorRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>({});
+
+  // Active tab convenience lookup
+  const activeTab = openTabs.find((t) => t.path === activeFile);
+  const activeFileContent = activeTab ? activeTab.content : '// Select a file from the explorer on the left';
+  const originalShaContent = activeTab ? activeTab.originalContent : '';
+  const activeFileSha = activeTab ? activeTab.sha : '';
 
   // Resolve Repository Owner GitHub Avatar dynamically
   useEffect(() => {
@@ -245,24 +261,27 @@ export default function CodeStudio() {
   };
 
   // 3. Fetch branches when repo updates
-  useEffect(() => {
-    async function loadBranches() {
-      if (!repoInput.includes('/')) return;
-      try {
-        const branchList = await fetchBranches(repoInput, githubToken);
-        if (branchList && branchList.length > 0) {
-          setBranches(branchList);
+  const loadBranches = async () => {
+    if (!repoInput.includes('/')) return;
+    try {
+      const branchList = await fetchBranches(repoInput, githubToken);
+      if (branchList && branchList.length > 0) {
+        setBranches(branchList);
+        if (!selectedBranch || !branchList.includes(selectedBranch)) {
           const targetBranch = branchList.includes('main') ? 'main' : (branchList[0] || 'main');
           setSelectedBranch(targetBranch);
-        } else {
-          setBranches(['main']);
-          setSelectedBranch('main');
         }
-      } catch {
+      } else {
         setBranches(['main']);
         setSelectedBranch('main');
       }
+    } catch {
+      setBranches(['main']);
+      setSelectedBranch('main');
     }
+  };
+
+  useEffect(() => {
     loadBranches();
   }, [repoInput, githubToken]);
 
@@ -271,9 +290,6 @@ export default function CodeStudio() {
     if (!repoName.includes('/') || !branchName) return;
     setLoadingFiles(true);
     setFiles([]);
-    setActiveFile('');
-    setActiveFileContent('// Select a file from the explorer on the left');
-    setOriginalShaContent('');
 
     const [owner, repo] = repoName.split('/');
 
@@ -320,12 +336,16 @@ export default function CodeStudio() {
     }
   }, [repoInput, selectedBranch, githubToken]);
 
-  // 5. Fetch file content
+  // 5. Open / Load File Content into Multi-Tab System
   const loadFileContent = async (item: FileTreeItem) => {
-    setActiveFile(item.path);
-    setActiveFileSha(item.sha);
-    setLoadingContent(true);
+    // If file is already open in tabs, just switch to it
+    const existing = openTabs.find((t) => t.path === item.path);
+    if (existing) {
+      setActiveFile(existing.path);
+      return;
+    }
 
+    setLoadingContent(true);
     const [owner, repo] = repoInput.split('/');
     const headers = getGitHubHeaders(githubToken);
 
@@ -340,13 +360,121 @@ export default function CodeStudio() {
         const decoded = decodeURIComponent(
           escape(window.atob(data.content.replace(/\s/g, '')))
         );
-        setActiveFileContent(decoded);
-        setOriginalShaContent(decoded);
+
+        const newTab: OpenTab = {
+          path: item.path,
+          sha: item.sha,
+          content: decoded,
+          originalContent: decoded,
+          isDirty: false,
+        };
+
+        setOpenTabs((prev) => [...prev, newTab]);
+        setActiveFile(item.path);
       }
     } catch {
       toast.error('Failed to read file content');
     } finally {
       setLoadingContent(false);
+    }
+  };
+
+  // Update content for currently active tab
+  const handleContentChange = (newVal: string) => {
+    setOpenTabs((prev) =>
+      prev.map((t) => {
+        if (t.path === activeFile) {
+          return {
+            ...t,
+            content: newVal,
+            isDirty: newVal !== t.originalContent,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  // Close Tab Handler
+  const handleCloseTab = (e: React.MouseEvent, path: string) => {
+    e.stopPropagation();
+    const tabToClose = openTabs.find((t) => t.path === path);
+    if (tabToClose?.isDirty) {
+      if (!confirm(`Discard unsaved changes in ${path}?`)) return;
+    }
+
+    const remaining = openTabs.filter((t) => t.path !== path);
+    setOpenTabs(remaining);
+
+    if (activeFile === path) {
+      setActiveFile(remaining.length > 0 ? remaining[remaining.length - 1]!.path : '');
+    }
+  };
+
+  // Branch Creation Directly on GitHub
+  const handleCreateBranch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const branchClean = newBranchName.trim().replace(/\s+/g, '-');
+    if (!branchClean) return;
+
+    if (!isVerified) {
+      toast.error('Identity Verification Required', {
+        description: 'Please verify your email address in Settings to create branches directly on GitHub.',
+        action: { label: 'Verify Now', onClick: () => navigate('/settings') },
+      });
+      return;
+    }
+
+    if (!githubToken.trim()) {
+      toast.error('GitHub Personal Access Token required to branch.');
+      setShowTokenInput(true);
+      return;
+    }
+
+    setIsCreatingBranch(true);
+    const [owner, repo] = repoInput.split('/');
+
+    try {
+      // 1. Get SHA of base branch
+      const refRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${selectedBranch || 'main'}`,
+        { headers: getGitHubHeaders(githubToken) }
+      );
+
+      if (!refRes.ok) throw new Error('Could not resolve base branch SHA.');
+      const refData = await refRes.json();
+      const baseSha = refData.object?.sha;
+
+      // 2. Create new branch ref
+      const createRes = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/refs`,
+        {
+          method: 'POST',
+          headers: {
+            ...getGitHubHeaders(githubToken),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ref: `refs/heads/${branchClean}`,
+            sha: baseSha,
+          }),
+        }
+      );
+
+      if (!createRes.ok) {
+        const errJson = await createRes.json().catch(() => ({}));
+        throw new Error(errJson.message || 'Branch creation rejected by GitHub');
+      }
+
+      toast.success(`Branch created: ${branchClean}`);
+      setShowNewBranchModal(false);
+      setNewBranchName('');
+      await loadBranches();
+      setSelectedBranch(branchClean);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create branch');
+    } finally {
+      setIsCreatingBranch(false);
     }
   };
 
@@ -400,10 +528,7 @@ export default function CodeStudio() {
     if (!isVerified) {
       toast.error('Identity Verification Required', {
         description: 'Please verify your email address to commit and push code changes directly to GitHub repositories.',
-        action: {
-          label: 'Verify Now',
-          onClick: () => navigate('/settings'),
-        },
+        action: { label: 'Verify Now', onClick: () => navigate('/settings') },
       });
       return;
     }
@@ -414,7 +539,7 @@ export default function CodeStudio() {
       return;
     }
 
-    if (!activeFile) {
+    if (!activeFile || !activeTab) {
       toast.error('No file selected');
       return;
     }
@@ -444,10 +569,16 @@ export default function CodeStudio() {
       const resData = await res.json();
       if (res.ok) {
         toast.success(`Committed & pushed ${activeFile}!`);
-        if (resData.content?.sha) {
-          setActiveFileSha(resData.content.sha);
-          setOriginalShaContent(activeFileContent);
-        }
+        const newSha = resData.content?.sha || activeFileSha;
+
+        // Reset dirty status on tab
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.path === activeFile
+              ? { ...t, sha: newSha, originalContent: t.content, isDirty: false }
+              : t
+          )
+        );
 
         await recordAuditLog(`Pushed commit to ${activeFile}`, 'integrations', {
           branch: selectedBranch,
@@ -470,7 +601,7 @@ export default function CodeStudio() {
     }
   };
 
-  // Multi-turn AI Assistant Handler
+  // AI Assistant Chat Handler
   const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const query = (customQuery || aiPrompt).trim();
@@ -503,13 +634,38 @@ export default function CodeStudio() {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
         sender: 'assistant',
-        text: `⚠️ **Error**: ${err.message || 'Could not communicate with the model. Verify your API key and connection.'}`,
+        text: `⚠️ **Error**: ${err.message || 'Could not communicate with the model.'}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setAiLoading(false);
     }
+  };
+
+  // Apply snippet directly into Monaco Editor buffer
+  const handleApplySnippetToEditor = (rawSnippet: string) => {
+    if (!editorRef.current) {
+      toast.error('Editor is not mounted');
+      return;
+    }
+
+    // Strip markdown code fences if present
+    const cleanSnippet = rawSnippet.replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+
+    const selection = editorRef.current.getSelection();
+    editorRef.current.executeEdits('ai-assistant', [
+      {
+        range: selection,
+        text: cleanSnippet,
+        forceMoveMarkers: true,
+      },
+    ]);
+
+    // Update active tab content state immediately
+    const updated = editorRef.current.getValue();
+    handleContentChange(updated);
+    toast.success('Applied snippet to editor buffer!');
   };
 
   const copyMessageText = (id: string, text: string) => {
@@ -582,8 +738,8 @@ export default function CodeStudio() {
             />
           </div>
 
-          {/* Branch Selector Dropdown */}
-          <div className="flex items-center gap-1.5 bg-[#0d1117] border border-gray-700 rounded-lg px-2 py-1">
+          {/* Branch Selector Dropdown & New Branch Trigger */}
+          <div className="flex items-center gap-1 bg-[#0d1117] border border-gray-700 rounded-lg px-2 py-1">
             <GitBranch size={13} className="text-indigo-400" />
             <select
               value={selectedBranch}
@@ -596,6 +752,13 @@ export default function CodeStudio() {
                 </option>
               ))}
             </select>
+            <button
+              onClick={() => setShowNewBranchModal(true)}
+              title="Create new branch from current base"
+              className="p-1 hover:text-white text-gray-400 hover:bg-gray-800 rounded transition-colors"
+            >
+              <Plus size={12} />
+            </button>
           </div>
 
           {/* Active Repository Owner Avatar & Collaborator Presence */}
@@ -683,10 +846,7 @@ export default function CodeStudio() {
               if (!isVerified) {
                 toast.error('Identity Verification Required', {
                   description: 'Please verify your email address to open pull requests.',
-                  action: {
-                    label: 'Verify Now',
-                    onClick: () => navigate('/settings'),
-                  },
+                  action: { label: 'Verify Now', onClick: () => navigate('/settings') },
                 });
                 return;
               }
@@ -776,8 +936,62 @@ export default function CodeStudio() {
             </button>
           </div>
           <span className="text-[11px] text-gray-400 hidden lg:inline">
-            Required for pushing commits, branches, and higher API rate limits.
+            Required for pushing commits, creating branches, and higher API rate limits.
           </span>
+        </div>
+      )}
+
+      {/* New Branch Modal */}
+      {showNewBranchModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+              <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
+                <GitFork size={16} />
+                <span>Create New Branch</span>
+              </div>
+              <button onClick={() => setShowNewBranchModal(false)} className="text-gray-400 hover:text-white">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400">
+              Branching from <strong className="text-white font-mono">{selectedBranch}</strong> in <strong className="text-white font-mono">{repoInput}</strong>.
+            </p>
+
+            <form onSubmit={handleCreateBranch} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-gray-300 font-semibold mb-1">Branch Name</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="feature/auth-pipeline"
+                  value={newBranchName}
+                  onChange={(e) => setNewBranchName(e.target.value)}
+                  className="w-full bg-[#0d1117] border border-gray-700 rounded-xl px-3 py-2 text-white font-mono outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewBranchModal(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingBranch || !newBranchName.trim()}
+                  className={`px-5 py-2 rounded-xl ${theme.btnPrimary} font-bold text-white flex items-center gap-1.5 disabled:opacity-50`}
+                >
+                  {isCreatingBranch && <Loader2 size={13} className="animate-spin" />}
+                  <span>Create & Checkout</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -831,8 +1045,46 @@ export default function CodeStudio() {
           </div>
         </div>
 
-        {/* Editor + Terminal Workspace */}
+        {/* Editor + Multi-Tab Strip + Terminal Workspace */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          
+          {/* Multi-File Tab Bar */}
+          <div className="h-9 bg-[#161b22] border-b border-gray-800 flex items-center px-2 gap-1 overflow-x-auto custom-scrollbar select-none shrink-0">
+            {openTabs.length === 0 ? (
+              <span className="text-[11px] text-gray-500 italic px-2">No files open in buffer</span>
+            ) : (
+              openTabs.map((tab) => {
+                const isActive = tab.path === activeFile;
+                const fileName = tab.path.split('/').pop() || tab.path;
+
+                return (
+                  <div
+                    key={tab.path}
+                    onClick={() => setActiveFile(tab.path)}
+                    className={`flex items-center gap-2 px-3 py-1 rounded-t-lg text-xs font-mono cursor-pointer transition-all border-b-2 ${
+                      isActive
+                        ? 'bg-[#0d1117] text-white border-indigo-500'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 border-transparent'
+                    }`}
+                  >
+                    <span>{fileName}</span>
+                    {/* Unsaved Changes Dirty Indicator */}
+                    {tab.isDirty && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400" title="Unsaved changes" />
+                    )}
+                    <button
+                      onClick={(e) => handleCloseTab(e, tab.path)}
+                      className="p-0.5 rounded hover:bg-gray-700/60 text-gray-500 hover:text-white"
+                      title="Close tab"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           <div className="flex-1 min-h-0 relative">
             {loadingContent ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d1117] z-10 space-y-2">
@@ -847,13 +1099,13 @@ export default function CodeStudio() {
               language={getLanguageFromPath(activeFile)}
               value={activeFileContent}
               onMount={handleEditorDidMount}
-              onChange={(val) => setActiveFileContent(val || '')}
+              onChange={(val) => handleContentChange(val || '')}
               options={{
                 fontSize: 13,
                 minimap: { enabled: true },
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
-                readOnly: isFileLockedByOther,
+                readOnly: isFileLockedByOther || !activeFile,
                 tabSize: 2,
               }}
             />
@@ -868,7 +1120,7 @@ export default function CodeStudio() {
           />
         </div>
 
-        {/* AI Assistant Side Drawer with Full Chat Transcript */}
+        {/* AI Assistant Side Drawer */}
         {showAiDrawer && (
           <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0 shadow-2xl animate-in slide-in-from-right-10 duration-200">
             {/* Drawer Header */}
@@ -887,7 +1139,7 @@ export default function CodeStudio() {
               {messages.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 space-y-2">
                   <Sparkles size={28} className="mx-auto text-purple-400/50" />
-                  <p className="text-xs">Ask the assistant to refactor, write unit tests, or review architecture in {activeFile || 'the buffer'}.</p>
+                  <p className="text-xs">Ask the assistant to refactor, write unit tests, or generate patches for {activeFile || 'the buffer'}.</p>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -914,20 +1166,36 @@ export default function CodeStudio() {
                         <span className="font-bold text-[10px] opacity-75">
                           {msg.sender === 'user' ? 'You' : 'Assistant'}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] opacity-50 font-mono">{msg.timestamp}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] opacity-50 font-mono mr-1">{msg.timestamp}</span>
+
                           {msg.sender === 'assistant' && (
-                            <button
-                              onClick={() => copyMessageText(msg.id, msg.text)}
-                              className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
-                              title="Copy response"
-                            >
-                              {copiedId === msg.id ? (
-                                <Check size={11} className="text-emerald-400" />
-                              ) : (
-                                <Copy size={11} />
+                            <>
+                              {/* Apply to Editor Button */}
+                              {activeFile && (
+                                <button
+                                  onClick={() => handleApplySnippetToEditor(msg.text)}
+                                  className="px-1.5 py-0.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded flex items-center gap-1 text-[10px] font-semibold"
+                                  title="Insert or replace active editor buffer"
+                                >
+                                  <ArrowDownToLine size={10} />
+                                  <span>Apply</span>
+                                </button>
                               )}
-                            </button>
+
+                              {/* Copy Button */}
+                              <button
+                                onClick={() => copyMessageText(msg.id, msg.text)}
+                                className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
+                                title="Copy response"
+                              >
+                                {copiedId === msg.id ? (
+                                  <Check size={11} className="text-emerald-400" />
+                                ) : (
+                                  <Copy size={11} />
+                                )}
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
