@@ -4,7 +4,7 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import { 
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
-  GitPullRequest, Lock, Unlock, FileDiff, Users
+  GitPullRequest, Lock, Unlock, FileDiff, Users, User
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
@@ -41,6 +41,27 @@ interface PeerCursor {
   lineNumber: number;
   column: number;
   file: string;
+}
+
+interface ChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+}
+
+// Build clean, authorized headers without sending invalid tokens
+function getGitHubHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+  const trimmed = token?.trim();
+  if (trimmed && trimmed.length > 8 && trimmed !== 'undefined' && trimmed !== 'null') {
+    headers['Authorization'] = trimmed.startsWith('github_pat_')
+      ? `Bearer ${trimmed}`
+      : `token ${trimmed}`;
+  }
+  return headers;
 }
 
 export default function CodeStudio() {
@@ -87,18 +108,26 @@ export default function CodeStudio() {
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
   const [isTerminalOpen, setIsTerminalOpen] = useState<boolean>(true);
 
-  // AI Assistant States
+  // AI Assistant States (Multi-turn conversation transcript)
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
-  const [aiResponse, setAiResponse] = useState<string>('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [copiedResponse, setCopiedResponse] = useState<boolean>(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Real-time team presence & Cursors
   const activePeers = useStudioPresence(selectedProjectId, activeFile);
   const editorRef = useRef<any>(null);
   const decorationsRef = useRef<string[]>([]);
   const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>({});
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (showAiDrawer) {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, showAiDrawer]);
 
   // 1. Fetch available projects
   useEffect(() => {
@@ -138,7 +167,7 @@ export default function CodeStudio() {
       .channel(`studio_cursor_${selectedProjectId}`)
       .on('broadcast', { event: 'cursor_move' }, (payload: any) => {
         const { userId, userName, lineNumber, column, file } = payload.payload;
-        if (userId === user?.id) return; // Ignore own cursor echo
+        if (userId === user?.id) return;
 
         setPeerCursors((prev) => ({
           ...prev,
@@ -179,7 +208,6 @@ export default function CodeStudio() {
     );
   }, [peerCursors, activeFile]);
 
-  // Handle Monaco Mount & Local Cursor Tracking
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
 
@@ -222,7 +250,7 @@ export default function CodeStudio() {
     loadBranches();
   }, [repoInput, githubToken]);
 
-  // 4. Fetch Repository Tree
+  // 4. Fetch Repository Tree with defensive headers
   const fetchRepoFiles = async (repoName: string, branchName: string) => {
     if (!repoName.includes('/') || !branchName) return;
     setLoadingFiles(true);
@@ -234,18 +262,14 @@ export default function CodeStudio() {
     const [owner, repo] = repoName.split('/');
 
     try {
-      const headers: Record<string, string> = {
-        Accept: 'application/vnd.github.v3+json',
-      };
-      if (githubToken.trim()) {
-        headers['Authorization'] = `token ${githubToken.trim()}`;
-      }
+      const headers = getGitHubHeaders(githubToken);
 
       let res = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/git/trees/${branchName}?recursive=1`,
         { headers }
       );
 
+      // Branch fallback check (main -> master)
       if (res.status === 404 && branchName === 'main') {
         const fallbackRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`,
@@ -287,12 +311,7 @@ export default function CodeStudio() {
     setLoadingContent(true);
 
     const [owner, repo] = repoInput.split('/');
-    const headers: Record<string, string> = {
-      Accept: 'application/vnd.github.v3+json',
-    };
-    if (githubToken.trim()) {
-      headers['Authorization'] = `token ${githubToken.trim()}`;
-    }
+    const headers = getGitHubHeaders(githubToken);
 
     try {
       const res = await fetch(
@@ -394,8 +413,7 @@ export default function CodeStudio() {
         {
           method: 'PUT',
           headers: {
-            Authorization: `token ${githubToken.trim()}`,
-            Accept: 'application/vnd.github.v3+json',
+            ...getGitHubHeaders(githubToken),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -436,28 +454,52 @@ export default function CodeStudio() {
     }
   };
 
+  // AI Assistant Handler with immediate user message render
   const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
-    const query = customQuery || aiPrompt;
-    if (!query.trim() || aiLoading) return;
+    const query = (customQuery || aiPrompt).trim();
+    if (!query || aiLoading) return;
 
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      sender: 'user',
+      text: query,
+      timestamp: timeStr,
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setAiPrompt('');
     setAiLoading(true);
-    setAiResponse('');
+
     try {
       const res = await askGeminiCodeAssistant(query, activeFileContent, activeFile);
-      setAiResponse(res);
+      const botMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        sender: 'assistant',
+        text: res,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, botMsg]);
     } catch (err: any) {
-      toast.error(err.message || 'AI generation failed');
+      toast.error(err.message || 'AI request failed');
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        sender: 'assistant',
+        text: `⚠️ **Error**: ${err.message || 'Could not communicate with the model. Verify your API key and connection.'}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setAiLoading(false);
     }
   };
 
-  const copyAiResponse = () => {
-    if (!aiResponse) return;
-    navigator.clipboard.writeText(aiResponse);
-    setCopiedResponse(true);
-    setTimeout(() => setCopiedResponse(false), 2000);
+  const copyMessageText = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
     toast.success('Copied to clipboard');
   };
 
@@ -689,7 +731,7 @@ export default function CodeStudio() {
             </button>
           </div>
           <span className="text-[11px] text-gray-400 hidden lg:inline">
-            Required for pushing commits, branches, and 5,000 req/hr rate limits.
+            Required for pushing commits, branches, and higher API rate limits.
           </span>
         </div>
       )}
@@ -710,7 +752,7 @@ export default function CodeStudio() {
         <div className="w-56 md:w-64 bg-[#161b22] border-r border-gray-800 flex flex-col shrink-0 min-h-0">
           <div className="p-3 border-b border-gray-800 flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider shrink-0">
             <span>Files ({files.length})</span>
-            <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white">
+            <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white" title="Refresh tree">
               <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
             </button>
           </div>
@@ -781,45 +823,99 @@ export default function CodeStudio() {
           />
         </div>
 
-        {/* Gemini AI Assistant Side Drawer */}
+        {/* AI Assistant Side Drawer with Full Chat Transcript */}
         {showAiDrawer && (
           <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0 shadow-2xl animate-in slide-in-from-right-10 duration-200">
-            <div className="p-3.5 border-b border-gray-800 flex items-center justify-between">
+            {/* Drawer Header */}
+            <div className="p-3.5 border-b border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-purple-400 text-xs font-bold">
                 <Bot size={16} />
-                <span>Gemini Code Assistant</span>
+                <span>Code Assistant</span>
               </div>
               <button onClick={() => setShowAiDrawer(false)} className="text-gray-400 hover:text-white">
                 <X size={16} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar min-h-0 text-xs">
-              {aiResponse ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between pb-1 border-b border-gray-800">
-                    <span className="text-[10px] font-bold uppercase text-gray-400">Analysis & Recommendation</span>
-                    <button
-                      onClick={copyAiResponse}
-                      className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white"
-                      title="Copy response"
-                    >
-                      {copiedResponse ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                    </button>
-                  </div>
-                  <div className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-gray-200 bg-[#0d1117] p-3 rounded-xl border border-gray-800">
-                    {aiResponse}
-                  </div>
-                </div>
-              ) : (
+            {/* Conversation Messages Viewport */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0 text-xs">
+              {messages.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 space-y-2">
                   <Sparkles size={28} className="mx-auto text-purple-400/50" />
-                  <p className="text-xs">Ask Gemini to refactor, write unit tests, or review security in {activeFile || 'the buffer'}.</p>
+                  <p className="text-xs">Ask the assistant to refactor, write unit tests, or review architecture in {activeFile || 'the buffer'}.</p>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex items-start gap-2.5 ${
+                      msg.sender === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {msg.sender === 'assistant' && (
+                      <div className="w-7 h-7 rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot size={14} />
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                        msg.sender === 'user'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'bg-[#0d1117] border border-gray-800 text-gray-200 shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <span className="font-bold text-[10px] opacity-75">
+                          {msg.sender === 'user' ? 'You' : 'Assistant'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] opacity-50 font-mono">{msg.timestamp}</span>
+                          {msg.sender === 'assistant' && (
+                            <button
+                              onClick={() => copyMessageText(msg.id, msg.text)}
+                              className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
+                              title="Copy response"
+                            >
+                              {copiedId === msg.id ? (
+                                <Check size={11} className="text-emerald-400" />
+                              ) : (
+                                <Copy size={11} />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed">
+                        {msg.text}
+                      </div>
+                    </div>
+
+                    {msg.sender === 'user' && (
+                      <div className="w-7 h-7 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+                        {user?.avatar ? (
+                          <img src={user.avatar} alt="You" className="w-full h-full object-cover" />
+                        ) : (
+                          <User size={13} className="text-gray-300" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+
+              {aiLoading && (
+                <div className="flex items-center gap-2 text-xs text-purple-400 py-1">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>Thinking & analyzing context...</span>
                 </div>
               )}
+              <div ref={chatBottomRef} />
             </div>
 
-            <form onSubmit={(e) => handleAskAi(e)} className="p-3 border-t border-gray-800 bg-[#0d1117] space-y-2">
+            {/* Prompt Input Form */}
+            <form onSubmit={(e) => handleAskAi(e)} className="p-3 border-t border-gray-800 bg-[#0d1117] space-y-2 shrink-0">
               <div className="relative">
                 <input
                   type="text"
