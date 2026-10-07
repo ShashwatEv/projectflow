@@ -1,12 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft, Loader2, RefreshCw, KeyRound, AlertCircle } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Loader2, RefreshCw, KeyRound, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
-
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
-const DEMO_OVERRIDE_CODE = '000000'; // Development bypass token for rate-limited testing
 
 export default function TwoFactorVerify() {
   const navigate = useNavigate();
@@ -17,14 +14,25 @@ export default function TwoFactorVerify() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(60);
-  const [rateLimited, setRateLimited] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const targetEmail =
     location.state?.email ||
     user?.email ||
+    sessionStorage.getItem('pf_pending_2fa_email') ||
     '';
 
-  // Cooldown countdown
+  // Guard against React 18/19 StrictMode mounting twice in dev
+  const hasSentInitialOtp = useRef(false);
+
+  // Store target email in session storage so refresh does not lose state
+  useEffect(() => {
+    if (targetEmail) {
+      sessionStorage.setItem('pf_pending_2fa_email', targetEmail);
+    }
+  }, [targetEmail]);
+
+  // Cooldown timer
   useEffect(() => {
     if (cooldown <= 0) return;
     const timer = setInterval(() => {
@@ -33,16 +41,35 @@ export default function TwoFactorVerify() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  // Initial OTP dispatch if not already sent
+  // Initial OTP Dispatch (fires only once per session)
   useEffect(() => {
-    if (targetEmail && !location.state?.otpDispatched) {
+    if (!targetEmail) return;
+
+    // Check if an OTP was sent in the last 60 seconds
+    const lastSentTime = Number(sessionStorage.getItem('pf_last_otp_sent') || 0);
+    const timeSinceLastSent = Date.now() - lastSentTime;
+
+    if (timeSinceLastSent < 60000) {
+      // Still in valid window, don't re-trigger
+      const remainingSeconds = Math.ceil((60000 - timeSinceLastSent) / 1000);
+      setCooldown(remainingSeconds);
+      return;
+    }
+
+    if (!hasSentInitialOtp.current && !location.state?.otpAlreadyDispatched) {
+      hasSentInitialOtp.current = true;
       sendOtp();
     }
   }, [targetEmail]);
 
   const sendOtp = async () => {
-    if (!targetEmail || cooldown > 0 && location.state?.otpDispatched) return;
+    if (!targetEmail) {
+      toast.error('No email address provided for 2FA challenge');
+      return;
+    }
+
     setResending(true);
+    setErrorMessage(null);
 
     try {
       const { error } = await supabase.auth.signInWithOtp({
@@ -54,19 +81,20 @@ export default function TwoFactorVerify() {
 
       if (error) {
         if (error.status === 429 || error.message.toLowerCase().includes('rate limit')) {
-          setRateLimited(true);
-          toast.warning('Email rate limit reached (429)', {
-            description: 'Supabase hourly limit hit. You may enter test passcode 000000 in dev mode.',
+          setErrorMessage('Supabase hourly email rate limit reached. Please wait before requesting another code.');
+          toast.error('Email rate limit reached (429)', {
+            description: 'Supabase enforces an hourly cooldown on email dispatches.',
           });
         } else {
-          toast.error(error.message || 'Failed to dispatch verification code');
+          setErrorMessage(error.message);
+          toast.error(error.message || 'Failed to dispatch code');
         }
       } else {
-        toast.success(`6-digit code sent to ${targetEmail}`);
+        sessionStorage.setItem('pf_last_otp_sent', String(Date.now()));
         setCooldown(60);
-        setRateLimited(false);
+        toast.success(`Authentication code sent to ${targetEmail}`);
       }
-    } catch (err: any) {
+    } catch {
       toast.error('Network error requesting OTP');
     } finally {
       setResending(false);
@@ -78,24 +106,15 @@ export default function TwoFactorVerify() {
     const cleanToken = otpCode.trim();
 
     if (!cleanToken || cleanToken.length < 6) {
-      toast.error('Please enter a valid 6-digit code');
+      toast.error('Please enter the full 6-digit code');
       return;
     }
 
     setLoading(true);
+    setErrorMessage(null);
 
-    // 1. Super Admin or Dev / Rate-limited Bypass
-    const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-    if (cleanToken === DEMO_OVERRIDE_CODE || (isSuperAdmin && cleanToken === '123456')) {
-      sessionStorage.setItem('pf_2fa_verified', 'true');
-      toast.success('Two-factor authentication verified!');
-      navigate('/dashboard', { replace: true });
-      setLoading(false);
-      return;
-    }
-
-    // 2. Standard Supabase OTP Verification
     try {
+      // Real Supabase OTP verification
       const { data, error } = await supabase.auth.verifyOtp({
         email: targetEmail,
         token: cleanToken,
@@ -103,18 +122,24 @@ export default function TwoFactorVerify() {
       });
 
       if (error) {
-        if (error.status === 400) {
-          toast.error('Invalid or expired code. Please check your inbox or resend.');
+        if (error.status === 400 || error.message.toLowerCase().includes('token has expired')) {
+          toast.error('Invalid or expired code. Please enter the latest code or click Resend.');
+          setErrorMessage('The code entered is invalid or has expired.');
         } else {
           toast.error(error.message || 'Verification failed');
+          setErrorMessage(error.message);
         }
-      } else if (data?.session || user) {
+      } else if (data?.session || data?.user) {
+        // Mark 2FA verified in active browser session
         sessionStorage.setItem('pf_2fa_verified', 'true');
-        toast.success('Two-factor authentication verified!');
+        sessionStorage.removeItem('pf_pending_2fa_email');
+        sessionStorage.removeItem('pf_last_otp_sent');
+        
+        toast.success('Identity verified! Entering workspace...');
         navigate('/dashboard', { replace: true });
       }
     } catch (err: any) {
-      toast.error('Verification request failed. Please try again.');
+      toast.error('Error during verification. Check network connection.');
     } finally {
       setLoading(false);
     }
@@ -138,16 +163,11 @@ export default function TwoFactorVerify() {
           </div>
         </div>
 
-        {/* Rate limit warning if encountered */}
-        {rateLimited && (
-          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold">Supabase Mail Quota Hit (429)</p>
-              <p className="text-[11px] opacity-80 mt-0.5">
-                Use development bypass code <code className="font-mono bg-black/40 px-1 rounded text-white">000000</code> to continue testing.
-              </p>
-            </div>
+        {/* Error notification if rate-limited or token invalid */}
+        {errorMessage && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2.5 text-xs text-rose-300">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <p className="leading-relaxed">{errorMessage}</p>
           </div>
         )}
 
@@ -165,7 +185,7 @@ export default function TwoFactorVerify() {
                 maxLength={6}
                 value={otpCode}
                 onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="000000"
+                placeholder="••••••"
                 className="w-full bg-[#0b0e14] border border-gray-800 focus:border-indigo-500 rounded-xl pl-10 pr-4 py-3 text-white font-mono text-center tracking-[0.5em] text-lg font-bold outline-none transition-colors"
               />
             </div>
@@ -174,7 +194,7 @@ export default function TwoFactorVerify() {
           <button
             type="submit"
             disabled={loading || otpCode.length < 6}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer"
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
             <span>Verify & Enter Workspace</span>
@@ -186,7 +206,7 @@ export default function TwoFactorVerify() {
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="flex items-center gap-1 hover:text-white transition-colors"
+            className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
           >
             <ArrowLeft size={13} />
             <span>Back to Login</span>
@@ -196,7 +216,7 @@ export default function TwoFactorVerify() {
             type="button"
             disabled={resending || cooldown > 0}
             onClick={sendOtp}
-            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors font-medium"
+            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors font-medium cursor-pointer"
           >
             <RefreshCw size={12} className={resending ? 'animate-spin' : ''} />
             <span>{cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}</span>
