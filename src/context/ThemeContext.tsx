@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type AccentColor = 'indigo' | 'emerald' | 'blue' | 'purple' | 'rose' | 'orange';
 export type TypographySize = 'compact' | 'default' | 'large';
+export type ChatWallpaper = 'whatsapp' | 'telegram' | 'subtle-grid' | 'dots' | 'gradient' | 'minimal' | 'cyberpunk';
 
 interface ThemeContextType {
   theme: 'light' | 'dark';
@@ -15,6 +16,8 @@ interface ThemeContextType {
   setTypographySize: (size: TypographySize) => void;
   reduceMotion: boolean;
   setReduceMotion: (reduce: boolean) => void;
+  chatWallpaper: ChatWallpaper;
+  setChatWallpaper: (wallpaper: ChatWallpaper) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -40,6 +43,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // 4. Accessibility / Reduce Motion
   const [reduceMotion, setReduceMotionState] = useState<boolean>(() => {
     return localStorage.getItem('pf_reduce_motion') === 'true';
+  });
+
+  // 5. Chat Wallpaper (WhatsApp, Telegram, Subtle Grid, Dots, Gradient, Minimal, Cyberpunk)
+  const [chatWallpaper, setChatWallpaperState] = useState<ChatWallpaper>(() => {
+    return (localStorage.getItem('pf_chat_wallpaper') as ChatWallpaper) || 'whatsapp';
   });
 
   // --- Handlers & Synchronization Effects ---
@@ -121,6 +129,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setReduceMotionState(reduce);
   };
 
+  const setChatWallpaper = (wallpaper: ChatWallpaper) => {
+    setChatWallpaperState(wallpaper);
+    localStorage.setItem('pf_chat_wallpaper', wallpaper);
+    window.dispatchEvent(new CustomEvent('chat-wallpaper-changed', { detail: wallpaper }));
+  };
+
   return (
     <ThemeContext.Provider
       value={{
@@ -134,6 +148,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         setTypographySize,
         reduceMotion,
         setReduceMotion,
+        chatWallpaper,
+        setChatWallpaper,
       }}
     >
       {children}

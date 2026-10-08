@@ -483,12 +483,26 @@ export default function MyTasks() {
             </div>
           </div>
         ) : (
-          /* BOARD VIEW */
+          /* BOARD VIEW WITH HTML5 DRAG & DROP */
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 mb-16 items-start">
             {COLUMNS.map(col => {
               const colTasks = processedTasks.filter(t => t.status === col.id);
               return (
-                <div key={col.id} className="bg-gray-100/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-700/70 p-3.5 flex flex-col min-h-[450px]">
+                <div
+                  key={col.id}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const taskId = e.dataTransfer.getData('text/plain');
+                    if (taskId) {
+                      handleUpdateStatus(taskId, col.id);
+                    }
+                  }}
+                  className="bg-gray-100/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-700/70 p-3.5 flex flex-col min-h-[450px] transition-colors hover:border-indigo-500/40"
+                >
                   <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
@@ -503,7 +517,15 @@ export default function MyTasks() {
                     {colTasks.map(task => {
                       const next = getNextStatus(task.status);
                       return (
-                        <div key={task.id} className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all">
+                        <div
+                          key={task.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', task.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
+                        >
                           <div className="flex justify-between items-start gap-2 mb-2">
                             <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityBadge(task.priority)}`}>
                               {task.priority}
@@ -540,7 +562,7 @@ export default function MyTasks() {
 
                     {colTasks.length === 0 && (
                       <div className="py-8 text-center text-gray-400 text-[11px] border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                        Empty
+                        Drop tasks here
                       </div>
                     )}
                   </div>

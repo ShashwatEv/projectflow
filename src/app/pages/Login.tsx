@@ -77,6 +77,7 @@ export default function Login() {
               email: cleanEmail,
               channel,
               maskedTarget: masked,
+              otpDispatched: true,
             },
             replace: true,
           });

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FileText, Pencil, Trash2, Smile, Plus } from 'lucide-react';
+import { FileText, Pencil, Trash2, Smile, Plus, MessageSquare } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -15,9 +15,17 @@ interface MessageBubbleProps {
   onEdit: (id: string, newContent: string) => void;
   onDelete: (id: string) => void;
   onReact: (id: string, emoji: string) => void;
+  onOpenThread?: (message: any) => void;
 }
 
-export default function MessageBubble({ message, isMe, onEdit, onDelete, onReact }: MessageBubbleProps) {
+export default function MessageBubble({ 
+  message, 
+  isMe, 
+  onEdit, 
+  onDelete, 
+  onReact,
+  onOpenThread 
+}: MessageBubbleProps) {
   const { theme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
@@ -27,7 +35,6 @@ export default function MessageBubble({ message, isMe, onEdit, onDelete, onReact
   const pickerRef = useRef<HTMLDivElement>(null);
   const reactions: Reaction[] = message.message_reactions || [];
 
-  // Group reactions: { "👍": 3, "❤️": 1 }
   const reactionCounts = reactions.reduce((acc: any, curr: Reaction) => {
     acc[curr.emoji] = (acc[curr.emoji] || 0) + 1;
     return acc;
@@ -59,9 +66,17 @@ export default function MessageBubble({ message, isMe, onEdit, onDelete, onReact
     setShowEmojiPicker(false);
   };
 
+  const handleTriggerThread = () => {
+    if (onOpenThread) {
+      onOpenThread(message);
+    } else {
+      window.dispatchEvent(new CustomEvent('open-message-thread', { detail: message }));
+    }
+  };
+
   return (
     <div className={`relative group max-w-[80%] md:max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
-      {/* Hover Actions */}
+      {/* Hover Actions Bar */}
       {!isEditing && (
         <div 
           ref={pickerRef}
@@ -123,6 +138,16 @@ export default function MessageBubble({ message, isMe, onEdit, onDelete, onReact
               </div>
             )}
           </div>
+
+          {/* Reply in Thread Action */}
+          <button 
+            type="button"
+            onClick={handleTriggerThread}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 hover:text-indigo-600 transition-colors"
+            title="Reply in thread"
+          >
+            <MessageSquare size={13} />
+          </button>
 
           {/* Edit/Delete (Only for Author) */}
           {isMe && (
@@ -219,6 +244,20 @@ export default function MessageBubble({ message, isMe, onEdit, onDelete, onReact
               </span>
             )}
           </div>
+        )}
+
+        {/* Thread Replies Indicator Link */}
+        {Boolean(message.reply_count && message.reply_count > 0) && (
+          <button
+            type="button"
+            onClick={handleTriggerThread}
+            className={`mt-2 pt-2 border-t flex items-center gap-1.5 text-xs font-bold hover:underline ${
+              isMe ? 'border-white/20 text-indigo-100' : 'border-gray-200 dark:border-gray-700 text-indigo-500 dark:text-indigo-400'
+            }`}
+          >
+            <MessageSquare size={12} />
+            <span>{message.reply_count} {message.reply_count === 1 ? 'reply' : 'replies'}</span>
+          </button>
         )}
       </div>
 

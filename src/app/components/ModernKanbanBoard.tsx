@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Loader2, ShieldAlert, AlertCircle, Link as LinkIcon } from 'lucide-react';
+import { Loader2, ShieldAlert, Command, Keyboard } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
+import TaskDetailModal from './TaskDetailModal';
 import { toast } from 'sonner';
 
 export interface ExtendedModernTask extends ModernTask {
@@ -16,6 +17,8 @@ export interface ExtendedModernTask extends ModernTask {
 }
 
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
+
+const COLUMN_KEYS: ColumnType[] = ['todo', 'inProgress', 'review', 'done'];
 
 interface ColumnData {
   todo: ExtendedModernTask[];
@@ -40,7 +43,11 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     done: [],
   });
 
-  // 1. Fetch live or sandbox tasks with dependency joins
+  // Linear-Style Keyboard Triage State
+  const [focusedColIndex, setFocusedColIndex] = useState<number>(0);
+  const [focusedTaskIndex, setFocusedTaskIndex] = useState<number>(0);
+  const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
+
   const fetchTasks = async () => {
     if (isSandboxActive) {
       const grouped: ColumnData = {
@@ -153,14 +160,12 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   }, [projectId, isSandboxActive, sandboxTasks]);
 
   const handleDrop = async (taskId: string, targetColumn: ColumnType) => {
-    // A. Handle Safe Sandbox Drag & Drop
     if (isSandboxActive) {
       updateSandboxTaskStatus(taskId, targetColumn);
       toast.info('Card moved locally (Safe Sandbox Mode)');
       return;
     }
 
-    // Find the task across all columns to evaluate dependency gates
     let movingTask: ExtendedModernTask | null = null;
     let sourceColumn: ColumnType | null = null;
 
@@ -174,7 +179,6 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
     if (!movingTask || !sourceColumn || sourceColumn === targetColumn) return;
 
-    // Dependency Guard: Prevent moving to 'done' if blocker is unfinished
     const taskToCheck = movingTask as ExtendedModernTask;
     if (targetColumn === 'done' && taskToCheck.blocked_by) {
       if (taskToCheck.blocker_status !== 'done') {
@@ -185,7 +189,6 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       }
     }
 
-    // Optimistic UI Reorder
     setColumns((prev) => {
       const next = { ...prev };
       next[sourceColumn!] = next[sourceColumn!].filter((t) => t.id !== taskId);
@@ -207,6 +210,60 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     }
   };
 
+  // Linear Keyboard Navigation Listener
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Ignore if user is currently typing inside an input or textarea
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+
+      const activeColKey = COLUMN_KEYS[focusedColIndex] || 'todo';
+      const currentTasks = columns[activeColKey] || [];
+
+      // Navigate Down (J or ArrowDown)
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedTaskIndex((prev) => Math.min(currentTasks.length - 1, prev + 1));
+      }
+
+      // Navigate Up (K or ArrowUp)
+      if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedTaskIndex((prev) => Math.max(0, prev - 1));
+      }
+
+      // Switch Column Right (L or ArrowRight)
+      if (e.key === 'l' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setFocusedColIndex((prev) => Math.min(COLUMN_KEYS.length - 1, prev + 1));
+        setFocusedTaskIndex(0);
+      }
+
+      // Switch Column Left (H or ArrowLeft)
+      if (e.key === 'h' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setFocusedColIndex((prev) => Math.max(0, prev - 1));
+        setFocusedTaskIndex(0);
+      }
+
+      // Inspect / Open Modal (Space)
+      if (e.key === ' ') {
+        e.preventDefault();
+        const targetedTask = currentTasks[focusedTaskIndex];
+        if (targetedTask) {
+          setActiveModalTaskId(targetedTask.id);
+        }
+      }
+    },
+    [focusedColIndex, focusedTaskIndex, columns]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   if (loading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
@@ -218,6 +275,28 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
   return (
     <div data-tour="kanban-board" className="space-y-4">
+      {/* Keyboard Shortcuts Navigation Bar */}
+      <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 bg-gray-50 dark:bg-[#161b22] px-3.5 py-2 rounded-2xl border border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2">
+          <Keyboard size={14} className={theme.textAccent} />
+          <span>Linear Triage:</span>
+          <span className="text-gray-700 dark:text-gray-300">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">J</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">K</kbd> to move
+          </span>
+          <span className="text-gray-500">•</span>
+          <span className="text-gray-700 dark:text-gray-300">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">H</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">L</kbd> switch column
+          </span>
+          <span className="text-gray-500">•</span>
+          <span className="text-gray-700 dark:text-gray-300">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">Space</kbd> inspect
+          </span>
+        </div>
+        <span className="hidden sm:inline text-[10px] text-gray-500">
+          Targeting: {COLUMN_KEYS[focusedColIndex]} (#{focusedTaskIndex + 1})
+        </span>
+      </div>
+
       {/* Sandbox Isolation Header Banner */}
       {isSandboxActive && (
         <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400 animate-in fade-in">
@@ -261,6 +340,13 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
           />
         </div>
       </DndProvider>
+
+      {/* Peek Detail Modal Triggered via Space or Card Click */}
+      <TaskDetailModal
+        taskId={activeModalTaskId}
+        onClose={() => setActiveModalTaskId(null)}
+        onUpdate={fetchTasks}
+      />
     </div>
   );
 }

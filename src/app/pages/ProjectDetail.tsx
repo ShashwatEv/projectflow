@@ -444,7 +444,18 @@ export default function ProjectDetail() {
             return (
               <div 
                 key={col.id} 
-                className="bg-gray-50/80 dark:bg-gray-800/40 rounded-2xl border border-gray-200/80 dark:border-gray-700/60 p-4 flex flex-col min-h-[500px]"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const taskId = e.dataTransfer.getData('text/plain');
+                  if (taskId) {
+                    handleUpdateTaskStatus(taskId, col.id);
+                  }
+                }}
+                className="bg-gray-50/80 dark:bg-gray-800/40 rounded-2xl border border-gray-200/80 dark:border-gray-700/60 p-4 flex flex-col min-h-[500px] transition-colors hover:border-indigo-500/40"
               >
                 <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-2">
@@ -473,7 +484,12 @@ export default function ProjectDetail() {
                     return (
                       <div
                         key={task.id}
-                        className="group bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 shadow-sm hover:shadow-md transition-all duration-200"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', task.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        className="group bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500/50 shadow-sm hover:shadow-md transition-all duration-200 cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
                       >
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getPriorityBadge(task.priority)}`}>
@@ -524,7 +540,7 @@ export default function ProjectDetail() {
 
                   {colTasks.length === 0 && (
                     <div className="py-8 text-center text-xs text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                      No tasks in {col.label}
+                      Drop tasks here
                     </div>
                   )}
                 </div>

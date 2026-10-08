@@ -179,9 +179,10 @@ Changes staged for review:
       return;
     }
 
-    // 8. JS Expression Evaluation Fallback
+    // 8. JS Expression Evaluation Fallback (using Function constructor instead of direct eval)
     try {
-      const result = eval(cmd);
+      const evaluateExpression = new Function(`"use strict"; return (${cmd});`);
+      const result = evaluateExpression();
       setLogs((prev) => [
         ...prev,
         {

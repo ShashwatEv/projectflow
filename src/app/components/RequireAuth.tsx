@@ -17,8 +17,8 @@ export default function RequireAuth() {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Enforce 2FA verification gate on existing sessions
-  const is2FaVerified = sessionStorage.getItem('pf_2fa_verified') === 'true';
+  // Enforce 2FA verification gate on existing sessions (unless device is trusted)
+  const is2FaVerified = sessionStorage.getItem('pf_2fa_verified') === 'true' || localStorage.getItem('pf_trusted_device') === 'true';
   if (user?.is_2fa_enabled && !is2FaVerified) {
     return (
       <Navigate 

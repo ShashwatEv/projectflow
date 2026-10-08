@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Hash, Search, Plus, Smile, MessageSquare,
-  Menu, X, ExternalLink
+  Menu, X, ExternalLink, Palette, Sparkles, Check
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -50,7 +50,7 @@ const DEFAULT_CHANNELS: Channel[] = [
 
 export default function Messages() {
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, chatWallpaper, setChatWallpaper } = useTheme();
   const navigate = useNavigate();
   const { roomId } = useParams<{ roomId: string }>();
   const currentRoomId = roomId || 'room_1';
@@ -74,6 +74,7 @@ export default function Messages() {
   const [isAddChannelOpen, setIsAddChannelOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -461,6 +462,17 @@ export default function Messages() {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-2">
+            {/* Wallpaper / Theme Selector Button */}
+            <button
+              type="button"
+              onClick={() => setIsThemeModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition-all shadow-xs active:scale-95 cursor-pointer"
+              title="Change chat theme wallpaper"
+            >
+              <Palette size={15} className="text-indigo-600 dark:text-indigo-400" />
+              <span>Theme</span>
+            </button>
+
             {isDM && dmRecipient && (
               <Link
                 to={`/profile/${dmRecipient.id}`}
@@ -472,8 +484,34 @@ export default function Messages() {
           </div>
         </div>
 
-        {/* Message Feed */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 bg-gray-50/60 dark:bg-gray-900">
+        {/* Message Feed with Dynamic Wallpaper */}
+        <div
+          className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-5 transition-all duration-300 relative ${
+            chatWallpaper === 'whatsapp'
+              ? 'bg-[#efeae2] dark:bg-[#0b141a]'
+              : chatWallpaper === 'telegram'
+              ? 'bg-gradient-to-b from-[#72b5e8]/25 via-[#2a75b2]/15 to-[#0e1621] dark:bg-[#0e1621]'
+              : chatWallpaper === 'cyberpunk'
+              ? 'bg-[#06060e] text-white'
+              : chatWallpaper === 'dots'
+              ? 'bg-[radial-gradient(#6366f125_1.5px,transparent_1.5px)] bg-[size:18px_18px] bg-indigo-50/40 dark:bg-[#0b0e14]'
+              : chatWallpaper === 'gradient'
+              ? 'bg-gradient-to-b from-indigo-500/10 via-purple-500/10 to-transparent bg-gray-50 dark:bg-gray-950'
+              : chatWallpaper === 'minimal'
+              ? 'bg-gray-50 dark:bg-gray-900'
+              : 'bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] bg-gray-50/80 dark:bg-gray-950'
+          }`}
+          style={{
+            backgroundImage:
+              chatWallpaper === 'whatsapp'
+                ? `radial-gradient(#128c7e18 1.5px, transparent 1.5px), radial-gradient(#00a88412 1.5px, transparent 1.5px)`
+                : chatWallpaper === 'cyberpunk'
+                ? `linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)`
+                : undefined,
+            backgroundSize:
+              chatWallpaper === 'whatsapp' ? '20px 20px, 40px 40px' : chatWallpaper === 'cyberpunk' ? '28px 28px' : undefined,
+          }}
+        >
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 flex items-center justify-center mb-3">
@@ -569,6 +607,14 @@ export default function Messages() {
               <div className="absolute right-2.5 flex items-center gap-1">
                 <button
                   type="button"
+                  onClick={() => setIsThemeModalOpen(true)}
+                  className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-gray-200/50 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
+                  title="Customize chat wallpaper & theme"
+                >
+                  <Palette size={18} />
+                </button>
+                <button
+                  type="button"
                   onClick={() => setShowInputEmojiPicker(!showInputEmojiPicker)}
                   className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-gray-200/50 dark:hover:bg-gray-800 rounded-lg transition-colors"
                   title="Insert emoji"
@@ -643,6 +689,158 @@ export default function Messages() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* --- CHAT THEMES & WALLPAPERS STUDIO MODAL --- */}
+      {isThemeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#12161f] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                  <Palette size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white">Chat Themes & Wallpaper</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Choose your message backdrop (WhatsApp, Telegram, or Dark Grids)</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsThemeModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[75vh] overflow-y-auto space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+                {[
+                  {
+                    id: 'whatsapp',
+                    name: 'WhatsApp Doodle',
+                    tag: 'WhatsApp Style',
+                    bgPreview: 'bg-[#efeae2] dark:bg-[#0b141a]',
+                    pattern: 'radial-gradient(#128c7e25 1.5px, transparent 1.5px)',
+                    bubbleMe: 'bg-[#d9fdd3] text-gray-900',
+                    bubbleThem: 'bg-white text-gray-900',
+                  },
+                  {
+                    id: 'telegram',
+                    name: 'Telegram Clouds',
+                    tag: 'Telegram Style',
+                    bgPreview: 'bg-gradient-to-b from-[#72b5e8]/30 via-[#2a75b2]/20 to-[#0e1621] dark:bg-[#0e1621]',
+                    pattern: 'none',
+                    bubbleMe: 'bg-[#2b5278] text-white',
+                    bubbleThem: 'bg-[#182533] text-white',
+                  },
+                  {
+                    id: 'cyberpunk',
+                    name: 'Cyberpunk Grid',
+                    tag: 'Neon High-Tech',
+                    bgPreview: 'bg-[#05050c]',
+                    pattern: 'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)',
+                    bubbleMe: 'bg-gradient-to-r from-pink-600 to-purple-600 text-white',
+                    bubbleThem: 'bg-[#11131f] text-gray-200 border border-purple-500/30',
+                  },
+                  {
+                    id: 'subtle-grid',
+                    name: 'Subtle Grid',
+                    tag: 'Clean Engineering',
+                    bgPreview: 'bg-gray-100 dark:bg-gray-900',
+                    pattern: 'linear-gradient(to right, #80808012 1px, transparent 1px), linear-gradient(to bottom, #80808012 1px, transparent 1px)',
+                    bubbleMe: 'bg-indigo-600 text-white',
+                    bubbleThem: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+                  },
+                  {
+                    id: 'dots',
+                    name: 'Blueprint Dots',
+                    tag: 'Architecture Studio',
+                    bgPreview: 'bg-indigo-50/50 dark:bg-[#0d1117]',
+                    pattern: 'radial-gradient(#6366f125 1.5px, transparent 1.5px)',
+                    bubbleMe: 'bg-indigo-600 text-white',
+                    bubbleThem: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+                  },
+                  {
+                    id: 'gradient',
+                    name: 'Ambient Aurora',
+                    tag: 'Vibrant Mesh',
+                    bgPreview: 'bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 dark:bg-gray-900',
+                    pattern: 'none',
+                    bubbleMe: 'bg-indigo-600 text-white',
+                    bubbleThem: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+                  },
+                  {
+                    id: 'minimal',
+                    name: 'Clean Solid',
+                    tag: 'Focus Mode',
+                    bgPreview: 'bg-white dark:bg-gray-900',
+                    pattern: 'none',
+                    bubbleMe: 'bg-indigo-600 text-white',
+                    bubbleThem: 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100',
+                  },
+                ].map((th) => {
+                  const isSelected = chatWallpaper === th.id;
+                  return (
+                    <button
+                      key={th.id}
+                      type="button"
+                      onClick={() => {
+                        setChatWallpaper(th.id as any);
+                        toast.success(`Chat theme set to ${th.name}`);
+                      }}
+                      className={`text-left p-3 rounded-2xl border transition-all flex flex-col justify-between group cursor-pointer ${
+                        isSelected
+                          ? 'border-indigo-600 dark:border-indigo-400 ring-2 ring-indigo-500/30 shadow-md bg-white dark:bg-gray-800'
+                          : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700'
+                      }`}
+                    >
+                      {/* Interactive Visual Preview Box */}
+                      <div
+                        className={`h-24 w-full rounded-xl border border-gray-200/60 dark:border-gray-700/60 mb-2.5 p-2 flex flex-col justify-between relative overflow-hidden ${th.bgPreview}`}
+                        style={{
+                          backgroundImage: th.pattern !== 'none' ? th.pattern : undefined,
+                          backgroundSize: th.pattern !== 'none' ? '14px 14px' : undefined,
+                        }}
+                      >
+                        <div className="flex justify-start">
+                          <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-lg shadow-2xs ${th.bubbleThem}`}>
+                            Hey team 👋
+                          </span>
+                        </div>
+                        <div className="flex justify-end">
+                          <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-lg shadow-2xs ${th.bubbleMe}`}>
+                            Looks great! 🚀
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{th.name}</p>
+                          {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-gray-400 truncate mt-0.5">{th.tag}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Current: <strong className="text-gray-900 dark:text-white capitalize">{chatWallpaper}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsThemeModalOpen(false)}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shadow-md transition-colors"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

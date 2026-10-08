@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { 
-  Terminal, Play, Clock, Database, Copy, Check, Plus, 
-  Trash2, RefreshCw, Send, Lock, ShieldAlert, Sparkles,
-  GitPullRequest, GitCommit, Webhook
+  Terminal, Play, Clock, Copy, Check, Plus, 
+  Trash2, Send, Loader2, GitPullRequest, GitCommit, Webhook 
 } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
 import { recordAuditLog } from '../../lib/auditLogger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
@@ -149,7 +147,6 @@ export default function ApiPlayground() {
     }
   };
 
-  // Dispatch API Request or Execute Internal Webhook Simulation
   const handleSendRequest = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!url.trim()) {
@@ -157,7 +154,6 @@ export default function ApiPlayground() {
       return;
     }
 
-    // Security Gate: Disallow outbound mutating methods for unverified users
     if (!isVerified && method !== 'GET') {
       toast.error('Identity Verification Required', {
         description: `Unverified accounts can only execute GET diagnostic requests. Verify your email to dispatch ${method} calls.`,
@@ -183,7 +179,7 @@ export default function ApiPlayground() {
         target: url,
       });
 
-      const simulatedResponse = {
+      const simulatedResponse: ResponseState = {
         status: 200,
         statusText: 'OK',
         timeMs: Math.round(endTime - startTime),
@@ -278,7 +274,6 @@ export default function ApiPlayground() {
     }
   };
 
-  // Generate Snippets
   const generateSnippet = () => {
     const activeHeaders: Record<string, string> = {};
     headers.forEach((h) => {
@@ -330,7 +325,6 @@ print(response.json())`;
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-gray-200 animate-in fade-in duration-200">
-      
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/60 pb-6">
         <div>
@@ -345,276 +339,221 @@ print(response.json())`;
           </p>
         </div>
 
-        {/* Action Controls & Snippet Language Selectors */}
-        <div className="flex items-center gap-2 bg-[#161b22] border border-gray-800 rounded-xl p-1">
-          {(['curl', 'fetch', 'python'] as const).map((lang) => (
-            <button
-              key={lang}
-              onClick={() => setSelectedSnippetLang(lang)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
-                selectedSnippetLang === lang
-                  ? `${theme.btnPrimary} shadow-sm`
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              {lang}
-            </button>
-          ))}
+        {/* Snippet Language Selector & Quick Presets */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={copySnippet}
-            className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white ml-1 transition-colors"
-            title="Copy Snippet"
+            onClick={() => loadPreset('github_pr')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs font-semibold transition-all"
           >
-            {copiedSnippet ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+            <GitPullRequest size={13} />
+            <span>PR Event</span>
+          </button>
+          <button
+            onClick={() => loadPreset('github_push')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-semibold transition-all"
+          >
+            <GitCommit size={13} />
+            <span>Push Event</span>
+          </button>
+          <button
+            onClick={() => loadPreset('sample_get')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition-all"
+          >
+            <Webhook size={13} />
+            <span>GET Sample</span>
           </button>
         </div>
       </div>
 
-      {/* Preset Webhook Loaders */}
-      <div className="flex flex-wrap items-center gap-2 bg-[#161b22] border border-gray-800 p-2.5 rounded-2xl text-xs">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 px-2">
-          <Webhook size={13} className={theme.textAccent} /> Webhook Presets:
-        </span>
-        <button
-          type="button"
-          onClick={() => loadPreset('github_pr')}
-          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
-        >
-          <GitPullRequest size={12} className="text-indigo-400" />
-          <span>GitHub PR Merged</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => loadPreset('github_push')}
-          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
-        >
-          <GitCommit size={12} className="text-emerald-400" />
-          <span>GitHub Commit Push</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => loadPreset('sample_get')}
-          className="px-3 py-1 rounded-xl bg-[#0d1117] hover:bg-gray-800 border border-gray-800 text-gray-300 font-medium flex items-center gap-1.5 transition-colors"
-        >
-          <span>GET Diagnostic</span>
-        </button>
-      </div>
-
-      {/* Main Request Dispatcher Bar */}
-      <form onSubmit={handleSendRequest} className="flex flex-col sm:flex-row items-stretch gap-2.5">
-        <select
-          value={method}
-          onChange={(e) => setMethod(e.target.value as HttpMethod)}
-          className={`bg-[#161b22] border border-gray-800 font-bold rounded-2xl px-4 py-3 text-xs outline-none cursor-pointer tracking-wider ${
-            method === 'GET'
-              ? 'text-emerald-400'
-              : method === 'POST'
-              ? 'text-blue-400'
-              : method === 'DELETE'
-              ? 'text-rose-400'
-              : 'text-amber-400'
-          }`}
-        >
-          <option value="GET" className="bg-[#161b22] text-white">GET</option>
-          <option value="POST" className="bg-[#161b22] text-white">POST {!isVerified ? '🔒' : ''}</option>
-          <option value="PUT" className="bg-[#161b22] text-white">PUT {!isVerified ? '🔒' : ''}</option>
-          <option value="PATCH" className="bg-[#161b22] text-white">PATCH {!isVerified ? '🔒' : ''}</option>
-          <option value="DELETE" className="bg-[#161b22] text-white">DELETE {!isVerified ? '🔒' : ''}</option>
-        </select>
-
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://api.example.com/v1/resource"
-          className={`flex-1 bg-[#161b22] border border-gray-800 rounded-2xl px-4 py-3 text-xs text-white font-mono outline-none ${theme.ringAccent} transition-colors`}
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className={`flex items-center justify-center gap-2 px-7 py-3 rounded-2xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
-        >
-          {loading ? (
-            <RefreshCw size={15} className="animate-spin" />
-          ) : !isVerified && method !== 'GET' ? (
-            <Lock size={15} />
-          ) : (
-            <Send size={15} />
-          )}
-          <span>Send</span>
-        </button>
-      </form>
-
-      {/* Unverified Method Notice */}
-      {!isVerified && method !== 'GET' && (
-        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400">
-          <div className="flex items-center gap-2">
-            <ShieldAlert size={14} className="shrink-0" />
-            <span>Mutating HTTP method selected. Outbound write requests require verified email credentials.</span>
-          </div>
-          <button
-            onClick={() => navigate('/settings')}
-            className="underline font-bold hover:text-amber-300 ml-2 shrink-0"
+      {/* Main Request Form */}
+      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-4">
+        {/* Method & URL Input Bar */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            value={method}
+            onChange={(e) => setMethod(e.target.value as HttpMethod)}
+            className="bg-[#0d1117] text-white font-mono font-bold text-xs border border-gray-700 rounded-2xl px-3.5 py-2.5 outline-none focus:border-indigo-500"
           >
-            Verify Now
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://api.github.com/... or internal webhook"
+            className="flex-1 bg-[#0d1117] text-white font-mono text-xs border border-gray-700 rounded-2xl px-4 py-2.5 outline-none focus:border-indigo-500"
+          />
+
+          <button
+            onClick={handleSendRequest}
+            disabled={loading}
+            className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-2xl ${theme.btnPrimary} text-white font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
+          >
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+            <span>Send</span>
           </button>
         </div>
-      )}
 
-      {/* Workspace Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* Left Side: Request Config Tabs */}
-       <div className="lg:col-span-6 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-xl space-y-4">
-         {/* Tabs with Adaptive Light/Dark Colors */}
-          <div className="flex items-center gap-1.5 p-1 bg-gray-100 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-gray-800 w-fit">
+        {/* Tabs for Headers & Body */}
+        <div className="flex gap-2 border-b border-gray-800 pb-2 text-xs">
+          <button
+            onClick={() => setActiveTab('body')}
+            className={`px-3 py-1.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'body'
+                ? 'bg-[#0d1117] text-white border border-gray-700'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Request Body (JSON)
+          </button>
+          <button
+            onClick={() => setActiveTab('headers')}
+            className={`px-3 py-1.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'headers'
+                ? 'bg-[#0d1117] text-white border border-gray-700'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Headers ({headers.length})
+          </button>
+        </div>
+
+        {/* Tab Body */}
+        {activeTab === 'body' && (
+          <div className="h-56 rounded-2xl overflow-hidden border border-gray-800 bg-[#0d1117]">
+            <Editor
+              height="100%"
+              theme="vs-dark"
+              language="json"
+              value={bodyContent}
+              onChange={(val) => setBodyContent(val || '')}
+              options={{
+                fontSize: 12,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 2,
+              }}
+            />
+          </div>
+        )}
+
+        {/* Tab Headers */}
+        {activeTab === 'headers' && (
+          <div className="space-y-2 text-xs max-h-56 overflow-y-auto custom-scrollbar">
+            {headers.map((h, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={h.enabled}
+                  onChange={(e) => updateHeader(i, 'enabled', e.target.checked)}
+                  className="rounded border-gray-700"
+                />
+                <input
+                  type="text"
+                  placeholder="Header Name"
+                  value={h.key}
+                  onChange={(e) => updateHeader(i, 'key', e.target.value)}
+                  className="w-1/3 bg-[#0d1117] text-white border border-gray-700 rounded-xl px-3 py-1.5 font-mono text-xs outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Header Value"
+                  value={h.value}
+                  onChange={(e) => updateHeader(i, 'value', e.target.value)}
+                  className="flex-1 bg-[#0d1117] text-white border border-gray-700 rounded-xl px-3 py-1.5 font-mono text-xs outline-none"
+                />
+                <button
+                  onClick={() => removeHeader(i)}
+                  className="p-1.5 text-gray-500 hover:text-rose-400 rounded-lg transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
             <button
-              type="button"
-              onClick={() => setActiveTab('headers')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
-                activeTab === 'headers'
-                  ? `${theme.bgSubtle} ${theme.textAccent} shadow-xs border${theme.borderAccent}/30`
-                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
-              }`}
+              onClick={addHeader}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-xs mt-2"
             >
-              Headers ({headers.filter((h) => h.enabled).length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('body')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
-                activeTab === 'body'
-                  ? `${theme.bgSubtle} ${theme.textAccent} shadow-xs border${theme.borderAccent}/30`
-                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
-              }`}
-            >
-              Body JSON
+              <Plus size={12} />
+              <span>Add Header</span>
             </button>
           </div>
+        )}
+      </div>
 
-          {/* Headers Editor Tab */}
-          {activeTab === 'headers' && (
-            <div className="space-y-3">
-              <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
-                {headers.map((h, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={h.enabled}
-                      onChange={(e) => updateHeader(i, 'enabled', e.target.checked)}
-                      className={`rounded ${theme.toggleActive} bg-[#0d1117] border-gray-700`}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Header Key"
-                      value={h.key}
-                      onChange={(e) => updateHeader(i, 'key', e.target.value)}
-                      className="flex-1 bg-[#0d1117] border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono outline-none"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Value"
-                      value={h.value}
-                      onChange={(e) => updateHeader(i, 'value', e.target.value)}
-                      className="flex-1 bg-[#0d1117] border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeHeader(i)}
-                      className="p-1.5 text-gray-500 hover:text-rose-400 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+      {/* Code Snippet & Live Response Area */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Code Generator */}
+        <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-3 flex flex-col">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+            <span className="text-xs font-bold text-gray-300">Generated Integration Snippet</span>
+            <div className="flex items-center gap-2">
+              <div className="flex bg-[#0d1117] rounded-xl p-0.5 border border-gray-700 text-[10px] font-mono">
+                {(['curl', 'fetch', 'python'] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    onClick={() => setSelectedSnippetLang(lang)}
+                    className={`px-2 py-0.5 rounded-lg capitalize ${
+                      selectedSnippetLang === lang ? 'bg-indigo-600 text-white font-bold' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {lang}
+                  </button>
                 ))}
               </div>
-
               <button
-                type="button"
-                onClick={addHeader}
-                className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-white pt-1"
+                onClick={copySnippet}
+                className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+                title="Copy snippet"
               >
-                <Plus size={13} className={theme.textAccent} />
-                <span>Add Header</span>
+                {copiedSnippet ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               </button>
             </div>
-          )}
-
-          {/* Body JSON Tab */}
-          {activeTab === 'body' && (
-            <div className="h-72 rounded-2xl overflow-hidden border border-gray-800">
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language="json"
-                value={bodyContent}
-                onChange={(val) => setBodyContent(val || '')}
-                options={{
-                  fontSize: 12,
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  tabSize: 2,
-                }}
-              />
-            </div>
-          )}
+          </div>
+          <pre className="flex-1 bg-[#0d1117] p-3.5 rounded-2xl border border-gray-800 font-mono text-[11px] text-gray-300 overflow-x-auto custom-scrollbar">
+            {generateSnippet()}
+          </pre>
         </div>
 
-        {/* Right Side: Response Telemetry & Data */}
-        <div className="lg:col-span-6 bg-[#161b22] border border-gray-800 rounded-3xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Response Telemetry</h3>
-            
+        {/* Live Response Output */}
+        <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-3 flex flex-col">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+            <span className="text-xs font-bold text-gray-300">HTTP Response Body</span>
             {response && (
               <div className="flex items-center gap-3 text-xs font-mono">
-                <span className={`px-2 py-0.5 rounded-md font-bold ${
-                  response.status && response.status >= 200 && response.status < 300
-                    ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/60'
-                    : 'bg-rose-950/50 text-rose-400 border border-rose-800/60'
+                <span className={`font-bold px-2 py-0.5 rounded-lg ${
+                  response.status && response.status < 300 
+                    ? 'bg-emerald-500/20 text-emerald-400' 
+                    : 'bg-rose-500/20 text-rose-400'
                 }`}>
                   {response.status} {response.statusText}
                 </span>
-
                 <span className="text-gray-400 flex items-center gap-1">
                   <Clock size={12} /> {response.timeMs}ms
-                </span>
-                <span className="text-gray-400 flex items-center gap-1">
-                  <Database size={12} /> {response.sizeKb}KB
                 </span>
               </div>
             )}
           </div>
 
-          <div className="h-72 rounded-2xl overflow-hidden border border-gray-800 bg-[#0d1117]">
-            {loading ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
-                <RefreshCw size={24} className={`animate-spin ${theme.textAccent}`} />
-                <p className="text-xs">Dispatching request payload...</p>
-              </div>
-            ) : response ? (
-              <Editor
-                height="100%"
-                theme="vs-dark"
-                language="json"
-                value={response.data}
-                options={{
-                  readOnly: true,
-                  fontSize: 12,
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                }}
-              />
+          <div className="flex-1 min-h-[160px] bg-[#0d1117] rounded-2xl border border-gray-800 overflow-hidden">
+            {response ? (
+              <pre className="p-3.5 font-mono text-[11px] text-gray-300 overflow-x-auto custom-scrollbar max-h-72">
+                {response.data}
+              </pre>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-2 p-6 text-center">
-                <Terminal size={32} className="text-gray-600" />
-                <p className="text-xs">Send a request or load a webhook preset to evaluate roundtrip telemetry and task mutations.</p>
+              <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-500 space-y-2">
+                <Send size={24} className="opacity-40" />
+                <p className="text-xs">Send a request to inspect latency, headers, and payload results.</p>
               </div>
             )}
           </div>
         </div>
-
       </div>
     </div>
   );

@@ -67,8 +67,13 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   const [currentName, setCurrentName] = useState<string>(user?.name || 'Guest');
   const [currentRole, setCurrentRole] = useState<string>(user?.role || 'Viewer');
 
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [recentNotifs, setRecentNotifs] = useState<any[]>([]);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -77,6 +82,39 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       setCurrentRole(user.role || 'Viewer');
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const { count, data } = await supabase
+          .from('notifications')
+          .select('id, title, message, type, is_read, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5);
+
+        if (data) {
+          setRecentNotifs(data);
+          const unread = data.filter((n) => !n.is_read).length;
+          setUnreadCount(count ?? unread);
+        }
+      } catch {
+        // Table may not exist in minimal installations
+      }
+    };
+
+    fetchNotifications();
+
+    const channel = supabase
+      .channel('header_notifs_count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const syncProfile = async () => {
@@ -117,6 +155,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       }
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowResults(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setIsNotifOpen(false);
       }
     }
 
@@ -223,6 +264,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
               type="text"
               placeholder="Search or jump to... (Ctrl + K)"
               value={query}
+              onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setShowResults(true);
@@ -307,14 +349,85 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
         </button>
 
-        {/* Notifications */}
-        <Link
-          to="/notifications"
-          className="relative rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-        >
-          <Bell size={20} />
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-red-500 dark:border-gray-900" />
-        </Link>
+        {/* Interactive Notification Popover */}
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => setIsNotifOpen((prev) => !prev)}
+            className="relative rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            title="Notifications"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full border-2 border-white bg-indigo-600 text-[10px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-xs animate-pulse">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {isNotifOpen && (
+            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-800 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/60 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-gray-900 dark:text-white">Notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </div>
+                <Link
+                  to="/notifications"
+                  onClick={() => setIsNotifOpen(false)}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                >
+                  View All
+                </Link>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto py-2 divide-y divide-gray-100 dark:divide-gray-700/50">
+                {recentNotifs.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-gray-400">
+                    No new notifications right now.
+                  </div>
+                ) : (
+                  recentNotifs.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        setIsNotifOpen(false);
+                        navigate('/notifications');
+                      }}
+                      className="p-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-indigo-500">
+                          {item.title}
+                        </p>
+                        <span className="text-[10px] text-gray-400 shrink-0">
+                          {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
+                        {item.message}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-700/60 text-center">
+                <Link
+                  to="/notifications"
+                  onClick={() => setIsNotifOpen(false)}
+                  className="block text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 py-1"
+                >
+                  Open Notification Center →
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div className="mx-1 h-8 w-px bg-gray-200 dark:bg-gray-700" />
 

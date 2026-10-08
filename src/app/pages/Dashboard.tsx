@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Users, FolderKanban, CheckSquare, Activity,
-  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, Loader2
+  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, Loader2, UserPlus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
+import AddMemberModal from '../components/AddMemberModal';
 
 interface ActivityItem {
   id: string;
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -216,12 +218,19 @@ export default function Dashboard() {
               Create a new project workspace or allocate tasks to streamline delivery across your team.
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={() => setIsProjectModalOpen(true)}
               className="bg-white text-indigo-600 px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm hover:bg-gray-50 transition-colors"
             >
               + New Project
+            </button>
+            <button
+              onClick={() => setIsAddMemberModalOpen(true)}
+              className="bg-indigo-500/50 hover:bg-indigo-500/70 border border-white/20 text-white px-4 py-2.5 rounded-xl text-xs font-bold backdrop-blur-sm transition-colors flex items-center gap-1.5"
+            >
+              <UserPlus size={14} />
+              <span>Invite Team</span>
             </button>
           </div>
         </div>
@@ -231,6 +240,12 @@ export default function Dashboard() {
         isOpen={isProjectModalOpen}
         onClose={() => setIsProjectModalOpen(false)}
         onProjectCreated={fetchData}
+      />
+
+      <AddMemberModal
+        isOpen={isAddMemberModalOpen}
+        onClose={() => setIsAddMemberModalOpen(false)}
+        onMemberAdded={fetchData}
       />
     </div>
   );

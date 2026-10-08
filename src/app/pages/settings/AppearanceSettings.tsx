@@ -21,6 +21,8 @@ export default function AppearanceSettings() {
     setTypographySize,
     reduceMotion,
     setReduceMotion,
+    chatWallpaper,
+    setChatWallpaper,
   } = useTheme();
 
   return (
@@ -204,6 +206,115 @@ export default function AppearanceSettings() {
               />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* 5. Chat Wallpaper & Theming Studio */}
+      <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
+              Chat Wallpaper & Theme
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Choose your chat backdrop style (WhatsApp doodle, Telegram blue, Ambient Aurora, or Engineering Grids).
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          {[
+            {
+              id: 'whatsapp',
+              name: 'WhatsApp Doodle',
+              desc: 'Classic geometric doodle',
+              bgClass: 'bg-[#efeae2] dark:bg-[#0b141a] border-[#00a884]/40',
+              previewStyle: 'radial-gradient(#128c7e25 1.5px, transparent 1.5px)',
+            },
+            {
+              id: 'telegram',
+              name: 'Telegram Clouds',
+              desc: 'Iconic soft gradient sky',
+              bgClass: 'bg-gradient-to-b from-[#72b5e8]/30 via-[#2a75b2]/20 to-[#1d2733] border-sky-400/40',
+              previewStyle: 'none',
+            },
+            {
+              id: 'cyberpunk',
+              name: 'Cyberpunk Neon',
+              desc: 'High-contrast dark grid',
+              bgClass: 'bg-[#05050c] border-pink-500/40',
+              previewStyle: 'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)',
+            },
+            {
+              id: 'subtle-grid',
+              name: 'Subtle Grid',
+              desc: 'Technical dot grid',
+              bgClass: 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700',
+              previewStyle: 'linear-gradient(to right, #80808012 1px, transparent 1px), linear-gradient(to bottom, #80808012 1px, transparent 1px)',
+            },
+            {
+              id: 'dots',
+              name: 'Blueprint Dots',
+              desc: 'Architectural blueprint',
+              bgClass: 'bg-indigo-50/50 dark:bg-[#0d1117] border-indigo-400/40',
+              previewStyle: 'radial-gradient(#6366f125 1.5px, transparent 1.5px)',
+            },
+            {
+              id: 'gradient',
+              name: 'Ambient Aurora',
+              desc: 'Soft glowing hues',
+              bgClass: 'bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 dark:bg-gray-900 border-purple-400/40',
+              previewStyle: 'none',
+            },
+            {
+              id: 'minimal',
+              name: 'Clean Solid',
+              desc: 'Pure distraction-free',
+              bgClass: 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700',
+              previewStyle: 'none',
+            },
+          ].map((item) => {
+            const isSelected = chatWallpaper === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setChatWallpaper(item.id as any);
+                  toast.success(`Chat theme set to ${item.name}`);
+                }}
+                className={`group text-left p-3 rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-indigo-600 dark:border-indigo-400 ring-2 ring-indigo-500/30 shadow-md bg-white dark:bg-gray-800'
+                    : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700'
+                }`}
+              >
+                {/* Mini Preview Box */}
+                <div
+                  className={`h-16 w-full rounded-xl border border-gray-200/60 dark:border-gray-700/60 mb-2.5 p-2 flex flex-col justify-end relative overflow-hidden ${item.bgClass}`}
+                  style={{
+                    backgroundImage: item.previewStyle !== 'none' ? item.previewStyle : undefined,
+                    backgroundSize: item.previewStyle !== 'none' ? '12px 12px' : undefined,
+                  }}
+                >
+                  <div className="flex gap-1.5 justify-end">
+                    <div className="w-12 h-2.5 bg-indigo-500/80 rounded-md shadow-2xs" />
+                  </div>
+                  <div className="flex gap-1.5 justify-start mt-1">
+                    <div className="w-8 h-2 bg-gray-300/80 dark:bg-gray-700 rounded-md shadow-2xs" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{item.name}</p>
+                    {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                  </div>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">{item.desc}</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
