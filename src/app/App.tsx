@@ -1,10 +1,11 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
 import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { supabase } from '../lib/supabaseClient';
 
 // Component Imports
 import { ModernHeader } from './components/ModernHeader';
@@ -62,11 +63,31 @@ function PageLoader() {
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const navigate = useNavigate();
 
   const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
+  
+  // Resilient verification check: checks custom table flag, auth session confirmed timestamp, or super admin
+  const isVerified = Boolean(
+    user?.is_verified ||
+    user?.email_verified ||
+    session?.user?.email_confirmed_at ||
+    isSuperAdmin
+  );
+
+  // Auto-heal: If auth confirmed the email but public.users flag lags behind, synchronize it
+  useEffect(() => {
+    if (session?.user?.email_confirmed_at && user?.id && !user?.is_verified) {
+      supabase
+        .from('users')
+        .update({ is_verified: true })
+        .eq('id', user.id)
+        .then(() => {
+          window.dispatchEvent(new CustomEvent('user-profile-updated'));
+        });
+    }
+  }, [session?.user?.email_confirmed_at, user?.id, user?.is_verified]);
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -110,7 +131,7 @@ function Layout() {
           }} 
         />
         
-        {/* Main Content Area: Smoothly transitions into full-width canvas view when sidebar is closed */}
+        {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-all duration-300 ease-in-out">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
