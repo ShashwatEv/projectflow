@@ -68,7 +68,7 @@ function Layout() {
 
   const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
   
-  // Resilient verification check: checks custom table flag, auth session confirmed timestamp, or super admin
+  // Resilient verification check without ts(2339) type errors
   const isVerified = Boolean(
     user?.is_verified ||
     user?.email_verified ||
