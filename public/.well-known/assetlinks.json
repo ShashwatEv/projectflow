@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.onrender.projectflow_d9dk.twa",
+        "sha256_cert_fingerprints": ["76:FB:F8:5E:F1:27:66:04:C6:9B:F0:88:76:DA:55:6E:F1:71:DB:71:AD:C3:7C:7B:27:CD:61:8E:73:C4:44:B0"]
+      }
+    }]
