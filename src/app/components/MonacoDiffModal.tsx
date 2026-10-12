@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
-import { X, GitCommit, FileDiff, Check } from 'lucide-react';
+import { X, GitCommit, FileDiff, Columns2, AlignJustify } from 'lucide-react';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 
 interface MonacoDiffModalProps {
@@ -22,6 +23,7 @@ export default function MonacoDiffModal({
   isPushing,
 }: MonacoDiffModalProps) {
   const theme = useAccentTheme();
+  const [renderSideBySide, setRenderSideBySide] = useState<boolean>(true);
 
   if (!isOpen) return null;
 
@@ -40,7 +42,7 @@ export default function MonacoDiffModal({
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-6xl h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         
-        {/* Modal Top Bar */}
+        {/* Modal Top Bar with Split or Unified View Switcher */}
         <div className="h-14 border-b border-gray-800 px-6 flex items-center justify-between shrink-0 bg-[#0d1117]">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
@@ -58,6 +60,36 @@ export default function MonacoDiffModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Split vs Inline Toggle */}
+            <div className="flex items-center bg-[#161b22] border border-gray-800 rounded-xl p-0.5 mr-2">
+              <button
+                type="button"
+                onClick={() => setRenderSideBySide(true)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  renderSideBySide
+                    ? 'bg-gray-800 text-white shadow-xs'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Side by side comparison"
+              >
+                <Columns2 size={13} />
+                <span>Split</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenderSideBySide(false)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  !renderSideBySide
+                    ? 'bg-gray-800 text-white shadow-xs'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                title="Unified inline diff"
+              >
+                <AlignJustify size={13} />
+                <span>Unified</span>
+              </button>
+            </div>
+
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
@@ -74,7 +106,7 @@ export default function MonacoDiffModal({
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white rounded-lg transition-colors ml-2"
+              className="p-2 text-gray-400 hover:text-white rounded-lg transition-colors ml-1"
             >
               <X size={18} />
             </button>
@@ -92,7 +124,7 @@ export default function MonacoDiffModal({
             options={{
               fontSize: 12,
               minimap: { enabled: false },
-              renderSideBySide: true,
+              renderSideBySide: renderSideBySide,
               readOnly: true,
               automaticLayout: true,
             }}
@@ -103,13 +135,13 @@ export default function MonacoDiffModal({
         <div className="h-9 border-t border-gray-800 px-6 flex items-center justify-between text-[11px] font-mono text-gray-400 bg-[#0d1117]">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 text-rose-400">
-              <span className="w-2 h-2 rounded-full bg-rose-500" /> Left: Remote Base (GitHub)
+              <span className="w-2 h-2 rounded-full bg-rose-500" /> Red: Remote Base on GitHub
             </span>
             <span className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Right: Your Edited Code
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Green: Staged Workspace Edits
             </span>
           </div>
-          <span>Review all mutations before remote sync</span>
+          <span>Review diff thoroughly prior to remote push</span>
         </div>
       </div>
     </div>

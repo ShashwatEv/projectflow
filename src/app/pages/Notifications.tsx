@@ -29,8 +29,7 @@ export default function Notifications() {
   // 1. Fetch real notifications and auto-synthesize live project/deadline triggers
   const fetchLiveNotifications = async () => {
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const currentUserId = authData?.user?.id;
+      await supabase.auth.getUser();
 
       // 1. Fetch stored notifications
       const { data: storedData, error } = await supabase

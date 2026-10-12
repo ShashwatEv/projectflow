@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   GitCommit, RefreshCw, GitPullRequest, 
   Lock, ArrowLeft, ArrowRight, Clock,
-  ExternalLink, GitMerge, AlertCircle
+  ExternalLink, GitMerge
 } from 'lucide-react';
 import { 
   ResponsiveContainer, ComposedChart, Bar, Line, 

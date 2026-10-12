@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Bell, Loader2, Check } from 'lucide-react';
+import { Mail, Bell, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
@@ -24,7 +24,7 @@ export default function NotificationsSettings() {
   const theme = useAccentTheme();
   const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [_savingKey, setSavingKey] = useState<string | null>(null);
 
   // 1. Fetch user notification preferences
   useEffect(() => {

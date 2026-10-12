@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Terminal as TerminalIcon, Play, Trash2, ChevronUp, ChevronDown, Sparkles } from 'lucide-react';
+import { Terminal as TerminalIcon, Play, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { supabase } from '../../lib/supabaseClient';
 

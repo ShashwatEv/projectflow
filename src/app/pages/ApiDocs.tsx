@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { 
   BookOpen, Plus, Search, Copy, Check, Terminal, 
-  ExternalLink, Code2, Layers, Loader2, X, Trash2, Database 
+  Code2, Loader2, X, Trash2, Database 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
-import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
 interface ApiEndpoint {
@@ -24,7 +23,6 @@ interface ApiEndpoint {
 
 export default function ApiDocs() {
   const theme = useAccentTheme();
-  const { user } = useAuth();
 
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,14 +31,13 @@ export default function ApiDocs() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // New Endpoint Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formTitle, setFormTitle] = useState('');
   const [formMethod, setFormMethod] = useState<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'>('GET');
   const [formPath, setFormPath] = useState('');
   const [formCategory, setFormCategory] = useState('Core Services');
   const [formDescription, setFormDescription] = useState('');
-  const [formStatusCode, setFormStatusCode] = useState(200);
+  const [formStatusCode] = useState(200);
   const [formReqBody, setFormReqBody] = useState('{}');
   const [formResBody, setFormResBody] = useState('{\n  "success": true\n}');
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +84,7 @@ export default function ApiDocs() {
       try {
         parsedReq = JSON.parse(formReqBody);
       } catch {
-        // Fallback to empty object
+        parsedReq = {};
       }
       try {
         parsedRes = JSON.parse(formResBody);
@@ -163,7 +160,6 @@ export default function ApiDocs() {
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-300">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-6">
         <div>
           <div className="flex items-center gap-2.5">
@@ -190,7 +186,6 @@ export default function ApiDocs() {
         </button>
       </div>
 
-      {/* Filter and Search Bar */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
         <div className="md:col-span-6 relative">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -231,7 +226,6 @@ export default function ApiDocs() {
         </div>
       </div>
 
-      {/* Endpoints List */}
       {loading ? (
         <div className="flex flex-col items-center justify-center p-24 space-y-3">
           <Loader2 className={`animate-spin ${theme.textAccent}`} size={32} />
@@ -242,7 +236,7 @@ export default function ApiDocs() {
           <Terminal size={36} className="mx-auto text-gray-400 mb-3" />
           <h3 className="text-base font-bold text-gray-900 dark:text-white">No endpoints found</h3>
           <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-            Click "Catalog Endpoint" above to publish your first endpoint documentation.
+            Click Catalog Endpoint above to publish your first endpoint documentation.
           </p>
         </div>
       ) : (
@@ -252,7 +246,6 @@ export default function ApiDocs() {
               key={ep.id}
               className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 group"
             >
-              {/* Header Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className={`px-2.5 py-1 rounded-xl text-[11px] font-mono font-extrabold border ${methodColors[ep.method] || methodColors.GET}`}>
@@ -285,14 +278,11 @@ export default function ApiDocs() {
                 </div>
               </div>
 
-              {/* Description */}
               <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-sans">
                 {ep.description || 'No description provided for this endpoint contract.'}
               </p>
 
-              {/* Request & Response JSON Viewers */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
-                {/* Request Payload */}
                 <div className="bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl p-3.5 space-y-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
                     <Code2 size={12} className={theme.textAccent} /> Request Schema Body
@@ -302,11 +292,10 @@ export default function ApiDocs() {
                   </pre>
                 </div>
 
-                {/* Response Payload */}
                 <div className="bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                      <Database size={12} className="text-emerald-500" /> Response Expected ({ep.status_code})
+                      <Database size={12} className="text-emerald-500" /> Response Expected {ep.status_code}
                     </span>
                     <span className="text-[10px] font-mono text-emerald-500 font-bold">200 OK</span>
                   </div>
@@ -320,7 +309,6 @@ export default function ApiDocs() {
         </div>
       )}
 
-      {/* Modal: Catalog New Endpoint */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl animate-in zoom-in-95">

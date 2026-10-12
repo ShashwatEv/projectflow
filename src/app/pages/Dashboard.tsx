@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Users, FolderKanban, CheckSquare, Activity,
-  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, Loader2, UserPlus
+  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, UserPlus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
@@ -39,7 +39,6 @@ export default function Dashboard() {
       // Date baseline for week-over-week trends (last 7 days)
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      const oneWeekAgoIso = oneWeekAgo.toISOString();
 
       // 1. Projects Query: Total & Created This Week
       const { data: projects } = await supabase

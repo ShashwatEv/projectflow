@@ -243,7 +243,7 @@ export default function CodeStudio() {
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
 
-    editor.onDidChangeCursorPosition((e) => {
+    editor.onDidChangeCursorPosition((e: any) => {
       if (!selectedProjectId || !user?.id || !activeFile) return;
 
       supabase.channel(`studio_cursor_${selectedProjectId}`).send({

@@ -13,6 +13,7 @@ import { ModernSidebar } from './components/ModernSidebar';
 import RequireAuth from './components/RequireAuth';
 import CommandMenu from './components/CommandMenu';
 import OnboardingTour from './components/OnboardingTour';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 // Core Authentication & Layout Pages
 import Dashboard from './pages/Dashboard';
@@ -50,7 +51,8 @@ const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({
   ) 
 })));
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+// Super admin email from environment variable (falls back to empty string for security)
+const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL?.toLowerCase().trim() || '';
 
 function PageLoader() {
   return (
@@ -149,7 +151,8 @@ export default function App() {
         <OnboardingSandboxProvider>
           <Toaster richColors position="top-right" />
           <BrowserRouter>
-            <Routes>
+            <ErrorBoundary>
+              <Routes>
               {/* Public Authentication Routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -196,6 +199,7 @@ export default function App() {
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
+          </ErrorBoundary>
           </BrowserRouter>
         </OnboardingSandboxProvider>
       </ThemeProvider>

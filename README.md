@@ -1,6 +1,6 @@
 # 🚀 ProjectFlow — Modern Collaborative Project Workspace
 
-> A full-stack, agile engineering workspace built with React 19, Supabase, Tailwind CSS, and Monaco Editor[cite: 21]. Features real-time state synchronization, embedded code editing, AI-assisted reviews, and customizable workspace themes[cite: 21].
+> A full-stack, agile engineering workspace built with React 18, Supabase, Tailwind CSS, and Monaco Editor[cite: 21]. Features real-time state synchronization, embedded code editing, AI-assisted reviews, and customizable workspace themes[cite: 21].
 
 Live Demo = (https://projectflow-d9dk.onrender.com)
 
@@ -20,7 +20,7 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
 
 | Layer | Technologies |
 |---|---|
-| **Frontend** | React 19, Vite, Tailwind CSS, Lucide React, Sonner[cite: 1, 4, 21] |
+| **Frontend** | React 18, Vite, Tailwind CSS, Lucide React, Sonner[cite: 1, 4, 21] |
 | **Backend & DB** | Supabase (PostgreSQL, Realtime Channels, Storage, Row-Level Security)[cite: 1, 21] |
 | **Editor & Tools** | Monaco Editor, React Router v6[cite: 1, 11, 21] |
 | **AI Integration** | Google Gemini API (Code reviews & assistant) |
@@ -35,19 +35,49 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
    git clone [https://github.com/ShashwatEv/projectflow.git]
    cd projectflow
    npm install
-
+   ```
 
 2. **Configure Environment Variables:**
-  Edit .env.example file in the root directory to .env:
-
+   Copy `.env.example` to `.env` and fill in your values:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Required variables:
+   ```env
    VITE_SUPABASE_URL=your_supabase_project_url
-  
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
+   
+   Optional variables:
+   ```env
+   VITE_OPENROUTER_API_KEY=your_openrouter_api_key
+   VITE_SUPER_ADMIN_EMAIL=your_admin_email@example.com
+   VITE_GITHUB_TOKEN=your_github_personal_access_token
+   ```
 
 3. **Run the local development server:**
-
    ```bash
    npm run dev
+   ```
+
+---
+
+## 🧪 Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run lint` | Run ESLint |
+| `npm run lint:fix` | Auto-fix ESLint issues |
+| `npm run typecheck` | Run TypeScript type checking |
+| `npm run test` | Run tests in watch mode |
+| `npm run test:run` | Run tests once (CI mode) |
+| `npm run test:ui` | Open Vitest UI |
+| `npm run test:coverage` | Run tests with coverage report |
+
+---
 
 ## 📄 Licensing & Commercial Inquiries
 

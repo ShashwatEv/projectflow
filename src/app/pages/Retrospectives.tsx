@@ -4,7 +4,7 @@ import {
   Users, Plus, ThumbsUp, MessageSquare, 
   Clock, CheckCircle2, AlertTriangle, 
   Loader2, Send, Trash2, Target, 
-  BarChart3, RefreshCw, Lock, ShieldCheck, ArrowRight
+  BarChart3, RefreshCw, Lock, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Zap, Mail, Github, MoreVertical, Clock, CheckCircle, 
+  Zap, Mail, Github, MoreVertical, CheckCircle, 
   AlertTriangle, Loader2, Slack, Plus, Play, Trash2, X, Lock
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';

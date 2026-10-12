@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Hash, Search, Plus, Smile, MessageSquare,
-  Menu, X, ExternalLink, Palette, Sparkles, Check
+  Menu, X, Palette, ExternalLink, Check
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';

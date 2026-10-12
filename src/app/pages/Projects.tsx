@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FolderKanban, Plus, Calendar, ArrowRight, MoreVertical, 
+  FolderKanban, Plus, ArrowRight, MoreVertical, 
   Trash2, Loader2, Search, Code2, Sparkles, Github, 
-  CheckCircle2, Clock, PauseCircle, PlayCircle, ExternalLink, Lock 
+  CheckCircle2, PauseCircle, PlayCircle, Lock 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';

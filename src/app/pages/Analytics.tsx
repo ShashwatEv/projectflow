@@ -5,9 +5,8 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import {
-  Loader2, CheckCircle2, Circle, AlertTriangle, ListTodo,
-  TrendingUp, TrendingDown, Sparkles, Clock, ShieldAlert,
-  Calendar, Check, RefreshCw
+  Loader2, Circle, AlertTriangle, ListTodo,
+  TrendingUp, TrendingDown, Sparkles, Clock, Check, RefreshCw
 } from 'lucide-react';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';

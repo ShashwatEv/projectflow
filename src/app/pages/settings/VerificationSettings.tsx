@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   BadgeCheck, Mail, Phone, ShieldCheck, KeyRound, 
-  Loader2, CheckCircle2, RefreshCw 
+  Loader2, CheckCircle2 
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -24,7 +24,7 @@ export default function VerificationSettings() {
   const [phoneNumber, setPhoneNumber] = useState('');
 
   // OTP Step States
-  const [activeChannel, setActiveChannel] = useState<'email' | 'phone' | null>(null);
+  const [_activeChannel, setActiveChannel] = useState<'email' | 'phone' | null>(null);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);

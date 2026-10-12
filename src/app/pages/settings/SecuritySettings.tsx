@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Key, Shield, Eye, EyeOff, Loader2, CheckCircle2, Circle, 
-  Mail, Phone, Smartphone, AlertCircle 
+  Mail, Smartphone 
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -28,7 +28,7 @@ export default function SecuritySettings() {
   const [twoFactorChannel, setTwoFactorChannel] = useState<'email' | 'phone'>('email');
   const [twoFactorTarget, setTwoFactorTarget] = useState('');
   const [saving2Fa, setSaving2Fa] = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [_loadingConfig, setLoadingConfig] = useState(true);
 
   // Load existing 2FA configuration from users table
   useEffect(() => {

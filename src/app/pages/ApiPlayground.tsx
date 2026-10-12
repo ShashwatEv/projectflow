@@ -10,7 +10,7 @@ import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL?.toLowerCase().trim() || 'shashwatop69@gmail.com';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -38,7 +38,6 @@ export default function ApiPlayground() {
   const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
   const isVerified = Boolean(user?.is_verified || isSuperAdmin);
 
-  // Request State
   const [method, setMethod] = useState<HttpMethod>('POST');
   const [url, setUrl] = useState<string>('https://api.github.com/repos/org/projectflow/hooks');
   const [activeTab, setActiveTab] = useState<'params' | 'headers' | 'body'>('body');
@@ -66,8 +65,6 @@ export default function ApiPlayground() {
     )
   );
   const [loading, setLoading] = useState<boolean>(false);
-
-  // Response State
   const [response, setResponse] = useState<ResponseState | null>(null);
   const [copiedSnippet, setCopiedSnippet] = useState<boolean>(false);
   const [selectedSnippetLang, setSelectedSnippetLang] = useState<'curl' | 'fetch' | 'python'>('curl');
@@ -86,7 +83,6 @@ export default function ApiPlayground() {
     );
   };
 
-  // Preset Scenario Ingestion
   const loadPreset = (type: 'github_pr' | 'github_push' | 'sample_get') => {
     if (type === 'github_pr') {
       setMethod('POST');
@@ -169,7 +165,6 @@ export default function ApiPlayground() {
     setResponse(null);
     const startTime = performance.now();
 
-    // 1. Simulate internal workspace webhook handling
     if (url.includes('api.projectflow.internal')) {
       await new Promise((r) => setTimeout(r, 450));
       const endTime = performance.now();
@@ -206,7 +201,6 @@ export default function ApiPlayground() {
       return;
     }
 
-    // 2. Real external HTTP fetch
     try {
       const activeHeaders: Record<string, string> = {};
       headers.forEach((h) => {
@@ -325,7 +319,6 @@ print(response.json())`;
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6 text-gray-200 animate-in fade-in duration-200">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/60 pb-6">
         <div>
           <div className="flex items-center gap-2.5">
@@ -339,7 +332,6 @@ print(response.json())`;
           </p>
         </div>
 
-        {/* Snippet Language Selector & Quick Presets */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => loadPreset('github_pr')}
@@ -365,9 +357,7 @@ print(response.json())`;
         </div>
       </div>
 
-      {/* Main Request Form */}
       <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-4">
-        {/* Method & URL Input Bar */}
         <div className="flex flex-col sm:flex-row gap-2">
           <select
             value={method}
@@ -399,7 +389,6 @@ print(response.json())`;
           </button>
         </div>
 
-        {/* Tabs for Headers & Body */}
         <div className="flex gap-2 border-b border-gray-800 pb-2 text-xs">
           <button
             onClick={() => setActiveTab('body')}
@@ -423,7 +412,6 @@ print(response.json())`;
           </button>
         </div>
 
-        {/* Tab Body */}
         {activeTab === 'body' && (
           <div className="h-56 rounded-2xl overflow-hidden border border-gray-800 bg-[#0d1117]">
             <Editor
@@ -443,7 +431,6 @@ print(response.json())`;
           </div>
         )}
 
-        {/* Tab Headers */}
         {activeTab === 'headers' && (
           <div className="space-y-2 text-xs max-h-56 overflow-y-auto custom-scrollbar">
             {headers.map((h, i) => (
@@ -487,9 +474,7 @@ print(response.json())`;
         )}
       </div>
 
-      {/* Code Snippet & Live Response Area */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Code Generator */}
         <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-3 flex flex-col">
           <div className="flex items-center justify-between pb-2 border-b border-gray-800">
             <span className="text-xs font-bold text-gray-300">Generated Integration Snippet</span>
@@ -521,7 +506,6 @@ print(response.json())`;
           </pre>
         </div>
 
-        {/* Live Response Output */}
         <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-5 shadow-xl space-y-3 flex flex-col">
           <div className="flex items-center justify-between pb-2 border-b border-gray-800">
             <span className="text-xs font-bold text-gray-300">HTTP Response Body</span>

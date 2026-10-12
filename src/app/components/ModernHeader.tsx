@@ -3,7 +3,6 @@ import {
   Bell,
   CheckSquare,
   ChevronRight,
-  FileText,
   FolderKanban,
   LayoutGrid,
   LogOut,

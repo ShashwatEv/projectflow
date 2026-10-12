@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GitPullRequest, X, Loader2, Sparkles, Wand2 } from 'lucide-react';
+import { GitPullRequest, X, Loader2, Wand2 } from 'lucide-react';
 import { createPullRequest } from '../../lib/githubService';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -29,7 +29,7 @@ export default function CodeStudioPRModal({
   const theme = useAccentTheme();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [baseBranch, setBaseBranch] = useState(defaultBaseBranch);
+  const [baseBranch] = useState(defaultBaseBranch);
   const [loading, setLoading] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 

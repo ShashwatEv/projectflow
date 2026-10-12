@@ -1,5 +1,5 @@
-import { Check, Sun, Moon, Laptop, Sparkles } from 'lucide-react';
-import { useTheme, AccentColor, TypographySize, ThemeMode } from '../../../context/ThemeContext';
+import { Check, Sun, Moon, Laptop } from 'lucide-react';
+import { useTheme, AccentColor, TypographySize } from '../../../context/ThemeContext';
 import { toast } from 'sonner';
 
 const ACCENTS: { id: AccentColor; bg: string; ring: string }[] = [

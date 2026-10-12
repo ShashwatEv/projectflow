@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  User, Mail, MapPin, Globe, Phone, Save, Loader2, Camera, 
-  Sparkles, ExternalLink, CheckCircle2, BadgeCheck, MessageSquare,
-  Briefcase, CheckSquare, Clock, ShieldCheck
+  Mail, MapPin, Globe, Phone, Save, Loader2, Camera, Sparkles, ExternalLink, BadgeCheck, MessageSquare, CheckSquare, Clock, CheckCircle2 
+  
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';

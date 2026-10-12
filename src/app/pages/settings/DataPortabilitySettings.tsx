@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { 
   Download, Upload, Database, CheckCircle2, 
   Loader2, Lock, ShieldAlert, ArrowRight 
@@ -17,7 +17,7 @@ const ALLOWED_MIGRATION_ROLES = ['Admin', 'Developer', 'Tech Lead', 'Engineer', 
 
 export default function DataPortabilitySettings() {
   const theme = useAccentTheme();
-  const navigate = useNavigate();
+  
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

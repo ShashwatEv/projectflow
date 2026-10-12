@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Loader2, ShieldAlert, Command, Keyboard } from 'lucide-react';
+import { Loader2, ShieldAlert, Keyboard, LayoutGrid, Rows } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
 import { supabase } from '../../lib/supabaseClient';
@@ -36,6 +36,9 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   const { isSandboxActive, sandboxTasks, updateSandboxTaskStatus } = useOnboardingSandbox();
 
   const [loading, setLoading] = useState(true);
+  const [density, setDensity] = useState<'comfort' | 'compact'>('comfort');
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+
   const [columns, setColumns] = useState<ColumnData>({
     todo: [],
     inProgress: [],
@@ -43,7 +46,6 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     done: [],
   });
 
-  // Linear-Style Keyboard Triage State
   const [focusedColIndex, setFocusedColIndex] = useState<number>(0);
   const [focusedTaskIndex, setFocusedTaskIndex] = useState<number>(0);
   const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
@@ -145,13 +147,9 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
     const channel = supabase
       .channel('kanban_realtime_stream')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
-        () => {
-          fetchTasks();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        fetchTasks();
+      })
       .subscribe();
 
     return () => {
@@ -162,7 +160,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   const handleDrop = async (taskId: string, targetColumn: ColumnType) => {
     if (isSandboxActive) {
       updateSandboxTaskStatus(taskId, targetColumn);
-      toast.info('Card moved locally (Safe Sandbox Mode)');
+      toast.info('Card moved locally across safe sandbox');
       return;
     }
 
@@ -210,10 +208,23 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     }
   };
 
-  // Linear Keyboard Navigation Listener
+  const handlePriorityUpdate = async (taskId: string, newPriority: 'urgent' | 'high' | 'medium' | 'low') => {
+    setColumns((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        const key = k as ColumnType;
+        next[key] = next[key].map((t) => (t.id === taskId ? { ...t, priority: newPriority } : t));
+      });
+      return next;
+    });
+
+    if (!isSandboxActive) {
+      await supabase.from('tasks').update({ priority: newPriority }).eq('id', taskId);
+    }
+  };
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Ignore if user is currently typing inside an input or textarea
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
@@ -221,33 +232,28 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       const activeColKey = COLUMN_KEYS[focusedColIndex] || 'todo';
       const currentTasks = columns[activeColKey] || [];
 
-      // Navigate Down (J or ArrowDown)
       if (e.key === 'j' || e.key === 'ArrowDown') {
         e.preventDefault();
         setFocusedTaskIndex((prev) => Math.min(currentTasks.length - 1, prev + 1));
       }
 
-      // Navigate Up (K or ArrowUp)
       if (e.key === 'k' || e.key === 'ArrowUp') {
         e.preventDefault();
         setFocusedTaskIndex((prev) => Math.max(0, prev - 1));
       }
 
-      // Switch Column Right (L or ArrowRight)
       if (e.key === 'l' || e.key === 'ArrowRight') {
         e.preventDefault();
         setFocusedColIndex((prev) => Math.min(COLUMN_KEYS.length - 1, prev + 1));
         setFocusedTaskIndex(0);
       }
 
-      // Switch Column Left (H or ArrowLeft)
       if (e.key === 'h' || e.key === 'ArrowLeft') {
         e.preventDefault();
         setFocusedColIndex((prev) => Math.max(0, prev - 1));
         setFocusedTaskIndex(0);
       }
 
-      // Inspect / Open Modal (Space)
       if (e.key === ' ') {
         e.preventDefault();
         const targetedTask = currentTasks[focusedTaskIndex];
@@ -275,35 +281,62 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
   return (
     <div data-tour="kanban-board" className="space-y-4">
-      {/* Keyboard Shortcuts Navigation Bar */}
-      <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 bg-gray-50 dark:bg-[#161b22] px-3.5 py-2 rounded-2xl border border-gray-200 dark:border-gray-800">
-        <div className="flex items-center gap-2">
-          <Keyboard size={14} className={theme.textAccent} />
-          <span>Linear Triage:</span>
-          <span className="text-gray-700 dark:text-gray-300">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">J</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">K</kbd> to move
+      {/* Top Controls Toolbar with Density Toggle and Shortcuts */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-gray-500 bg-white dark:bg-[#161b22] px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <Keyboard size={15} className={theme.textAccent} />
+          <span>Triage Keys:</span>
+          <span className="text-gray-800 dark:text-gray-200">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">J</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">K</kbd> move
           </span>
-          <span className="text-gray-500">•</span>
-          <span className="text-gray-700 dark:text-gray-300">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">H</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">L</kbd> switch column
+          <span className="text-gray-400">•</span>
+          <span className="text-gray-800 dark:text-gray-200">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">H</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">L</kbd> column
           </span>
-          <span className="text-gray-500">•</span>
-          <span className="text-gray-700 dark:text-gray-300">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-bold">Space</kbd> inspect
+          <span className="text-gray-400">•</span>
+          <span className="text-gray-800 dark:text-gray-200">
+            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">Space</kbd> inspect
           </span>
         </div>
-        <span className="hidden sm:inline text-[10px] text-gray-500">
-          Targeting: {COLUMN_KEYS[focusedColIndex]} (#{focusedTaskIndex + 1})
-        </span>
+
+        {/* Density View Switcher */}
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#0d1117] p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setDensity('comfort')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              density === 'comfort'
+                ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-xs'
+                : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+            title="Comfort card density"
+          >
+            <LayoutGrid size={13} />
+            <span>Comfort</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDensity('compact')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+              density === 'compact'
+                ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-xs'
+                : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+            title="Compact high density"
+          >
+            <Rows size={13} />
+            <span>Compact</span>
+          </button>
+        </div>
       </div>
 
       {/* Sandbox Isolation Header Banner */}
       {isSandboxActive && (
-        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-400 animate-in fade-in">
+        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-500 dark:text-amber-400">
           <div className="flex items-center gap-2">
             <ShieldAlert size={16} className="shrink-0" />
             <span>
-              <strong>Safe Sandbox Active:</strong> Tasks shown here are isolated mock drafts. Drag and test without affecting the team.
+              Safe Sandbox Active: Tasks shown are isolated mock drafts. Drag and test without affecting the team.
             </span>
           </div>
           <span className="text-[10px] font-bold font-mono uppercase bg-amber-500/20 px-2 py-0.5 rounded-lg shrink-0">
@@ -312,36 +345,61 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
         </div>
       )}
 
+      {/* Horizontal Snap Scroll Container */}
       <DndProvider backend={HTML5Backend}>
-        <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar">
+        <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar snap-x snap-mandatory scroll-smooth">
           <ModernKanbanColumn
             title="To Do"
             tasks={columns.todo}
             color="bg-slate-400"
+            density={density}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
             onDrop={(taskId) => handleDrop(taskId, 'todo')}
+            onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
+            onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
+            onPriorityChange={handlePriorityUpdate}
           />
           <ModernKanbanColumn
             title="In Progress"
             tasks={columns.inProgress}
             color="bg-blue-500"
+            density={density}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
             onDrop={(taskId) => handleDrop(taskId, 'inProgress')}
+            onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
+            onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
+            onPriorityChange={handlePriorityUpdate}
           />
           <ModernKanbanColumn
             title="Review"
             tasks={columns.review}
             color="bg-amber-500"
+            density={density}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
             onDrop={(taskId) => handleDrop(taskId, 'review')}
+            onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
+            onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
+            onPriorityChange={handlePriorityUpdate}
           />
           <ModernKanbanColumn
             title="Done"
             tasks={columns.done}
             color="bg-emerald-500"
+            density={density}
+            hoveredTaskId={hoveredTaskId}
+            onHoverTask={setHoveredTaskId}
             onDrop={(taskId) => handleDrop(taskId, 'done')}
+            onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
+            onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
+            onPriorityChange={handlePriorityUpdate}
           />
         </div>
       </DndProvider>
 
-      {/* Peek Detail Modal Triggered via Space or Card Click */}
+      {/* Peek Detail Modal */}
       <TaskDetailModal
         taskId={activeModalTaskId}
         onClose={() => setActiveModalTaskId(null)}

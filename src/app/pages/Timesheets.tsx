@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Square, Plus, Calendar, Clock, 
+  Play, Square, Plus, Clock, 
   Trash2, X, Loader2, CheckCircle2, Search,
-  Briefcase, TrendingUp, Sparkles, Filter
+  Briefcase, TrendingUp, Filter
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';

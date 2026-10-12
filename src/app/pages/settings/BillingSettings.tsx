@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   CreditCard, Check, Users, HardDrive, Download, 
-  Sparkles, X, CheckCircle2, Loader2, FolderKanban, ShieldCheck
+  Sparkles, X, FolderKanban
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAccentTheme } from '../../../lib/useAccentTheme';

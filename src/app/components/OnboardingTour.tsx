@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  ShieldCheck, Check, Sparkles, FolderKanban, 
-  CheckSquare, Code2, BarChart2, ShieldAlert,
-  ArrowRight, Layers
+import {
+  ShieldCheck,
+  Check,
+  Sparkles,
+  ShieldAlert,
+  Layers,
+  Code2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';

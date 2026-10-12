@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, Clock, User, Filter, Search, Loader2 } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 

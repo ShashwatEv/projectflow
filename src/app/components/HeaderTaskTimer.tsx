@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Play, Pause, Clock, CheckCircle2, Square } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
 interface TaskTimerData {
@@ -13,7 +12,6 @@ interface TaskTimerData {
 
 export default function HeaderTaskTimer() {
   const { user } = useAuth();
-  const theme = useAccentTheme();
 
   const [activeTask, setActiveTask] = useState<TaskTimerData | null>(null);
   const [elapsedSec, setElapsedSec] = useState<number>(0);
