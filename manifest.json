@@ -13,7 +13,7 @@
     "standalone",
     "minimal-ui"
   ],
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
   "categories": [
@@ -22,8 +22,13 @@
     "developer tools"
   ],
   "prefer_related_applications": false,
+  "related_applications": [],
+  "iarc_rating_id": "",
   "launch_handler": {
     "client_mode": "focus-existing"
+  },
+  "edge_side_panel": {
+    "preferred_width": 480
   },
   "icons": [
     {
@@ -78,6 +83,32 @@
           "type": "image/png"
         }
       ]
+    }
+  ],
+  "share_target": {
+    "action": "/tasks",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "description",
+      "url": "link"
+    }
+  },
+  "file_handlers": [
+    {
+      "action": "/code",
+      "name": "Source Code File",
+      "accept": {
+        "text/plain": [".txt", ".md"],
+        "application/json": [".json"],
+        "text/javascript": [".js", ".jsx", ".ts", ".tsx"]
+      }
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+projectflow",
+      "url": "/tasks?ref=%s"
     }
   ],
   "screenshots": [
