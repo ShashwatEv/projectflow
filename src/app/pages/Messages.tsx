@@ -12,7 +12,9 @@ import { useTyping } from '../../hooks/useTyping';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';
 import TypingIndicator from '../components/TypingIndicator';
 import ChatFileButton from '../components/ChatFileButton';
+import ChatVoiceRecorder from '../components/ChatVoiceRecorder';
 import MessageBubble from '../components/MessageBubble';
+import { triggerHaptic } from '../../lib/haptics';
 import { toast } from 'sonner';
 
 interface Message {
@@ -23,6 +25,7 @@ interface Message {
   file_url?: string;
   file_type?: string;
   is_edited?: boolean;
+  reply_count?: number;
   user?: { name: string; avatar: string };
   message_reactions?: { id: string; emoji: string; user_id: string }[];
 }
@@ -43,9 +46,9 @@ interface Channel {
 
 const DEFAULT_CHANNELS: Channel[] = [
   { id: 'room_1', name: 'general', description: 'Company-wide discussion and updates' },
-  { id: 'room_dev', name: 'development', description: 'Tech stack, architecture & bug tracking' },
-  { id: 'room_design', name: 'design', description: 'UI/UX specs, Figma boards & creative work' },
-  { id: 'room_random', name: 'random', description: 'Coffee chats, memes & watercooler conversations' },
+  { id: 'room_dev', name: 'development', description: 'Tech stack, architecture and bug tracking' },
+  { id: 'room_design', name: 'design', description: 'UI and UX specs, Figma boards and creative work' },
+  { id: 'room_random', name: 'random', description: 'Coffee chats, memes and watercooler conversations' },
 ];
 
 export default function Messages() {
@@ -55,10 +58,8 @@ export default function Messages() {
   const { roomId } = useParams<{ roomId: string }>();
   const currentRoomId = roomId || 'room_1';
 
-  // Online Presence
   const onlineUserIds = useOnlineUsers();
 
-  // Chat state
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [users, setUsers] = useState<TeamUser[]>([]);
@@ -67,7 +68,6 @@ export default function Messages() {
     return saved ? JSON.parse(saved) : DEFAULT_CHANNELS;
   });
 
-  // UI state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showInputEmojiPicker, setShowInputEmojiPicker] = useState(false);
@@ -78,9 +78,9 @@ export default function Messages() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { typingUsers, broadcastTyping } = useTyping(currentRoomId);
 
-  // Close emoji picker when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
@@ -91,7 +91,6 @@ export default function Messages() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch Team Users for Direct Messages list
   useEffect(() => {
     async function fetchUsers() {
       const { data, error } = await supabase.from('users').select('id, name, avatar, email, role');
@@ -100,17 +99,23 @@ export default function Messages() {
     fetchUsers();
   }, []);
 
-  // Subscribe to Messages and Reactions
   useEffect(() => {
     setMessages([]);
     fetchMessages();
 
     const channel = supabase
       .channel(`chat_${currentRoomId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoomId}` },
-        (payload) => handleMessageChange(payload)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoomId}` },
+        (payload) => {
+          handleMessageChange(payload);
+          triggerHaptic('tap');
+        }
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' },
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'message_reactions' },
         () => fetchMessages()
       )
       .subscribe();
@@ -120,21 +125,26 @@ export default function Messages() {
     };
   }, [currentRoomId]);
 
-  // Auto-scroll on new message or typing
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, typingUsers]);
 
   const handleMessageChange = async (payload: any) => {
     if (payload.eventType === 'INSERT') {
-      const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', payload.new.user_id).single();
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, avatar')
+        .eq('id', payload.new.user_id)
+        .single();
       setMessages((prev) => [...prev, { ...payload.new, user: userData, message_reactions: [] }]);
     }
     if (payload.eventType === 'DELETE') {
-      setMessages((prev) => prev.filter(msg => msg.id !== payload.old.id));
+      setMessages((prev) => prev.filter((msg) => msg.id !== payload.old.id));
     }
     if (payload.eventType === 'UPDATE') {
-      setMessages((prev) => prev.map(msg => msg.id === payload.new.id ? { ...msg, ...payload.new } : msg));
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === payload.new.id ? { ...msg, ...payload.new } : msg))
+      );
     }
   };
 
@@ -154,6 +164,11 @@ export default function Messages() {
     const content = newMessage.trim();
     setNewMessage('');
     setShowInputEmojiPicker(false);
+    triggerHaptic('tap');
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
 
     const { error } = await supabase.from('messages').insert({
       room_id: currentRoomId,
@@ -169,12 +184,13 @@ export default function Messages() {
 
   const handleFileUpload = async (url: string, type: string) => {
     if (!user) return;
+    triggerHaptic('tap');
     const { error } = await supabase.from('messages').insert({
       room_id: currentRoomId,
       user_id: user.id,
       content: type === 'image' ? 'Shared an image' : 'Shared an attachment',
       file_url: url,
-      file_type: type
+      file_type: type,
     });
 
     if (error) {
@@ -184,17 +200,37 @@ export default function Messages() {
     }
   };
 
+  const handleSendVoiceNote = async (audioUrl: string, durationSec: number) => {
+    if (!user) return;
+    triggerHaptic('tap');
+    const { error } = await supabase.from('messages').insert({
+      room_id: currentRoomId,
+      user_id: user.id,
+      content: `Voice note • ${durationSec}s`,
+      file_url: audioUrl,
+      file_type: 'audio',
+    });
+
+    if (error) {
+      toast.error('Failed to send voice note');
+    } else {
+      toast.success('Voice note sent');
+    }
+  };
+
   const handleEdit = async (id: string, newContent: string) => {
     await supabase.from('messages').update({ content: newContent, is_edited: true }).eq('id', id);
   };
 
   const handleDelete = async (id: string) => {
+    triggerHaptic('warning');
     await supabase.from('messages').delete().eq('id', id);
     toast.success('Message deleted');
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!user) return;
+    triggerHaptic('tap');
 
     const { data: existing } = await supabase
       .from('message_reactions')
@@ -210,20 +246,24 @@ export default function Messages() {
       await supabase.from('message_reactions').insert({
         message_id: messageId,
         user_id: user.id,
-        emoji: emoji
+        emoji: emoji,
       });
     }
   };
 
   const handleCreateChannel = (e: React.FormEvent) => {
     e.preventDefault();
-    const formattedName = newChannelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const formattedName = newChannelName
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
     if (!formattedName) return;
 
     const newChannel: Channel = {
       id: `room_${formattedName}`,
       name: formattedName,
-      description: newChannelDesc.trim() || 'Custom discussion channel'
+      description: newChannelDesc.trim() || 'Custom discussion channel',
     };
 
     const updated = [...channels, newChannel];
@@ -234,50 +274,50 @@ export default function Messages() {
     setNewChannelName('');
     setNewChannelDesc('');
     toast.success(`Channel #${formattedName} created!`);
+    triggerHaptic('success');
     navigate(`/messages/${newChannel.id}`);
   };
 
-  // Determine current conversation type (Channel vs DM)
   const isDM = currentRoomId.startsWith('dm_');
   let dmRecipient: TeamUser | undefined;
   if (isDM && user) {
     const parts = currentRoomId.replace('dm_', '').split('_');
-    const recipientId = parts.find(id => id !== user.id) || parts[0];
-    dmRecipient = users.find(u => u.id === recipientId);
+    const recipientId = parts.find((id) => id !== user.id) || parts[0];
+    dmRecipient = users.find((u) => u.id === recipientId);
   }
 
-  const currentChannel = channels.find(c => c.id === currentRoomId);
+  const currentChannel = channels.find((c) => c.id === currentRoomId);
 
-  // Helper to construct DM room id
   const getDMRoomId = (otherUserId: string) => {
     if (!user) return 'room_1';
     const ids = [user.id, otherUserId].sort();
     return `dm_${ids[0]}_${ids[1]}`;
   };
 
-  // Filtered lists for search
-  const filteredChannels = channels.filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredUsers = users.filter(u => u.id !== user?.id && (
-    u.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    u.role?.toLowerCase().includes(searchQuery.toLowerCase())
-  ));
+  const filteredChannels = channels.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const filteredUsers = users.filter(
+    (u) =>
+      u.id !== user?.id &&
+      (u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.role?.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <div className="flex h-full bg-white dark:bg-gray-900 overflow-hidden relative">
-      {/* Mobile Backdrop */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* --- CONVERSATIONS SIDEBAR --- */}
-      <aside className={`
-        fixed lg:static inset-y-0 left-0 z-40 w-72 md:w-80 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-transform duration-200 ease-in-out
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        {/* Sidebar Header */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-40 w-72 md:w-80 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-transform duration-200 ease-in-out ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
@@ -285,19 +325,20 @@ export default function Messages() {
             </div>
             <div>
               <h2 className="font-bold text-sm text-gray-900 dark:text-white">Conversations</h2>
-              <p className="text-[11px] text-gray-500">{channels.length} channels • {users.length} members</p>
+              <p className="text-[11px] text-gray-500">
+                {channels.length} channels • {users.length} members
+              </p>
             </div>
           </div>
 
-          <button 
-            onClick={() => setIsSidebarOpen(false)} 
+          <button
+            onClick={() => setIsSidebarOpen(false)}
             className="lg:hidden p-1 text-gray-400 hover:text-gray-600"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-3">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
@@ -305,20 +346,23 @@ export default function Messages() {
               type="text"
               placeholder="Search chat or people..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-1 focus:ring-indigo-500"
             />
           </div>
         </div>
 
-        {/* Channels & DMs List */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
-          {/* Channels Section */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6 touch-scroll-smooth">
           <div>
             <div className="flex items-center justify-between px-2 mb-1.5">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Channels</span>
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                Channels
+              </span>
               <button
-                onClick={() => setIsAddChannelOpen(true)}
+                onClick={() => {
+                  triggerHaptic('tap');
+                  setIsAddChannelOpen(true);
+                }}
                 className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-gray-200/60 dark:hover:bg-gray-800 transition-colors"
                 title="Create Channel"
               >
@@ -327,12 +371,13 @@ export default function Messages() {
             </div>
 
             <div className="space-y-0.5">
-              {filteredChannels.map(ch => {
+              {filteredChannels.map((ch) => {
                 const isActive = currentRoomId === ch.id;
                 return (
                   <button
                     key={ch.id}
                     onClick={() => {
+                      triggerHaptic('tap');
                       navigate(`/messages/${ch.id}`);
                       setIsSidebarOpen(false);
                     }}
@@ -350,14 +395,15 @@ export default function Messages() {
             </div>
           </div>
 
-          {/* Direct Messages Section */}
           <div>
             <div className="px-2 mb-1.5">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Direct Messages</span>
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                Direct Messages
+              </span>
             </div>
 
             <div className="space-y-0.5">
-              {filteredUsers.map(u => {
+              {filteredUsers.map((u) => {
                 const dmId = getDMRoomId(u.id);
                 const isActive = currentRoomId === dmId;
                 const isOnline = onlineUserIds.has(u.id);
@@ -366,6 +412,7 @@ export default function Messages() {
                   <button
                     key={u.id}
                     onClick={() => {
+                      triggerHaptic('tap');
                       navigate(`/messages/${dmId}`);
                       setIsSidebarOpen(false);
                     }}
@@ -377,18 +424,27 @@ export default function Messages() {
                   >
                     <div className="relative shrink-0">
                       <img
-                        src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=6366f1&color=fff`}
+                        src={
+                          u.avatar ||
+                          `https://ui-avatars.com/api/?name=${u.name}&background=6366f1&color=fff`
+                        }
                         alt={u.name}
                         className="w-7 h-7 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                       />
-                      <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-gray-800 ${
-                        isOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`} />
+                      <span
+                        className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-gray-800 ${
+                          isOnline ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}
+                      />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <p className="truncate font-medium">{u.name}</p>
-                      <p className={`text-[10px] truncate ${isActive ? 'text-indigo-200' : 'text-gray-400'}`}>
+                      <p
+                        className={`text-[10px] truncate ${
+                          isActive ? 'text-indigo-200' : 'text-gray-400'
+                        }`}
+                      >
                         {u.role || 'Member'}
                       </p>
                     </div>
@@ -404,15 +460,16 @@ export default function Messages() {
         </div>
       </aside>
 
-      {/* --- MAIN CHAT WORKSPACE --- */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
-        {/* Dynamic Chat Header */}
-        <div className="h-16 px-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 flex items-center justify-between z-10 shrink-0">
+        <div className="h-16 px-4 md:px-5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 flex items-center justify-between z-10 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Mobile Toggle Button */}
             <button
-              onClick={() => setIsSidebarOpen(true)}
+              onClick={() => {
+                triggerHaptic('tap');
+                setIsSidebarOpen(true);
+              }}
               className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              title="Open conversations drawer"
             >
               <Menu size={18} />
             </button>
@@ -421,17 +478,24 @@ export default function Messages() {
               <div className="flex items-center gap-3 min-w-0">
                 <div className="relative">
                   <img
-                    src={dmRecipient.avatar || `https://ui-avatars.com/api/?name=${dmRecipient.name}`}
+                    src={
+                      dmRecipient.avatar ||
+                      `https://ui-avatars.com/api/?name=${dmRecipient.name}`
+                    }
                     alt={dmRecipient.name}
                     className="w-9 h-9 rounded-full object-cover border border-gray-200 dark:border-gray-700"
                   />
-                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${
-                    onlineUserIds.has(dmRecipient.id) ? 'bg-emerald-500' : 'bg-gray-400'
-                  }`} />
+                  <span
+                    className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-gray-800 ${
+                      onlineUserIds.has(dmRecipient.id) ? 'bg-emerald-500' : 'bg-gray-400'
+                    }`}
+                  />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h1 className="font-bold text-sm text-gray-900 dark:text-white truncate">{dmRecipient.name}</h1>
+                    <h1 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                      {dmRecipient.name}
+                    </h1>
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                       {dmRecipient.role || 'Member'}
                     </span>
@@ -460,17 +524,18 @@ export default function Messages() {
             )}
           </div>
 
-          {/* Right Header Actions */}
           <div className="flex items-center gap-2">
-            {/* Wallpaper / Theme Selector Button */}
             <button
               type="button"
-              onClick={() => setIsThemeModalOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition-all shadow-xs active:scale-95 cursor-pointer"
+              onClick={() => {
+                triggerHaptic('tap');
+                setIsThemeModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition-all shadow-xs active:scale-95 cursor-pointer"
               title="Change chat theme wallpaper"
             >
               <Palette size={15} className="text-indigo-600 dark:text-indigo-400" />
-              <span>Theme</span>
+              <span className="hidden sm:inline">Theme</span>
             </button>
 
             {isDM && dmRecipient && (
@@ -484,9 +549,8 @@ export default function Messages() {
           </div>
         </div>
 
-        {/* Message Feed with Dynamic Wallpaper */}
         <div
-          className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-5 transition-all duration-300 relative ${
+          className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-5 transition-all duration-300 relative touch-scroll-smooth ${
             chatWallpaper === 'whatsapp'
               ? 'bg-[#efeae2] dark:bg-[#0b141a]'
               : chatWallpaper === 'telegram'
@@ -504,12 +568,16 @@ export default function Messages() {
           style={{
             backgroundImage:
               chatWallpaper === 'whatsapp'
-                ? `radial-gradient(#128c7e18 1.5px, transparent 1.5px), radial-gradient(#00a88412 1.5px, transparent 1.5px)`
+                ? 'radial-gradient(#128c7e18 1.5px, transparent 1.5px), radial-gradient(#00a88412 1.5px, transparent 1.5px)'
                 : chatWallpaper === 'cyberpunk'
-                ? `linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)`
+                ? 'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)'
                 : undefined,
             backgroundSize:
-              chatWallpaper === 'whatsapp' ? '20px 20px, 40px 40px' : chatWallpaper === 'cyberpunk' ? '28px 28px' : undefined,
+              chatWallpaper === 'whatsapp'
+                ? '20px 20px, 40px 40px'
+                : chatWallpaper === 'cyberpunk'
+                ? '28px 28px'
+                : undefined,
           }}
         >
           {messages.length === 0 && (
@@ -518,25 +586,32 @@ export default function Messages() {
                 <MessageSquare size={24} />
               </div>
               <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300">
-                {isDM ? `This is the start of your direct conversation with ${dmRecipient?.name || 'them'}.` : `Welcome to #${currentChannel?.name || currentRoomId}!`}
+                {isDM
+                  ? `This is the start of your direct conversation with ${dmRecipient?.name || 'them'}.`
+                  : `Welcome to #${currentChannel?.name || currentRoomId}!`}
               </h3>
-              <p className="text-xs text-gray-400 mt-1 max-w-sm">Send a message or share a document to start collaborating in real time.</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-sm">
+                Send a message, voice note, or share a document to start collaborating in real time.
+              </p>
             </div>
           )}
 
           {messages.map((msg, index) => {
             const isMe = msg.user_id === user?.id;
             const prevMsg = messages[index - 1];
-            const showHeader = index === 0 || (prevMsg?.user_id !== msg.user_id);
+            const showHeader = index === 0 || prevMsg?.user_id !== msg.user_id;
 
             return (
               <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                 <div className="w-8 shrink-0 flex flex-col justify-end">
                   {showHeader && !isMe && (
-                    <img 
-                      src={msg.user?.avatar || `https://ui-avatars.com/api/?name=${msg.user?.name || 'User'}`} 
-                      className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover" 
-                      alt="avatar" 
+                    <img
+                      src={
+                        msg.user?.avatar ||
+                        `https://ui-avatars.com/api/?name=${msg.user?.name || 'User'}`
+                      }
+                      className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover"
+                      alt="avatar"
                     />
                   )}
                 </div>
@@ -547,17 +622,20 @@ export default function Messages() {
                       {msg.user?.name}
                     </span>
                   )}
-                  
-                  <MessageBubble 
-                    message={msg} 
-                    isMe={isMe} 
-                    onEdit={handleEdit} 
-                    onDelete={handleDelete} 
-                    onReact={handleReaction} 
+
+                  <MessageBubble
+                    message={msg}
+                    isMe={isMe}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onReact={handleReaction}
                   />
-                  
+
                   <span className={`text-[10px] text-gray-400 mt-1 ${isMe ? 'mr-1' : 'ml-1'}`}>
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(msg.created_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
               </div>
@@ -566,22 +644,20 @@ export default function Messages() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Typing & Input Bar */}
         <div className="p-3 md:p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 relative">
           <div className="h-5 mb-1">
             <TypingIndicator users={typingUsers} />
           </div>
 
-          {/* Input Emoji Picker Popover */}
           {showInputEmojiPicker && (
-            <div 
-              ref={emojiPickerRef} 
+            <div
+              ref={emojiPickerRef}
               className="absolute bottom-20 left-4 md:left-12 z-50 shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-150"
             >
               <EmojiPicker
                 theme={theme === 'dark' ? Theme.DARK : Theme.LIGHT}
                 onEmojiClick={(emojiData: EmojiClickData) => {
-                  setNewMessage(prev => prev + emojiData.emoji);
+                  setNewMessage((prev) => prev + emojiData.emoji);
                 }}
                 width={320}
                 height={380}
@@ -591,62 +667,99 @@ export default function Messages() {
             </div>
           )}
 
-          <form onSubmit={sendMessage} className="flex gap-2 items-center max-w-5xl mx-auto">
-            <ChatFileButton onUploadComplete={handleFileUpload} />
+          <form onSubmit={sendMessage} className="flex gap-2 items-end max-w-5xl mx-auto">
+            <div className="flex items-center gap-1 pb-1">
+              <ChatFileButton onUploadComplete={handleFileUpload} />
+              <ChatVoiceRecorder
+                roomId={currentRoomId}
+                onSendVoiceNote={handleSendVoiceNote}
+              />
+            </div>
 
-            <div className="flex-1 relative flex items-center">
-              <input
-                type="text"
+            <div className="flex-1 relative flex items-center bg-gray-100 dark:bg-gray-900 rounded-2xl border-0 focus-within:ring-2 focus-within:ring-indigo-500">
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={() => broadcastTyping()}
-                placeholder={isDM ? `Message ${dmRecipient?.name || '...'}` : `Message #${currentChannel?.name || currentRoomId}...`}
-                className="w-full pl-4 pr-20 py-3 bg-gray-100 dark:bg-gray-900 border-0 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-gray-900 dark:text-white transition-all placeholder-gray-400"
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
+                onFocus={() => {
+                  setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 120);
+                }}
+                onKeyDown={(e) => {
+                  broadcastTyping();
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage(e);
+                  }
+                }}
+                placeholder={
+                  isDM
+                    ? `Message ${dmRecipient?.name || 'user'}...`
+                    : `Message #${currentChannel?.name || currentRoomId}...`
+                }
+                className="w-full pl-4 pr-16 py-3 bg-transparent border-0 outline-none text-xs sm:text-sm text-gray-900 dark:text-white transition-all placeholder-gray-400 resize-none max-h-32 custom-scrollbar"
               />
 
-              <div className="absolute right-2.5 flex items-center gap-1">
+              <div className="absolute right-2 bottom-2 flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setIsThemeModalOpen(true)}
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setIsThemeModalOpen(true);
+                  }}
                   className="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-gray-200/50 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
-                  title="Customize chat wallpaper & theme"
+                  title="Customize chat wallpaper and theme"
                 >
-                  <Palette size={18} />
+                  <Palette size={17} />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowInputEmojiPicker(!showInputEmojiPicker)}
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setShowInputEmojiPicker(!showInputEmojiPicker);
+                  }}
                   className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-gray-200/50 dark:hover:bg-gray-800 rounded-lg transition-colors"
                   title="Insert emoji"
                 >
-                  <Smile size={18} />
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newMessage.trim()}
-                  className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-sm active:scale-95"
-                  title="Send"
-                >
-                  <Send size={15} />
+                  <Smile size={17} />
                 </button>
               </div>
             </div>
+
+            <button
+              type="submit"
+              disabled={!newMessage.trim()}
+              className="p-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-sm active:scale-95 shrink-0"
+              title="Send"
+            >
+              <Send size={15} />
+            </button>
           </form>
         </div>
       </div>
 
-      {/* --- CREATE CHANNEL MODAL --- */}
       {isAddChannelOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-gray-800 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50">
               <h3 className="font-bold text-base text-gray-900 dark:text-white">Create New Channel</h3>
-              <button onClick={() => setIsAddChannelOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button
+                onClick={() => setIsAddChannelOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
 
             <form onSubmit={handleCreateChannel} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">Channel Name *</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  Channel Name *
+                </label>
                 <div className="relative flex items-center">
                   <span className="absolute left-3 text-gray-400 font-bold">#</span>
                   <input
@@ -655,19 +768,21 @@ export default function Messages() {
                     type="text"
                     placeholder="announcements"
                     value={newChannelName}
-                    onChange={e => setNewChannelName(e.target.value)}
+                    onChange={(e) => setNewChannelName(e.target.value)}
                     className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">Description</label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase mb-1">
+                  Description
+                </label>
                 <textarea
                   rows={2}
                   placeholder="What is this channel about?"
                   value={newChannelDesc}
-                  onChange={e => setNewChannelDesc(e.target.value)}
+                  onChange={(e) => setNewChannelDesc(e.target.value)}
                   className="w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm resize-none"
                 />
               </div>
@@ -692,7 +807,7 @@ export default function Messages() {
           </div>
         </div>
       )}
-      {/* --- CHAT THEMES & WALLPAPERS STUDIO MODAL --- */}
+
       {isThemeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[#12161f] w-full max-w-2xl rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-in zoom-in-95 duration-150">
@@ -702,12 +817,16 @@ export default function Messages() {
                   <Palette size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-gray-900 dark:text-white">Chat Themes & Wallpaper</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Choose your message backdrop (WhatsApp, Telegram, or Dark Grids)</p>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white">
+                    Chat Themes & Wallpaper
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Choose your message backdrop: WhatsApp, Telegram, or Dark Grids
+                  </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsThemeModalOpen(false)} 
+              <button
+                onClick={() => setIsThemeModalOpen(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 ✕
@@ -730,7 +849,8 @@ export default function Messages() {
                     id: 'telegram',
                     name: 'Telegram Clouds',
                     tag: 'Telegram Style',
-                    bgPreview: 'bg-gradient-to-b from-[#72b5e8]/30 via-[#2a75b2]/20 to-[#0e1621] dark:bg-[#0e1621]',
+                    bgPreview:
+                      'bg-gradient-to-b from-[#72b5e8]/30 via-[#2a75b2]/20 to-[#0e1621] dark:bg-[#0e1621]',
                     pattern: 'none',
                     bubbleMe: 'bg-[#2b5278] text-white',
                     bubbleThem: 'bg-[#182533] text-white',
@@ -740,7 +860,8 @@ export default function Messages() {
                     name: 'Cyberpunk Grid',
                     tag: 'Neon High-Tech',
                     bgPreview: 'bg-[#05050c]',
-                    pattern: 'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)',
+                    pattern:
+                      'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)',
                     bubbleMe: 'bg-gradient-to-r from-pink-600 to-purple-600 text-white',
                     bubbleThem: 'bg-[#11131f] text-gray-200 border border-purple-500/30',
                   },
@@ -749,7 +870,8 @@ export default function Messages() {
                     name: 'Subtle Grid',
                     tag: 'Clean Engineering',
                     bgPreview: 'bg-gray-100 dark:bg-gray-900',
-                    pattern: 'linear-gradient(to right, #80808012 1px, transparent 1px), linear-gradient(to bottom, #80808012 1px, transparent 1px)',
+                    pattern:
+                      'linear-gradient(to right, #80808012 1px, transparent 1px), linear-gradient(to bottom, #80808012 1px, transparent 1px)',
                     bubbleMe: 'bg-indigo-600 text-white',
                     bubbleThem: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
                   },
@@ -766,7 +888,8 @@ export default function Messages() {
                     id: 'gradient',
                     name: 'Ambient Aurora',
                     tag: 'Vibrant Mesh',
-                    bgPreview: 'bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 dark:bg-gray-900',
+                    bgPreview:
+                      'bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 dark:bg-gray-900',
                     pattern: 'none',
                     bubbleMe: 'bg-indigo-600 text-white',
                     bubbleThem: 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100',
@@ -787,6 +910,7 @@ export default function Messages() {
                       key={th.id}
                       type="button"
                       onClick={() => {
+                        triggerHaptic('tap');
                         setChatWallpaper(th.id as any);
                         toast.success(`Chat theme set to ${th.name}`);
                       }}
@@ -796,7 +920,6 @@ export default function Messages() {
                           : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700'
                       }`}
                     >
-                      {/* Interactive Visual Preview Box */}
                       <div
                         className={`h-24 w-full rounded-xl border border-gray-200/60 dark:border-gray-700/60 mb-2.5 p-2 flex flex-col justify-between relative overflow-hidden ${th.bgPreview}`}
                         style={{
@@ -818,8 +941,15 @@ export default function Messages() {
 
                       <div>
                         <div className="flex items-center justify-between">
-                          <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{th.name}</p>
-                          {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                          <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                            {th.name}
+                          </p>
+                          {isSelected && (
+                            <Check
+                              size={14}
+                              className="text-indigo-600 dark:text-indigo-400 shrink-0"
+                            />
+                          )}
                         </div>
                         <p className="text-[10px] text-gray-400 truncate mt-0.5">{th.tag}</p>
                       </div>
@@ -835,7 +965,10 @@ export default function Messages() {
               </span>
               <button
                 type="button"
-                onClick={() => setIsThemeModalOpen(false)}
+                onClick={() => {
+                  triggerHaptic('tap');
+                  setIsThemeModalOpen(false);
+                }}
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs shadow-md transition-colors"
               >
                 Done

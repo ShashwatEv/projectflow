@@ -7,7 +7,7 @@ import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 
-// Component Imports
+// Core component imports
 import { ModernHeader } from './components/ModernHeader';
 import { ModernSidebar } from './components/ModernSidebar';
 import RequireAuth from './components/RequireAuth';
@@ -15,8 +15,10 @@ import CommandMenu from './components/CommandMenu';
 import OnboardingTour from './components/OnboardingTour';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import DesktopOnlyGuard from './components/DesktopOnlyGuard';
+import SplashScreen from './components/SplashScreen';
+import NetworkStatusPill from './components/NetworkStatusPill';
 
-// Core Authentication & Layout Pages
+// Core authentication and layout pages
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -24,7 +26,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import TwoFactorVerify from './pages/TwoFactorVerify';
 import SettingsLayout from './pages/settings/SettingsLayout';
 
-// Feature Pages
+// Feature pages
 import Projects from './pages/Projects';
 import MyTasks from './pages/MyTasks';
 import Team from './pages/Team';
@@ -41,6 +43,11 @@ import SprintPlanner from './pages/SprintPlanner';
 import ApiDocs from './pages/ApiDocs';
 import Retrospectives from './pages/Retrospectives';
 import TeamVelocity from './pages/TeamVelocity';
+
+// Mobile-specific pages
+import MobileTriageDeck from './pages/MobileTriageDeck';
+import DailyStandupStories from './pages/DailyStandupStories';
+import QuickCaptureSheet from './pages/QuickCaptureSheet';
 
 const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ 
   default: () => (
@@ -92,6 +99,7 @@ function Layout() {
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <CommandMenu />
       <OnboardingTour />
+      <NetworkStatusPill />
       
       {!isVerified && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-500 dark:text-amber-400 font-medium z-30">
@@ -137,126 +145,146 @@ function Layout() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(() => {
+    return !sessionStorage.getItem('pf_splash_shown');
+  });
+
+  const handleFinishSplash = () => {
+    sessionStorage.setItem('pf_splash_shown', 'true');
+    setShowSplash(false);
+  };
+
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <OnboardingSandboxProvider>
-          <Toaster richColors position="top-right" />
-          <BrowserRouter>
-            <ErrorBoundary>
-              <Routes>
-                {/* Public Authentication Routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/signup" element={<Signup />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/2fa" element={<TwoFactorVerify />} />
+    <>
+      {showSplash && (
+        <SplashScreen onFinish={handleFinishSplash} minDurationMs={3600} />
+      )}
 
-                {/* Protected Workspace Routes */}
-                <Route element={<RequireAuth />}>
-                  <Route element={<Layout />}>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    
-                    {/* Work Routes */}
-                    <Route path="/tasks" element={<MyTasks />} />
-                    <Route path="/projects" element={<Projects />} />
-                    <Route path="/projects/:id" element={<ProjectDetail />} />
-                    <Route 
-                      path="/sprint-planner" 
-                      element={
-                        <DesktopOnlyGuard featureName="Sprint Planner">
-                          <SprintPlanner />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route 
-                      path="/code" 
-                      element={
-                        <DesktopOnlyGuard featureName="Code Studio">
-                          <CodeStudio />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route 
-                      path="/api-playground" 
-                      element={
-                        <DesktopOnlyGuard featureName="API Console">
-                          <ApiPlayground />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route 
-                      path="/docs" 
-                      element={
-                        <DesktopOnlyGuard featureName="API Documentation">
-                          <ApiDocs />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route 
-                      path="/timesheets" 
-                      element={
-                        <DesktopOnlyGuard featureName="Timesheets">
-                          <Timesheets />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route 
-                      path="/automations" 
-                      element={
-                        <DesktopOnlyGuard featureName="Automations">
-                          <Automations />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    
-                    {/* Team & Collaboration */}
-                    <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
-                    <Route path="/messages/:roomId" element={<Messages />} />
-                    <Route path="/team" element={<Team />} />
-                    <Route 
-                      path="/retrospectives" 
-                      element={
-                        <DesktopOnlyGuard featureName="Retrospectives">
-                          <Retrospectives />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
-                    <Route path="/retrospectives/velocity" element={<TeamVelocity />} />
-                    <Route 
-                      path="/calendar" 
-                      element={
-                        <DesktopOnlyGuard featureName="Monthly Calendar">
-                          <Calendar />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
+      <AuthProvider>
+        <ThemeProvider>
+          <OnboardingSandboxProvider>
+            <Toaster richColors position="top-right" />
+            <BrowserRouter>
+              <ErrorBoundary>
+                <Routes>
+                  {/* Public authentication routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/2fa" element={<TwoFactorVerify />} />
 
-                    {/* Account & Analytics */}
-                    <Route path="/notifications" element={<Notifications />} />
-                    <Route path="/profile" element={<Profile />} />
-                    <Route path="/profile/:id" element={<Profile />} />
-                    <Route 
-                      path="/analytics" 
-                      element={
-                        <DesktopOnlyGuard featureName="Telemetry Analytics">
-                          <Analytics />
-                        </DesktopOnlyGuard>
-                      } 
-                    />
+                  {/* Protected workspace routes */}
+                  <Route element={<RequireAuth />}>
+                    <Route element={<Layout />}>
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      
+                      {/* Work routes */}
+                      <Route path="/tasks" element={<MyTasks />} />
+                      <Route path="/projects" element={<Projects />} />
+                      <Route path="/projects/:id" element={<ProjectDetail />} />
+                      <Route 
+                        path="/sprint-planner" 
+                        element={
+                          <DesktopOnlyGuard featureName="Sprint Planner">
+                            <SprintPlanner />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route 
+                        path="/code" 
+                        element={
+                          <DesktopOnlyGuard featureName="Code Studio">
+                            <CodeStudio />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route 
+                        path="/api-playground" 
+                        element={
+                          <DesktopOnlyGuard featureName="API Console">
+                            <ApiPlayground />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route 
+                        path="/docs" 
+                        element={
+                          <DesktopOnlyGuard featureName="API Documentation">
+                            <ApiDocs />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route 
+                        path="/timesheets" 
+                        element={
+                          <DesktopOnlyGuard featureName="Timesheets">
+                            <Timesheets />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route 
+                        path="/automations" 
+                        element={
+                          <DesktopOnlyGuard featureName="Automations">
+                            <Automations />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      
+                      {/* Team and collaboration */}
+                      <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
+                      <Route path="/messages/:roomId" element={<Messages />} />
+                      <Route path="/team" element={<Team />} />
+                      <Route 
+                        path="/retrospectives" 
+                        element={
+                          <DesktopOnlyGuard featureName="Retrospectives">
+                            <Retrospectives />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+                      <Route path="/retrospectives/velocity" element={<TeamVelocity />} />
+                      <Route 
+                        path="/calendar" 
+                        element={
+                          <DesktopOnlyGuard featureName="Monthly Calendar">
+                            <Calendar />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
 
-                    {/* Settings */}
-                    <Route path="/settings" element={<SettingsLayout />} />
+                      {/* Account and analytics */}
+                      <Route path="/notifications" element={<Notifications />} />
+                      <Route path="/profile" element={<Profile />} />
+                      <Route path="/profile/:id" element={<Profile />} />
+                      <Route 
+                        path="/analytics" 
+                        element={
+                          <DesktopOnlyGuard featureName="Telemetry Analytics">
+                            <Analytics />
+                          </DesktopOnlyGuard>
+                        } 
+                      />
+
+                      {/* Dedicated mobile experiences */}
+                      <Route path="/triage" element={<MobileTriageDeck />} />
+                      <Route path="/standup" element={<DailyStandupStories />} />
+                      <Route path="/capture" element={<QuickCaptureSheet />} />
+
+                      {/* Settings */}
+                      <Route path="/settings" element={<SettingsLayout />} />
+                    </Route>
                   </Route>
-                </Route>
-                
-                {/* Fallback Catch-all */}
-                <Route path="*" element={<Navigate to="/login" replace />} />
-              </Routes>
-            </ErrorBoundary>
-          </BrowserRouter>
-        </OnboardingSandboxProvider>
-      </ThemeProvider>
-    </AuthProvider>
+                  
+                  {/* Fallback catch-all */}
+                  <Route path="*" element={<Navigate to="/login" replace />} />
+                </Routes>
+              </ErrorBoundary>
+            </BrowserRouter>
+          </OnboardingSandboxProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </>
   );
 }

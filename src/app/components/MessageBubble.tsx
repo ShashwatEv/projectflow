@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { FileText, Pencil, Trash2, Smile, Plus, MessageSquare } from 'lucide-react';
+import { FileText, Pencil, Trash2, Smile, Plus, MessageSquare, Play, Pause } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -16,6 +16,83 @@ interface MessageBubbleProps {
   onDelete: (id: string) => void;
   onReact: (id: string, emoji: string) => void;
   onOpenThread?: (message: any) => void;
+}
+
+function AudioPlayer({ src, isMe }: { src: string; isMe: boolean }) {
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (!audioRef.current) return;
+    setCurrentTime(audioRef.current.currentTime);
+  };
+
+  const handleLoadedMetadata = () => {
+    if (!audioRef.current) return;
+    setDuration(audioRef.current.duration);
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+  };
+
+  const formatTime = (secs: number) => {
+    if (isNaN(secs) || secs <= 0) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  return (
+    <div className="flex items-center gap-3 py-1.5 min-w-[210px] select-none">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={handleEnded}
+        preload="metadata"
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 ${
+          isMe
+            ? 'bg-white/20 hover:bg-white/30 text-white'
+            : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+        }`}
+      >
+        {isPlaying ? <Pause size={15} /> : <Play size={15} className="ml-0.5" />}
+      </button>
+
+      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+        <div className={`w-full h-1.5 rounded-full overflow-hidden ${isMe ? 'bg-black/20' : 'bg-gray-200 dark:bg-gray-700'}`}>
+          <div
+            className={`h-full transition-all duration-100 ${isMe ? 'bg-white' : 'bg-indigo-600'}`}
+            style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+          />
+        </div>
+        <div className={`flex justify-between text-[10px] font-mono leading-none ${isMe ? 'text-indigo-100' : 'text-gray-500 dark:text-gray-400'}`}>
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function MessageBubble({ 
@@ -74,15 +151,23 @@ export default function MessageBubble({
     }
   };
 
+  const isAudioFile =
+    message.file_type === 'audio' ||
+    Boolean(
+      message.file_url &&
+        (message.file_url.includes('.webm') ||
+          message.file_url.includes('.mp4') ||
+          message.file_url.includes('.ogg') ||
+          message.file_url.includes('voice-notes'))
+    );
+
   return (
-    <div className={`relative group max-w-[80%] md:max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
-      {/* Hover Actions Bar */}
+    <div className={`relative group max-w-[85%] md:max-w-[70%] ${isMe ? 'items-end' : 'items-start'}`}>
       {!isEditing && (
         <div 
           ref={pickerRef}
           className={`absolute -top-7 ${isMe ? 'right-0' : 'left-0'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-white dark:bg-gray-800 shadow-md border border-gray-200 dark:border-gray-700 rounded-xl p-1 z-20`}
         >
-          {/* Reaction Button */}
           <div className="relative">
             <button 
               type="button"
@@ -96,10 +181,9 @@ export default function MessageBubble({
               <Smile size={14} />
             </button>
 
-            {/* Quick Emoji Bar */}
             {showEmojiPicker && !showFullPicker && (
               <div className="absolute top-8 left-0 bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 flex items-center gap-1 z-30 animate-in zoom-in-95 duration-150 whitespace-nowrap">
-                {quickEmojis.map(emoji => (
+                {quickEmojis.map((emoji) => (
                   <button 
                     key={emoji}
                     type="button"
@@ -112,7 +196,7 @@ export default function MessageBubble({
                     {emoji}
                   </button>
                 ))}
-                <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+                <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1" />
                 <button
                   type="button"
                   onClick={() => setShowFullPicker(true)}
@@ -124,7 +208,6 @@ export default function MessageBubble({
               </div>
             )}
 
-            {/* Full Emoji Picker Popover */}
             {showFullPicker && (
               <div className="absolute top-8 left-0 z-40 shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                 <EmojiPicker
@@ -139,7 +222,6 @@ export default function MessageBubble({
             )}
           </div>
 
-          {/* Reply in Thread Action */}
           <button 
             type="button"
             onClick={handleTriggerThread}
@@ -149,7 +231,6 @@ export default function MessageBubble({
             <MessageSquare size={13} />
           </button>
 
-          {/* Edit/Delete (Only for Author) */}
           {isMe && (
             <>
               <button 
@@ -173,16 +254,16 @@ export default function MessageBubble({
         </div>
       )}
 
-      {/* The Message Bubble */}
       <div className={`p-3.5 shadow-sm text-sm break-words relative transition-all ${
         isMe 
           ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm' 
           : 'bg-white dark:bg-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm'
       }`}>
-        {/* Attachments */}
         {message.file_url && (
           <div className="mb-2.5">
-            {message.file_type === 'image' ? (
+            {isAudioFile ? (
+              <AudioPlayer src={message.file_url} isMe={isMe} />
+            ) : message.file_type === 'image' ? (
               <a href={message.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl">
                 <img 
                   src={message.file_url} 
@@ -208,7 +289,6 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* Content */}
         {isEditing ? (
           <div className="flex flex-col gap-2 min-w-[220px]">
             <textarea 
@@ -240,13 +320,12 @@ export default function MessageBubble({
             <p className="leading-relaxed whitespace-pre-wrap">{message.content}</p>
             {message.is_edited && (
               <span className={`text-[10px] ml-1.5 opacity-60 ${isMe ? 'text-indigo-200' : 'text-gray-400'}`}>
-                (edited)
+                • edited
               </span>
             )}
           </div>
         )}
 
-        {/* Thread Replies Indicator Link */}
         {Boolean(message.reply_count && message.reply_count > 0) && (
           <button
             type="button"
@@ -261,7 +340,6 @@ export default function MessageBubble({
         )}
       </div>
 
-      {/* Reactions Display (Below Bubble) */}
       {Object.keys(reactionCounts).length > 0 && (
         <div className={`flex flex-wrap gap-1 mt-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
           {Object.entries(reactionCounts).map(([emoji, count]: any) => (

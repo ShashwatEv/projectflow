@@ -2,8 +2,24 @@
 @import './tailwind.css';
 @import './theme.css';
 
-/* In Tailwind v4 + CSS Variables, we don't strictly need to define a 
-  custom variant if we are relying on the variables to swap values.
-  
-  The theme.css file handles the variable swapping on .dark class.
-*/
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overscroll-behavior-y: contain;
+}
+
+.touch-scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}

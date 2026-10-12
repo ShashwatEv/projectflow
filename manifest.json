@@ -47,10 +47,36 @@
   ],
   "shortcuts": [
     {
-      "name": "My Tasks",
-      "short_name": "Tasks",
-      "description": "View and triage your active assigned cards",
-      "url": "/tasks",
+      "name": "Quick Capture",
+      "short_name": "Capture",
+      "description": "Dictate voice notes or photograph whiteboard diagrams",
+      "url": "/capture",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Triage Deck",
+      "short_name": "Triage",
+      "description": "One-handed swipe triage for backlog deliverables",
+      "url": "/triage",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Daily Standup",
+      "short_name": "Standup",
+      "description": "View sprint stories and share async updates",
+      "url": "/standup",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -64,19 +90,6 @@
       "short_name": "Chat",
       "description": "Open workspace messaging channels",
       "url": "/messages",
-      "icons": [
-        {
-          "src": "/icon-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Sprint Planner",
-      "short_name": "Sprints",
-      "description": "Inspect sprint velocity and retrospectives",
-      "url": "/sprint-planner",
       "icons": [
         {
           "src": "/icon-192.png",
@@ -106,7 +119,7 @@
     }
   ],
   "share_target": {
-    "action": "/tasks",
+    "action": "/capture",
     "method": "GET",
     "enctype": "application/x-www-form-urlencoded",
     "params": {
@@ -135,14 +148,14 @@
   "screenshots": [
     {
       "src": "/screenshot-mobile.png",
-      "sizes": "720x1280",
+      "sizes": "352x708",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Sprint Kanban and team boards on mobile"
     },
     {
       "src": "/screenshot-desktop.png",
-      "sizes": "1920x1080",
+      "sizes": "1917x917",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Full workspace overview and Code Studio on desktop"

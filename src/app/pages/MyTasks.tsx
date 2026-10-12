@@ -3,11 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
   ArrowUpDown, ChevronLeft, ChevronRight, X,
-  LayoutGrid, List, Loader2, ArrowRight, FolderKanban,
+  LayoutGrid, List, ArrowRight, FolderKanban,
   ShieldAlert, UserCheck, User
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { triggerHaptic } from '../../lib/haptics';
+import PullToRefresh from '../components/PullToRefresh';
+import TaskSkeleton from '../components/TaskSkeleton';
+import TaskDetailModal from '../components/TaskDetailModal';
 import { toast } from 'sonner';
 
 interface Task {
@@ -39,7 +43,10 @@ const COLUMNS: { id: Task['status']; label: string; dot: string; color: string }
 function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        triggerHaptic('tap');
+        onClick();
+      }}
       className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
         active
           ? 'bg-indigo-600 text-white shadow-sm'
@@ -70,6 +77,7 @@ export default function MyTasks() {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     async function verifyUserRole() {
@@ -87,7 +95,7 @@ export default function MyTasks() {
           setHasRole(true);
           setUserRole(data.role);
         }
-      } catch (err) {
+      } catch {
         setHasRole(false);
       }
     }
@@ -138,6 +146,7 @@ export default function MyTasks() {
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   const changeMonth = (offset: number) => {
+    triggerHaptic('tap');
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1));
   };
 
@@ -152,62 +161,81 @@ export default function MyTasks() {
     if (!newTaskInput.trim() || !user) return;
 
     const title = newTaskInput.trim();
+    setNewTaskInput('');
+    triggerHaptic('tap');
+
+    const tempId = `temp_${Date.now()}`;
+    const optimisticTask: Task = {
+      id: tempId,
+      title,
+      status: 'todo',
+      priority: 'medium',
+      due_date: selectedDate ? selectedDate.toISOString() : undefined,
+      assigned_to: user.id,
+      created_at: new Date().toISOString(),
+    };
+
+    setTasks(prev => [optimisticTask, ...prev]);
 
     try {
-      const newTask = {
-        title,
-        status: 'todo' as const,
-        priority: 'medium' as const,
-        due_date: selectedDate ? selectedDate.toISOString() : null,
-        assigned_to: user.id,
-      };
-
       const { data, error } = await supabase
         .from('tasks')
-        .insert(newTask)
+        .insert({
+          title,
+          status: 'todo',
+          priority: 'medium',
+          due_date: selectedDate ? selectedDate.toISOString() : null,
+          assigned_to: user.id,
+        })
         .select('*, project:projects(name), assignee:users(id, name, avatar, role)')
         .single();
 
       if (error) throw error;
       if (data) {
-        setTasks(prev => [data as Task, ...prev]);
+        setTasks(prev => prev.map(t => t.id === tempId ? (data as Task) : t));
         toast.success('Task created successfully');
-        setNewTaskInput('');
+        triggerHaptic('success');
       }
-    } catch (err: any) {
+    } catch {
+      setTasks(prev => prev.filter(t => t.id !== tempId));
       toast.error('Failed to create task');
-      fetchTasks();
-      setNewTaskInput('');
     }
   };
 
   const toggleTaskComplete = async (taskId: string, isCurrentlyDone: boolean) => {
+    const previousTasks = [...tasks];
     const newStatus: Task['status'] = isCurrentlyDone ? 'todo' : 'done';
+
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    triggerHaptic(isCurrentlyDone ? 'tap' : 'success');
 
     try {
       const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
       if (error) throw error;
-      toast.success(isCurrentlyDone ? 'Task marked as pending' : 'Task completed! 🎉');
-    } catch (err) {
+      toast.success(isCurrentlyDone ? 'Task marked as pending' : 'Task completed');
+    } catch {
+      setTasks(previousTasks);
       toast.error('Failed to update task');
-      fetchTasks();
     }
   };
 
   const handleUpdateStatus = async (taskId: string, newStatus: Task['status']) => {
+    const previousTasks = [...tasks];
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    triggerHaptic('tap');
+
     try {
       const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
       if (error) throw error;
       toast.success(`Moved to ${COLUMNS.find(c => c.id === newStatus)?.label}`);
-    } catch (err) {
+    } catch {
+      setTasks(previousTasks);
       toast.error('Failed to update status');
-      fetchTasks();
     }
   };
 
   const toggleTaskSelection = (id: string) => {
+    triggerHaptic('tap');
     setSelectedTasks(prev =>
       prev.includes(id) ? prev.filter(tid => tid !== id) : [...prev, id]
     );
@@ -215,7 +243,10 @@ export default function MyTasks() {
 
   const deleteSelected = async () => {
     if (!window.confirm(`Delete ${selectedTasks.length} selected tasks?`)) return;
+    triggerHaptic('warning');
     const toDelete = [...selectedTasks];
+    const previousTasks = [...tasks];
+
     setSelectedTasks([]);
     setTasks(prev => prev.filter(t => !toDelete.includes(t.id)));
 
@@ -223,14 +254,17 @@ export default function MyTasks() {
       const { error } = await supabase.from('tasks').delete().in('id', toDelete);
       if (error) throw error;
       toast.success('Selected tasks deleted');
-    } catch (err) {
+    } catch {
+      setTasks(previousTasks);
       toast.error('Failed to delete tasks');
-      fetchTasks();
     }
   };
 
   const markSelectedComplete = async () => {
+    triggerHaptic('success');
     const toComplete = [...selectedTasks];
+    const previousTasks = [...tasks];
+
     setSelectedTasks([]);
     setTasks(prev => prev.map(t => toComplete.includes(t.id) ? { ...t, status: 'done' } : t));
 
@@ -238,9 +272,9 @@ export default function MyTasks() {
       const { error } = await supabase.from('tasks').update({ status: 'done' }).in('id', toComplete);
       if (error) throw error;
       toast.success('Selected tasks completed');
-    } catch (err) {
+    } catch {
+      setTasks(previousTasks);
       toast.error('Failed to update tasks');
-      fetchTasks();
     }
   };
 
@@ -278,14 +312,6 @@ export default function MyTasks() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex-1 h-full flex items-center justify-center p-12">
-        <Loader2 className="animate-spin text-indigo-600" size={36} />
-      </div>
-    );
-  }
-
   if (hasRole === false) {
     return (
       <div className="h-full flex items-center justify-center p-6">
@@ -296,11 +322,14 @@ export default function MyTasks() {
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Role Configuration Required</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-              You must configure your professional role (e.g., Admin, Developer, Designer) before accessing your assigned deliverables.
+              You must configure your professional role before accessing your assigned deliverables.
             </p>
           </div>
           <button
-            onClick={() => navigate('/profile')}
+            onClick={() => {
+              triggerHaptic('tap');
+              navigate('/profile');
+            }}
             className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2"
           >
             <UserCheck size={16} /> Configure Role in Profile
@@ -314,350 +343,397 @@ export default function MyTasks() {
   const completedCount = tasks.filter(t => t.status === 'done').length;
 
   return (
-    <div className="flex h-full">
-      <div className="flex-1 p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Tasks</h1>
-              {userRole && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                  {userRole}
-                </span>
+    <PullToRefresh onRefresh={fetchTasks}>
+      <div className="flex h-full">
+        <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Tasks</h1>
+                {userRole && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                    {userRole}
+                  </span>
+                )}
+              </div>
+              {selectedDate ? (
+                <p 
+                  className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 flex items-center gap-1.5 cursor-pointer font-medium hover:underline" 
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setSelectedDate(null);
+                  }}
+                >
+                  Filtered for {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} <X size={13} />
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Showing deliverables assigned to your account. Tap any item to inspect details.
+                </p>
               )}
             </div>
-            {selectedDate ? (
-              <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 flex items-center gap-1.5 cursor-pointer font-medium hover:underline" onClick={() => setSelectedDate(null)}>
-                Filtered for {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} <X size={13} />
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Showing deliverables assigned to your account.
-              </p>
-            )}
-          </div>
 
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mr-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex items-center gap-1 bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm mr-2">
+                <button
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setViewMode('list');
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  title="List View"
+                >
+                  <List size={16} />
+                </button>
+                <button
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setViewMode('board');
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors ${viewMode === 'board' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  title="Board View"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              </div>
+
               <button
-                onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-                title="List View"
+                onClick={() => {
+                  triggerHaptic('tap');
+                  setSortBy(sortBy === 'date' ? 'priority' : 'date');
+                }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                <List size={16} />
+                <ArrowUpDown size={13} />
+                Sort: {sortBy === 'date' ? 'Due Date' : 'Priority'}
               </button>
-              <button
-                onClick={() => setViewMode('board')}
-                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'board' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-                title="Board View"
-              >
-                <LayoutGrid size={16} />
-              </button>
+
+              <FilterBtn label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
+              <FilterBtn label="Pending" active={filter === 'pending'} onClick={() => setFilter('pending')} />
+              <FilterBtn label="Done" active={filter === 'completed'} onClick={() => setFilter('completed')} />
             </div>
-
-            <button
-              onClick={() => setSortBy(sortBy === 'date' ? 'priority' : 'date')}
-              className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2 rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              <ArrowUpDown size={13} />
-              Sort: {sortBy === 'date' ? 'Due Date' : 'Priority'}
-            </button>
-
-            <FilterBtn label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
-            <FilterBtn label="Pending" active={filter === 'pending'} onClick={() => setFilter('pending')} />
-            <FilterBtn label="Done" active={filter === 'completed'} onClick={() => setFilter('completed')} />
           </div>
-        </div>
 
-        {/* Quick Add Task Input */}
-        <form onSubmit={addTask} className="mb-6 relative group">
-          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-            <Plus className="text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
-          </div>
-          <input
-            type="text"
-            value={newTaskInput}
-            onChange={(e) => setNewTaskInput(e.target.value)}
-            placeholder="Add a new task assigned to you..."
-            className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all"
-          />
-        </form>
+          {/* Quick Add Task Input */}
+          <form onSubmit={addTask} className="mb-6 relative group">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+              <Plus className="text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+            </div>
+            <input
+              type="text"
+              value={newTaskInput}
+              onChange={(e) => setNewTaskInput(e.target.value)}
+              placeholder="Add a new task assigned to you..."
+              className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all text-sm"
+            />
+          </form>
 
-        {/* LIST VIEW */}
-        {viewMode === 'list' ? (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex-1 mb-16">
-            <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {processedTasks.map((task) => {
-                const isDone = task.status === 'done';
-                const isSelected = selectedTasks.includes(task.id);
-                const isMine = task.assigned_to === user?.id;
+          {/* SKELETON LOADER STATE */}
+          {loading ? (
+            <TaskSkeleton />
+          ) : viewMode === 'list' ? (
+            /* LIST VIEW */
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden flex-1 mb-16">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {processedTasks.map((task) => {
+                  const isDone = task.status === 'done';
+                  const isSelected = selectedTasks.includes(task.id);
+                  const isMine = task.assigned_to === user?.id;
 
-                return (
-                  <div
-                    key={task.id}
-                    className={`flex items-center justify-between p-4 transition-colors group ${
-                      isSelected ? 'bg-indigo-50/60 dark:bg-indigo-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'
-                    }`}
-                    onClick={() => toggleTaskSelection(task.id)}
-                  >
-                    <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-4">
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleTaskSelection(task.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); toggleTaskComplete(task.id, isDone); }}
-                        className={`shrink-0 transition-transform active:scale-90 ${isDone ? 'text-emerald-500' : 'text-gray-300 dark:text-gray-600 hover:text-indigo-500'}`}
-                      >
-                        {isDone ? <CheckCircle2 size={22} className="fill-emerald-50 dark:fill-emerald-950/40" /> : <Circle size={22} />}
-                      </button>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className={`font-semibold text-sm text-gray-900 dark:text-white truncate transition-all ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
-                            {task.title}
-                          </h3>
-
-                          {/* 🟢 OWNERSHIP BADGE: Instantly confirms who owns this task */}
-                          {isMine ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> You
-                            </span>
-                          ) : task.assignee?.name ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
-                              <User size={10} /> {task.assignee.name}
-                            </span>
-                          ) : null}
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 transition-colors group cursor-pointer ${
+                        isSelected ? 'bg-indigo-50/60 dark:bg-indigo-950/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                      }`}
+                      onClick={() => {
+                        triggerHaptic('tap');
+                        setActiveModalTaskId(task.id);
+                      }}
+                    >
+                      <div className="flex items-center gap-3.5 flex-1 min-w-0 pr-2">
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleTaskSelection(task.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
                         </div>
 
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
-                          {task.project?.name ? (
-                            <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium">
-                              <FolderKanban size={11} /> {task.project.name}
-                            </span>
-                          ) : (
-                            <span>Inbox</span>
-                          )}
-                        </p>
+                        <button
+                          type="button"
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            toggleTaskComplete(task.id, isDone); 
+                          }}
+                          className={`shrink-0 transition-transform active:scale-90 ${isDone ? 'text-emerald-500' : 'text-gray-300 dark:text-gray-600 hover:text-indigo-500'}`}
+                        >
+                          {isDone ? <CheckCircle2 size={22} className="fill-emerald-50 dark:fill-emerald-950/40" /> : <Circle size={22} />}
+                        </button>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className={`font-semibold text-sm text-gray-900 dark:text-white truncate transition-all ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
+                              {task.title}
+                            </h3>
+
+                            {isMine ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> You
+                              </span>
+                            ) : task.assignee?.name ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+                                <User size={10} /> {task.assignee.name}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
+                            {task.project?.name ? (
+                              <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium">
+                                <FolderKanban size={11} /> {task.project.name}
+                              </span>
+                            ) : (
+                              <span>Inbox</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-7 sm:pl-0" onClick={(e) => e.stopPropagation()}>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${getPriorityBadge(task.priority)}`}>
+                          {task.priority}
+                        </span>
+
+                        {task.due_date && (
+                          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            <Clock size={12} />
+                            <span>{new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                          </div>
+                        )}
+
+                        <select
+                          value={task.status}
+                          onChange={(e) => handleUpdateStatus(task.id, e.target.value as Task['status'])}
+                          className="text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none border border-transparent focus:border-indigo-500 cursor-pointer"
+                        >
+                          {COLUMNS.map(col => (
+                            <option key={col.id} value={col.id}>{col.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {processedTasks.length === 0 && (
+                  <div className="py-16 text-center text-gray-400 text-xs">
+                    No tasks found in this view.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* BOARD VIEW WITH HTML5 DRAG AND DROP */
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 mb-16 items-start">
+              {COLUMNS.map(col => {
+                const colTasks = processedTasks.filter(t => t.status === col.id);
+                return (
+                  <div
+                    key={col.id}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const taskId = e.dataTransfer.getData('text/plain');
+                      if (taskId) {
+                        handleUpdateStatus(taskId, col.id);
+                      }
+                    }}
+                    className="bg-gray-100/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-700/70 p-3.5 flex flex-col min-h-[450px] transition-colors hover:border-indigo-500/40"
+                  >
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
+                        <span className={`font-bold text-xs ${col.color}`}>{col.label}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                          {colTasks.length}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${getPriorityBadge(task.priority)}`}>
-                        {task.priority}
-                      </span>
+                    <div className="space-y-2.5 flex-1 overflow-y-auto pr-0.5">
+                      {colTasks.map(task => {
+                        const next = getNextStatus(task.status);
+                        return (
+                          <div
+                            key={task.id}
+                            draggable
+                            onClick={() => {
+                              triggerHaptic('tap');
+                              setActiveModalTaskId(task.id);
+                            }}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', task.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
+                          >
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityBadge(task.priority)}`}>
+                                {task.priority}
+                              </span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800">
+                                You
+                              </span>
+                            </div>
 
-                      {task.due_date && (
-                        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
-                          <Clock size={12} />
-                          <span>{new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                            <h4 className="font-semibold text-xs text-gray-900 dark:text-white leading-snug mb-2">
+                              {task.title}
+                            </h4>
+
+                            <div 
+                              className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/60 text-[11px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {task.due_date ? (
+                                <span className="text-gray-400 flex items-center gap-1 text-[10px]">
+                                  <Clock size={11} />
+                                  {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                </span>
+                              ) : <span className="text-gray-400 text-[10px]">—</span>}
+
+                              {next && (
+                                <button
+                                  onClick={() => handleUpdateStatus(task.id, next)}
+                                  className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+                                >
+                                  Advance <ArrowRight size={10} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {colTasks.length === 0 && (
+                        <div className="py-8 text-center text-gray-400 text-[11px] border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                          Drop tasks here
                         </div>
                       )}
-
-                      <select
-                        value={task.status}
-                        onChange={(e) => handleUpdateStatus(task.id, e.target.value as Task['status'])}
-                        className="text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none border border-transparent focus:border-indigo-500"
-                      >
-                        {COLUMNS.map(col => (
-                          <option key={col.id} value={col.id}>{col.label}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
 
-              {processedTasks.length === 0 && (
-                <div className="py-16 text-center text-gray-400 text-xs">
-                  No tasks found in this view.
-                </div>
-              )}
+          {/* BULK ACTIONS BAR */}
+          {selectedTasks.length > 0 && (
+            <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-4 duration-200 z-30">
+              <span className="font-medium text-xs text-gray-300">{selectedTasks.length} selected</span>
+              <div className="h-4 w-px bg-gray-700"></div>
+              <button onClick={markSelectedComplete} className="text-xs font-semibold hover:text-emerald-400 transition-colors flex items-center gap-1.5">
+                <CheckCircle2 size={14} /> Mark Complete
+              </button>
+              <button onClick={deleteSelected} className="text-xs font-semibold hover:text-red-400 transition-colors flex items-center gap-1.5">
+                <Trash2 size={14} /> Delete
+              </button>
+              <button 
+                onClick={() => {
+                  triggerHaptic('tap');
+                  setSelectedTasks([]);
+                }} 
+                className="p-1 text-gray-400 hover:text-white rounded-full"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* MINI CALENDAR AND RIGHT OVERVIEW */}
+        <div className="w-72 border-l border-gray-200 dark:border-gray-800 p-5 hidden xl:flex flex-col bg-white dark:bg-gray-800/40">
+          <div className="flex justify-between items-center mb-4">
+            <span className="font-bold text-sm text-gray-900 dark:text-white">
+              {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </span>
+            <div className="flex gap-1">
+              <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+                <ChevronLeft size={16} />
+              </button>
+              <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+                <ChevronRight size={16} />
+              </button>
             </div>
           </div>
-        ) : (
-          /* BOARD VIEW WITH HTML5 DRAG & DROP */
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 mb-16 items-start">
-            {COLUMNS.map(col => {
-              const colTasks = processedTasks.filter(t => t.status === col.id);
+
+          <div className="grid grid-cols-7 text-center text-[10px] font-bold text-gray-400 uppercase mb-2">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => (
+              <div key={`empty-${i}`} className="h-7 w-7" />
+            ))}
+
+            {Array.from({ length: getDaysInMonth(currentMonth) }).map((_, i) => {
+              const day = i + 1;
+              const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+              const isToday = isSameDay(dateObj, new Date());
+              const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
+
               return (
-                <div
-                  key={col.id}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
+                <button
+                  key={day}
+                  onClick={() => {
+                    triggerHaptic('tap');
+                    setSelectedDate(isSelected ? null : dateObj);
                   }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const taskId = e.dataTransfer.getData('text/plain');
-                    if (taskId) {
-                      handleUpdateStatus(taskId, col.id);
-                    }
-                  }}
-                  className="bg-gray-100/70 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-700/70 p-3.5 flex flex-col min-h-[450px] transition-colors hover:border-indigo-500/40"
+                  className={`h-7 w-7 rounded-full text-xs font-medium flex items-center justify-center transition-all ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white font-bold'
+                      : isToday
+                        ? 'border border-indigo-600 text-indigo-600 font-bold'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
                 >
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
-                      <span className={`font-bold text-xs ${col.color}`}>{col.label}</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                        {colTasks.length}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5 flex-1 overflow-y-auto pr-0.5">
-                    {colTasks.map(task => {
-                      const next = getNextStatus(task.status);
-                      return (
-                        <div
-                          key={task.id}
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData('text/plain', task.id);
-                            e.dataTransfer.effectAllowed = 'move';
-                          }}
-                          className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
-                        >
-                          <div className="flex justify-between items-start gap-2 mb-2">
-                            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityBadge(task.priority)}`}>
-                              {task.priority}
-                            </span>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800">
-                              You
-                            </span>
-                          </div>
-
-                          <h4 className="font-semibold text-xs text-gray-900 dark:text-white leading-snug mb-2">
-                            {task.title}
-                          </h4>
-
-                          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/60 text-[11px]">
-                            {task.due_date ? (
-                              <span className="text-gray-400 flex items-center gap-1 text-[10px]">
-                                <Clock size={11} />
-                                {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                              </span>
-                            ) : <span className="text-gray-400 text-[10px]">—</span>}
-
-                            {next && (
-                              <button
-                                onClick={() => handleUpdateStatus(task.id, next)}
-                                className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
-                              >
-                                Advance <ArrowRight size={10} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {colTasks.length === 0 && (
-                      <div className="py-8 text-center text-gray-400 text-[11px] border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                        Drop tasks here
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  {day}
+                </button>
               );
             })}
           </div>
-        )}
 
-        {/* BULK ACTIONS BAR */}
-        {selectedTasks.length > 0 && (
-          <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-4 duration-200 z-30">
-            <span className="font-medium text-xs text-gray-300">{selectedTasks.length} selected</span>
-            <div className="h-4 w-px bg-gray-700"></div>
-            <button onClick={markSelectedComplete} className="text-xs font-semibold hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-              <CheckCircle2 size={14} /> Mark Complete
-            </button>
-            <button onClick={deleteSelected} className="text-xs font-semibold hover:text-red-400 transition-colors flex items-center gap-1.5">
-              <Trash2 size={14} /> Delete
-            </button>
-            <button onClick={() => setSelectedTasks([])} className="p-1 text-gray-400 hover:text-white rounded-full">
-              <X size={14} />
-            </button>
+          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Task Overview</h4>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                <span>Active Pending</span>
+                <span className="font-bold text-indigo-600">{pendingCount}</span>
+              </div>
+              <div className="flex justify-between text-gray-600 dark:text-gray-300">
+                <span>Completed</span>
+                <span className="font-bold text-emerald-600">{completedCount}</span>
+              </div>
+              <div className="flex justify-between text-gray-600 dark:text-gray-300 pt-2 border-t border-gray-100 dark:border-gray-700">
+                <span>Total Assigned</span>
+                <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
+              </div>
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* MOBILE SLIDE-UP BOTTOM SHEET */}
+        <TaskDetailModal
+          taskId={activeModalTaskId}
+          onClose={() => setActiveModalTaskId(null)}
+          onUpdate={fetchTasks}
+        />
       </div>
-
-      {/* MINI CALENDAR & RIGHT OVERVIEW */}
-      <div className="w-72 border-l border-gray-200 dark:border-gray-800 p-5 hidden xl:flex flex-col bg-white dark:bg-gray-800/40">
-        <div className="flex justify-between items-center mb-4">
-          <span className="font-bold text-sm text-gray-900 dark:text-white">
-            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </span>
-          <div className="flex gap-1">
-            <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
-              <ChevronLeft size={16} />
-            </button>
-            <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 text-center text-[10px] font-bold text-gray-400 uppercase mb-2">
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <div key={i}>{d}</div>)}
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-center text-xs">
-          {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => (
-            <div key={`empty-${i}`} className="h-7 w-7" />
-          ))}
-
-          {Array.from({ length: getDaysInMonth(currentMonth) }).map((_, i) => {
-            const day = i + 1;
-            const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-            const isToday = isSameDay(dateObj, new Date());
-            const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
-
-            return (
-              <button
-                key={day}
-                onClick={() => setSelectedDate(isSelected ? null : dateObj)}
-                className={`h-7 w-7 rounded-full text-xs font-medium flex items-center justify-center transition-all ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white font-bold'
-                    : isToday
-                      ? 'border border-indigo-600 text-indigo-600 font-bold'
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}
-              >
-                {day}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 🟢 ACCURATE & CONSISTENT TASK OVERVIEW */}
-        <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Task Overview</h4>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between text-gray-600 dark:text-gray-300">
-              <span>Active Pending</span>
-              <span className="font-bold text-indigo-600">{pendingCount}</span>
-            </div>
-            <div className="flex justify-between text-gray-600 dark:text-gray-300">
-              <span>Completed</span>
-              <span className="font-bold text-emerald-600">{completedCount}</span>
-            </div>
-            <div className="flex justify-between text-gray-600 dark:text-gray-300 pt-2 border-t border-gray-100 dark:border-gray-700">
-              <span>Total Assigned</span>
-              <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </PullToRefresh>
   );
 }

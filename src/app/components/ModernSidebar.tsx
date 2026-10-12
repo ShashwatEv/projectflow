@@ -16,7 +16,10 @@ import {
   Sparkles,
   Terminal,
   BookOpen,
-  MessageSquareCode
+  MessageSquareCode,
+  Layers,
+  Film,
+  Camera
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -104,6 +107,12 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
           <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Overview</div>
           <NavItem to="/dashboard" icon={<LayoutGrid size={18} />} label="Overview" isActive={location.pathname === '/dashboard'} theme={theme} onClick={onClose} />
           <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} desktopOnly />
+
+          {/* Dedicated mobile workflow quick actions */}
+          <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Mobile Actions</div>
+          <NavItem to="/triage" icon={<Layers size={18} />} label="Triage Deck" isActive={location.pathname === '/triage'} theme={theme} onClick={onClose} />
+          <NavItem to="/standup" icon={<Film size={18} />} label="Daily Standup" isActive={location.pathname === '/standup'} theme={theme} onClick={onClose} />
+          <NavItem to="/capture" icon={<Camera size={18} />} label="Quick Capture" isActive={location.pathname === '/capture'} theme={theme} onClick={onClose} />
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Work</div>
           <NavItem to="/projects" icon={<FolderKanban size={18} />} label="Projects" isActive={location.pathname.startsWith('/projects')} theme={theme} onClick={onClose} />
