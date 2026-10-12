@@ -90,7 +90,7 @@
     },
     {
       "src": "/screenshot-desktop.png",
-      "sizes": "1917x1917",
+      "sizes": "1917x917",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Full workspace overview and Code Studio on desktop"
