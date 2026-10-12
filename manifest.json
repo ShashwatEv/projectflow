@@ -148,7 +148,7 @@
   "screenshots": [
     {
       "src": "/screenshot-mobile.png",
-      "sizes": "352x708",
+      "sizes": "353x708",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Sprint Kanban and team boards on mobile"
