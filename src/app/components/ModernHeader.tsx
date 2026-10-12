@@ -16,6 +16,8 @@ import {
   X,
   Code2,
   Sparkles,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -48,6 +50,9 @@ interface ModernHeaderProps {
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
 }
+
+const ANDROID_APK_URL =
+  'https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow.apk';
 
 export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
@@ -97,7 +102,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           setUnreadCount(count ?? unread);
         }
       } catch {
-        // Table fallback
+        // notification table fallback
       }
     };
 
@@ -206,7 +211,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
   return (
     <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
-      {/* Left Block: Hamburger button and brand logo on mobile */}
+      {/* Left Block: Hamburger button, breadcrumb, clickable mobile logo */}
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -217,15 +222,18 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <Menu size={20} />
         </button>
 
-        {/* Mobile brand presentation */}
-        <div className="flex items-center select-none md:hidden">
+        {/* Clickable Mobile Brand Logo */}
+        <Link
+          to="/dashboard"
+          className="flex items-center select-none md:hidden hover:opacity-85 transition-opacity"
+        >
           <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2 shrink-0 overflow-hidden">
             <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
           </div>
           <span className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
             ProjectFlow
           </span>
-        </div>
+        </Link>
 
         {/* Desktop breadcrumb trail */}
         <div className="hidden items-center text-sm md:flex">
@@ -247,17 +255,20 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         </div>
       </div>
 
-      {/* Desktop Centered Brand Block */}
-      <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center pointer-events-none select-none">
+      {/* Clickable Desktop Centered Brand Logo */}
+      <Link
+        to="/dashboard"
+        className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center select-none hover:opacity-85 transition-opacity"
+      >
         <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
           <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
         </div>
         <span className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
           ProjectFlow
         </span>
-      </div>
+      </Link>
 
-      {/* Right Area: Search, Timer, Theme toggle, Notifications, Profile */}
+      {/* Right Area: Search, APK Download, Timer, Theme toggle, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
         {/* Search */}
         <div className="relative hidden sm:block" ref={searchRef}>
@@ -346,6 +357,18 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             </div>
           )}
         </div>
+
+        {/* Desktop-only Android APK Download button */}
+        <a
+          href={ANDROID_APK_URL}
+          download="ProjectFlow.apk"
+          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-xs font-semibold shadow-xs transition-all"
+          title="Download standalone Android APK"
+        >
+          <Smartphone size={14} className="text-indigo-600 dark:text-indigo-400" />
+          <span>Android App</span>
+          <Download size={13} className="opacity-70" />
+        </a>
 
         {/* Task Timer: hidden on mobile to avoid overcrowding */}
         <div className="hidden sm:block">
@@ -482,6 +505,14 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                   <Sparkles size={15} />
                   <span>Restart Tour</span>
                 </button>
+                <a
+                  href={ANDROID_APK_URL}
+                  download="ProjectFlow.apk"
+                  className="hidden md:flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                >
+                  <Smartphone size={15} />
+                  <span>Download APK</span>
+                </a>
               </div>
 
               <div className="border-t border-gray-100 p-1.5 dark:border-gray-700">

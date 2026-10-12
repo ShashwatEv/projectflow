@@ -8,3 +8,11 @@ build
 # Continue extension config & secrets
 .continue/
 .claude/
+# mobile artifacts and packaging keys
+downloads/
+*.apk
+*.aab
+*.keystore
+signing-key-info.txt
+snap.py
+project_snapshot_new.txt

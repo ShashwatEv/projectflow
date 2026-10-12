@@ -3,6 +3,6 @@
       "target": {
         "namespace": "android_app",
         "package_name": "com.onrender.projectflow_d9dk.twa",
-        "sha256_cert_fingerprints": ["76:FB:F8:5E:F1:27:66:04:C6:9B:F0:88:76:DA:55:6E:F1:71:DB:71:AD:C3:7C:7B:27:CD:61:8E:73:C4:44:B0"]
+        "sha256_cert_fingerprints": ["C8:B8:2F:0F:61:F7:30:F9:07:F6:BA:9B:FC:F9:F8:ED:4E:3F:F0:DF:D5:34:4F:48:FC:BB:FB:9F:9C:C7:16:DC"]
       }
     }]
