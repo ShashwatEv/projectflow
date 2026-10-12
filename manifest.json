@@ -83,14 +83,14 @@
   "screenshots": [
     {
       "src": "/screenshot-mobile.png",
-      "sizes": "720x1280",
+      "sizes": "353x708",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Sprint Kanban and team boards on mobile"
     },
     {
       "src": "/screenshot-desktop.png",
-      "sizes": "1920x1080",
+      "sizes": "1917x1917",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Full workspace overview and Code Studio on desktop"
