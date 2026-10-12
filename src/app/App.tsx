@@ -14,6 +14,7 @@ import RequireAuth from './components/RequireAuth';
 import CommandMenu from './components/CommandMenu';
 import OnboardingTour from './components/OnboardingTour';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import DesktopOnlyGuard from './components/DesktopOnlyGuard';
 
 // Core Authentication & Layout Pages
 import Dashboard from './pages/Dashboard';
@@ -41,7 +42,6 @@ import ApiDocs from './pages/ApiDocs';
 import Retrospectives from './pages/Retrospectives';
 import TeamVelocity from './pages/TeamVelocity';
 
-// Exact Casing for Render / Linux Rollup compatibility
 const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({ 
   default: () => (
     <div className="p-8 max-w-4xl mx-auto space-y-3 animate-in fade-in duration-200">
@@ -51,7 +51,6 @@ const ApiPlayground = lazy(() => import('./pages/ApiPlayground').catch(() => ({
   ) 
 })));
 
-// Super admin email from environment variable (falls back to empty string for security)
 const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL?.toLowerCase().trim() || '';
 
 function PageLoader() {
@@ -70,7 +69,6 @@ function Layout() {
 
   const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
   
-  // Resilient verification check without ts(2339) type errors
   const isVerified = Boolean(
     user?.is_verified ||
     user?.email_verified ||
@@ -78,7 +76,6 @@ function Layout() {
     isSuperAdmin
   );
 
-  // Auto-heal: If auth confirmed the email but public.users flag lags behind, synchronize it
   useEffect(() => {
     if (session?.user?.email_confirmed_at && user?.id && !user?.is_verified) {
       supabase
@@ -94,16 +91,14 @@ function Layout() {
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <CommandMenu />
-      {/* First-time Guided Onboarding Tour */}
       <OnboardingTour />
       
-      {/* Ambient Identity Verification Warning Banner */}
       {!isVerified && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-500 dark:text-amber-400 font-medium z-30">
           <div className="flex items-center gap-2 truncate">
             <ShieldAlert size={15} className="shrink-0" />
             <span className="truncate">
-              Your account is unverified. Advanced features (unlimited projects, webhooks, and sprint publications) are locked.
+              Your account is unverified. Advanced features are locked.
             </span>
           </div>
           <button
@@ -116,7 +111,6 @@ function Layout() {
         </div>
       )}
 
-      {/* Modern Header with Centered Brand and Clickable Workspace Toggle */}
       <ModernHeader 
         onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
         isSidebarOpen={isSidebarOpen}
@@ -124,7 +118,6 @@ function Layout() {
       />
       
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Dynamic Expandable/Collapsible Sidebar */}
         <ModernSidebar 
           isOpen={isSidebarOpen || isMobileMenuOpen} 
           onClose={() => {
@@ -133,7 +126,6 @@ function Layout() {
           }} 
         />
         
-        {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-all duration-300 ease-in-out">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
@@ -153,53 +145,115 @@ export default function App() {
           <BrowserRouter>
             <ErrorBoundary>
               <Routes>
-              {/* Public Authentication Routes */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/2fa" element={<TwoFactorVerify />} />
+                {/* Public Authentication Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/2fa" element={<TwoFactorVerify />} />
 
-              {/* Protected Workspace Routes */}
-              <Route element={<RequireAuth />}>
-                <Route element={<Layout />}>
-                  {/* Redirect root to Dashboard */}
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  
-                  {/* Work & Sprint Engineering */}
-                  <Route path="/tasks" element={<MyTasks />} />
-                  <Route path="/projects" element={<Projects />} />
-                  <Route path="/projects/:id" element={<ProjectDetail />} />
-                  <Route path="/sprint-planner" element={<SprintPlanner />} />
-                  <Route path="/code" element={<CodeStudio />} />
-                  <Route path="/api-playground" element={<ApiPlayground />} />
-                  <Route path="/docs" element={<ApiDocs />} />
-                  <Route path="/timesheets" element={<Timesheets />} />
-                  <Route path="/automations" element={<Automations />} />
-                  
-                  {/* Team & Collaboration */}
-                  <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
-                  <Route path="/messages/:roomId" element={<Messages />} />
-                  <Route path="/team" element={<Team />} />
-                  <Route path="/retrospectives" element={<Retrospectives />} />
-                  <Route path="/retrospectives/velocity" element={<TeamVelocity />} />
-                  <Route path="/calendar" element={<Calendar />} />
+                {/* Protected Workspace Routes */}
+                <Route element={<RequireAuth />}>
+                  <Route element={<Layout />}>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    
+                    {/* Work Routes */}
+                    <Route path="/tasks" element={<MyTasks />} />
+                    <Route path="/projects" element={<Projects />} />
+                    <Route path="/projects/:id" element={<ProjectDetail />} />
+                    <Route 
+                      path="/sprint-planner" 
+                      element={
+                        <DesktopOnlyGuard featureName="Sprint Planner">
+                          <SprintPlanner />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route 
+                      path="/code" 
+                      element={
+                        <DesktopOnlyGuard featureName="Code Studio">
+                          <CodeStudio />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route 
+                      path="/api-playground" 
+                      element={
+                        <DesktopOnlyGuard featureName="API Console">
+                          <ApiPlayground />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route 
+                      path="/docs" 
+                      element={
+                        <DesktopOnlyGuard featureName="API Documentation">
+                          <ApiDocs />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route 
+                      path="/timesheets" 
+                      element={
+                        <DesktopOnlyGuard featureName="Timesheets">
+                          <Timesheets />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route 
+                      path="/automations" 
+                      element={
+                        <DesktopOnlyGuard featureName="Automations">
+                          <Automations />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    
+                    {/* Team & Collaboration */}
+                    <Route path="/messages" element={<Navigate to="/messages/room_1" replace />} />
+                    <Route path="/messages/:roomId" element={<Messages />} />
+                    <Route path="/team" element={<Team />} />
+                    <Route 
+                      path="/retrospectives" 
+                      element={
+                        <DesktopOnlyGuard featureName="Retrospectives">
+                          <Retrospectives />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
+                    <Route path="/retrospectives/velocity" element={<TeamVelocity />} />
+                    <Route 
+                      path="/calendar" 
+                      element={
+                        <DesktopOnlyGuard featureName="Monthly Calendar">
+                          <Calendar />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
 
-                  {/* Account & Analytics */}
-                  <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/profile/:id" element={<Profile />} />
-                  <Route path="/analytics" element={<Analytics />} />
+                    {/* Account & Analytics */}
+                    <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="/profile/:id" element={<Profile />} />
+                    <Route 
+                      path="/analytics" 
+                      element={
+                        <DesktopOnlyGuard featureName="Telemetry Analytics">
+                          <Analytics />
+                        </DesktopOnlyGuard>
+                      } 
+                    />
 
-                  {/* Settings */}
-                  <Route path="/settings" element={<SettingsLayout />} />
+                    {/* Settings */}
+                    <Route path="/settings" element={<SettingsLayout />} />
+                  </Route>
                 </Route>
-              </Route>
-              
-              {/* Catch-all */}
-              <Route path="*" element={<Navigate to="/login" replace />} />
-            </Routes>
-          </ErrorBoundary>
+                
+                {/* Fallback Catch-all */}
+                <Route path="*" element={<Navigate to="/login" replace />} />
+              </Routes>
+            </ErrorBoundary>
           </BrowserRouter>
         </OnboardingSandboxProvider>
       </ThemeProvider>

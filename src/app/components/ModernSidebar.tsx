@@ -34,7 +34,6 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
   const theme = useAccentTheme();
   const [pendingTaskCount, setPendingTaskCount] = useState<number>(0);
 
-  // Fetch true count of active tasks assigned to the current user
   useEffect(() => {
     async function fetchTaskBadge() {
       if (!user) return;
@@ -69,7 +68,6 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
     };
   }, [user?.id]);
 
-  // Dynamic slide & shrink classes for both desktop and mobile
   const sidebarClasses = `
     fixed inset-y-0 left-0 z-40 bg-white dark:bg-[#161b22] border-r border-gray-200 dark:border-gray-800 
     transition-all duration-300 ease-in-out lg:static lg:h-full flex flex-col overflow-hidden shrink-0
@@ -81,7 +79,6 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
       {isOpen && onClose && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm transition-opacity"
@@ -90,9 +87,9 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
       )}
 
       <aside className={sidebarClasses}>
-        {/* Mobile Close Button */}
         {onClose && (
-          <div className="h-12 flex-shrink-0 flex items-center justify-end px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
+          <div className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
+            <span className="font-bold text-xs text-gray-500 uppercase tracking-wider">Navigation</span>
             <button 
               type="button"
               onClick={onClose} 
@@ -103,11 +100,10 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
           </div>
         )}
 
-        {/* Main Navigation */}
         <nav className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
           <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Overview</div>
           <NavItem to="/dashboard" icon={<LayoutGrid size={18} />} label="Overview" isActive={location.pathname === '/dashboard'} theme={theme} onClick={onClose} />
-          <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} />
+          <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} desktopOnly />
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Work</div>
           <NavItem to="/projects" icon={<FolderKanban size={18} />} label="Projects" isActive={location.pathname.startsWith('/projects')} theme={theme} onClick={onClose} />
@@ -122,63 +118,23 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
             onClick={onClose} 
           />
 
-          <NavItem 
-            to="/sprint-planner" 
-            icon={<Sparkles size={18} />} 
-            label="Sprint Planner" 
-            isActive={location.pathname === '/sprint-planner'} 
-            theme={theme}
-            onClick={onClose} 
-          />
-          
-          <NavItem 
-            to="/code" 
-            icon={<Code2 size={18} />} 
-            label="Code Studio" 
-            isActive={location.pathname === '/code'} 
-            theme={theme}
-            onClick={onClose} 
-          />
-
-          <NavItem 
-            to="/api-playground" 
-            icon={<Terminal size={18} />} 
-            label="API Console" 
-            isActive={location.pathname === '/api-playground'} 
-            theme={theme}
-            onClick={onClose} 
-          />
-
-          <NavItem 
-            to="/docs" 
-            icon={<BookOpen size={18} />} 
-            label="API Docs" 
-            isActive={location.pathname === '/docs'} 
-            theme={theme}
-            onClick={onClose} 
-          />
-
-          <NavItem to="/timesheets" icon={<Clock size={18} />} label="Timesheets" isActive={location.pathname === '/timesheets'} theme={theme} onClick={onClose} />
-          <NavItem to="/automations" icon={<Zap size={18} />} label="Automations" isActive={location.pathname === '/automations'} theme={theme} onClick={onClose} />
+          {/* Desktop-only engineering utilities */}
+          <NavItem to="/sprint-planner" icon={<Sparkles size={18} />} label="Sprint Planner" isActive={location.pathname === '/sprint-planner'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/code" icon={<Code2 size={18} />} label="Code Studio" isActive={location.pathname === '/code'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/api-playground" icon={<Terminal size={18} />} label="API Console" isActive={location.pathname === '/api-playground'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/docs" icon={<BookOpen size={18} />} label="API Docs" isActive={location.pathname === '/docs'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/timesheets" icon={<Clock size={18} />} label="Timesheets" isActive={location.pathname === '/timesheets'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/automations" icon={<Zap size={18} />} label="Automations" isActive={location.pathname === '/automations'} theme={theme} onClick={onClose} desktopOnly />
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</div>
           <NavItem to="/messages/room_1" icon={<MessageSquare size={18} />} label="Team Chat" isActive={location.pathname.startsWith('/messages')} theme={theme} onClick={onClose} />
           <NavItem to="/team" icon={<Users size={18} />} label="Team" isActive={location.pathname === '/team'} theme={theme} onClick={onClose} />
-          
-          <NavItem 
-            to="/retrospectives" 
-            icon={<MessageSquareCode size={18} />} 
-            label="Retrospectives" 
-            isActive={location.pathname === '/retrospectives'} 
-            theme={theme}
-            onClick={onClose} 
-          />
-
-          <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} />
+          <NavItem to="/retrospectives" icon={<MessageSquareCode size={18} />} label="Retrospectives" isActive={location.pathname === '/retrospectives'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} desktopOnly />
         </nav>
 
-        {/* Getting Started Sandbox Checklist Widget */}
-        <div className="px-3 pb-2">
+        {/* Sandbox widget only shown on desktop to save vertical mobile height */}
+        <div className="hidden lg:block px-3 pb-2">
           <GettingStartedWidget />
         </div>
 
@@ -190,12 +146,14 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
   );
 }
 
-function NavItem({ icon, label, to, isActive, badge, theme, onClick }: any) {
+function NavItem({ icon, label, to, isActive, badge, theme, onClick, desktopOnly }: any) {
   return (
     <Link 
       to={to} 
       onClick={onClick}
-      className={`flex items-center px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+      className={`items-center px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+        desktopOnly ? 'hidden lg:flex' : 'flex'
+      } ${
         isActive 
           ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border${theme.borderAccent}/30` 
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200'

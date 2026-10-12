@@ -97,7 +97,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           setUnreadCount(count ?? unread);
         }
       } catch {
-        // Table may not exist in minimal installations
+        // Table fallback
       }
     };
 
@@ -205,9 +205,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   };
 
   return (
-    <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
-      {/* Left Area: Mobile Menu + Workspace Toggle */}
-      <div className="flex items-center gap-4">
+    <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
+      {/* Left Block: Hamburger button and brand logo on mobile */}
+      <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onMenuClick}
@@ -217,6 +217,17 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <Menu size={20} />
         </button>
 
+        {/* Mobile brand presentation */}
+        <div className="flex items-center select-none md:hidden">
+          <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2 shrink-0 overflow-hidden">
+            <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
+          </div>
+          <span className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
+            ProjectFlow
+          </span>
+        </div>
+
+        {/* Desktop breadcrumb trail */}
         <div className="hidden items-center text-sm md:flex">
           <button
             type="button"
@@ -236,8 +247,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         </div>
       </div>
 
-      {/* Centered Brand Block */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center pointer-events-none select-none">
+      {/* Desktop Centered Brand Block */}
+      <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center pointer-events-none select-none">
         <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
           <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
         </div>
@@ -246,8 +257,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         </span>
       </div>
 
-      {/* Right Area: Search, Timer, Theme, Profile */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      {/* Right Area: Search, Timer, Theme toggle, Notifications, Profile */}
+      <div className="flex items-center gap-1.5 sm:gap-3">
         {/* Search */}
         <div className="relative hidden sm:block" ref={searchRef}>
           <div
@@ -261,7 +272,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             />
             <input
               type="text"
-              placeholder="Search or jump to... (Ctrl + K)"
+              placeholder="Search or jump to..."
               value={query}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
@@ -336,45 +347,41 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           )}
         </div>
 
-        {/* Task Timer */}
-        <HeaderTaskTimer />
+        {/* Task Timer: hidden on mobile to avoid overcrowding */}
+        <div className="hidden sm:block">
+          <HeaderTaskTimer />
+        </div>
 
-        {/* Theme Toggle */}
+        {/* Theme Toggle Button */}
         <button
           type="button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          title="Toggle color theme"
         >
-          {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+          {theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
         </button>
 
-        {/* Interactive Notification Popover */}
+        {/* Notifications Popover */}
         <div className="relative" ref={notifRef}>
           <button
             type="button"
             onClick={() => setIsNotifOpen((prev) => !prev)}
-            className="relative rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+            className="relative rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
             title="Notifications"
           >
-            <Bell size={20} />
+            <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full border-2 border-white bg-indigo-600 text-[10px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-xs animate-pulse">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full border border-white bg-indigo-600 text-[9px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-xs animate-pulse">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
 
           {isNotifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-800 z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700/60 px-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-gray-900 dark:text-white">Notifications</span>
-                  {unreadCount > 0 && (
-                    <span className="text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                      {unreadCount} new
-                    </span>
-                  )}
-                </div>
+            <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-800 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-2.5 border-b border-gray-100 dark:border-gray-700/60 px-1">
+                <span className="font-bold text-xs text-gray-900 dark:text-white">Notifications</span>
                 <Link
                   to="/notifications"
                   onClick={() => setIsNotifOpen(false)}
@@ -384,9 +391,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                 </Link>
               </div>
 
-              <div className="max-h-72 overflow-y-auto py-2 divide-y divide-gray-100 dark:divide-gray-700/50">
+              <div className="max-h-64 overflow-y-auto py-2 divide-y divide-gray-100 dark:divide-gray-700/50">
                 {recentNotifs.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-gray-400">
+                  <div className="py-6 text-center text-xs text-gray-400">
                     No new notifications right now.
                   </div>
                 ) : (
@@ -397,76 +404,61 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                         setIsNotifOpen(false);
                         navigate('/notifications');
                       }}
-                      className="p-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl transition-colors cursor-pointer group"
+                      className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl transition-colors cursor-pointer"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-indigo-500">
-                          {item.title}
-                        </p>
-                        <span className="text-[10px] text-gray-400 shrink-0">
-                          {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {item.title}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
                         {item.message}
                       </p>
                     </div>
                   ))
                 )}
               </div>
-
-              <div className="pt-2 border-t border-gray-100 dark:border-gray-700/60 text-center">
-                <Link
-                  to="/notifications"
-                  onClick={() => setIsNotifOpen(false)}
-                  className="block text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 py-1"
-                >
-                  Open Notification Center →
-                </Link>
-              </div>
             </div>
           )}
         </div>
 
-        <div className="mx-1 h-8 w-px bg-gray-200 dark:bg-gray-700" />
+        <div className="mx-0.5 h-6 w-px bg-gray-200 dark:bg-gray-800" />
 
-        {/* User Profile Button */}
+        {/* User Profile Avatar */}
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             onClick={() => setIsProfileOpen((current) => !current)}
-            className="flex items-center gap-3 rounded-xl border border-transparent p-1.5 transition-all hover:border-gray-200 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-gray-800"
+            className="flex items-center gap-2 rounded-xl p-1 transition-all hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <div className="hidden text-right md:block">
-              <p className="text-sm font-bold leading-none">{currentName}</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{currentRole}</p>
+              <p className="text-xs font-bold leading-none">{currentName}</p>
+              <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{currentRole}</p>
             </div>
 
             <img
               src={currentAvatar}
               onError={(e) => { e.currentTarget.src = '/pfp.jpg'; }}
               alt={currentName}
-              className="h-9 w-9 rounded-lg object-cover bg-gray-800 border border-gray-700/60"
+              className="h-8 w-8 rounded-lg object-cover bg-gray-800 border border-gray-700/60"
             />
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
-              <div className="border-b border-gray-100 p-4 dark:border-gray-700 md:hidden">
-                <p className="font-bold text-gray-900 dark:text-white">{currentName}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
+            <div className="absolute right-0 top-full z-40 mt-2 w-52 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="border-b border-gray-100 p-3 dark:border-gray-700 md:hidden">
+                <p className="font-bold text-xs text-gray-900 dark:text-white">{currentName}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
               </div>
-              <div className="space-y-1 p-2">
+              <div className="space-y-1 p-1.5 text-xs">
                 <button
                   type="button"
                   onClick={() => {
                     navigate(`/profile/${user?.id}`);
                     setIsProfileOpen(false);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
                 >
-                  <User size={16} />
-                  My Profile
+                  <User size={15} />
+                  <span>My Profile</span>
                 </button>
                 <button
                   type="button"
@@ -474,34 +466,32 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                     navigate('/settings');
                     setIsProfileOpen(false);
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
                 >
-                  <Settings size={16} />
-                  Settings
+                  <Settings size={15} />
+                  <span>Settings</span>
                 </button>
-                
-                {/* Re-trigger Guided Tour from Header */}
                 <button
                   type="button"
                   onClick={() => {
                     setIsProfileOpen(false);
                     startTour();
                   }}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                 >
-                  <Sparkles size={16} />
-                  Restart Onboarding Tour
+                  <Sparkles size={15} />
+                  <span>Restart Tour</span>
                 </button>
               </div>
 
-              <div className="border-t border-gray-100 p-2 dark:border-gray-700">
+              <div className="border-t border-gray-100 p-1.5 dark:border-gray-700">
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                 >
-                  <LogOut size={16} />
-                  Log Out
+                  <LogOut size={15} />
+                  <span>Log Out</span>
                 </button>
               </div>
             </div>

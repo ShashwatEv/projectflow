@@ -31,11 +31,6 @@
   "edge_side_panel": {
     "preferred_width": 480
   },
-  "scope_extensions": [
-    {
-      "origin": "*.supabase.co"
-    }
-  ],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -113,6 +108,7 @@
   "share_target": {
     "action": "/tasks",
     "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
     "params": {
       "title": "title",
       "text": "description",
@@ -139,14 +135,14 @@
   "screenshots": [
     {
       "src": "/screenshot-mobile.png",
-      "sizes": "353x708",
+      "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Sprint Kanban and team boards on mobile"
     },
     {
       "src": "/screenshot-desktop.png",
-      "sizes": "1917x917",
+      "sizes": "1920x1080",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Full workspace overview and Code Studio on desktop"
