@@ -10,7 +10,7 @@ import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../../../lib/constants';
 
 // Allowed technical roles for code/data migration
 const ALLOWED_MIGRATION_ROLES = ['Admin', 'Developer', 'Tech Lead', 'Engineer', 'Manager'];
@@ -26,13 +26,13 @@ export default function DataPortabilitySettings() {
   const [importSummary, setImportSummary] = useState<{ count: number; project: string } | null>(null);
 
   // Authorization Gates
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-  const isVerified = Boolean(user?.is_verified || user?.email_verified || isSuperAdmin);
-  const hasAllowedRole = isSuperAdmin || ALLOWED_MIGRATION_ROLES.some(
+  const isAdmin = isSuperAdmin(user?.email, user?.role);
+  const isVerified = Boolean(user?.is_verified || user?.email_verified || isAdmin);
+  const hasAllowedRole = isAdmin || ALLOWED_MIGRATION_ROLES.some(
     (role) => role.toLowerCase() === (user?.role || '').toLowerCase()
   );
 
-  const canAccess = isSuperAdmin || (isVerified && hasAllowedRole);
+  const canAccess = isAdmin || (isVerified && hasAllowedRole);
 
   // If user lacks permissions or is unverified (and not the Root Admin)
   if (!canAccess) {
@@ -85,7 +85,7 @@ export default function DataPortabilitySettings() {
           workspace: 'ProjectFlow Enterprise',
           exportedAt: new Date().toISOString(),
           version: '2.0.0',
-          exportedBy: isSuperAdmin ? 'Root Owner' : user?.email,
+          exportedBy: isAdmin ? 'Root Owner' : user?.email,
         },
         projects: projectsRes.data || [],
         tasks: tasksRes.data || [],

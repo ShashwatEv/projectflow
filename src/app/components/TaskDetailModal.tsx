@@ -2,11 +2,9 @@ import { useState, useEffect } from 'react';
 import {
   X,
   Calendar,
-  Clock,
   CheckCircle2,
   Trash2,
   FolderKanban,
-  AlertCircle,
   Loader2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'projectflow-v3';
+const CACHE_NAME = 'projectflow-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,22 +9,14 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  // Purge all old caches
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      )
+      Promise.all(keys.map((key) => caches.delete(key)))
     )
   );
   self.clients.claim();
@@ -34,6 +26,24 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // In local development or for Vite modules/HMR, DO NOT intercept anything
+  const isDev =
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.pathname.includes('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.searchParams.has('t') ||
+    url.searchParams.has('import') ||
+    url.pathname.endsWith('.ts') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.jsx');
+
+  if (isDev) {
+    return;
+  }
+
+  // Pass-through: Supabase API calls, non-GET requests
   if (url.origin.includes('supabase.co') || event.request.method !== 'GET') {
     return;
   }
@@ -41,7 +51,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          networkResponse.type !== 'opaque'
+        ) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
@@ -55,8 +69,9 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           if (event.request.mode === 'navigate') {
-            return caches.match('/');
+            return caches.match('/') || Response.error();
           }
+          return Response.error();
         })
       )
   );
@@ -90,11 +105,11 @@ self.addEventListener('periodicsync', (event) => {
 
 // Push notification event listener
 self.addEventListener('push', (event) => {
-  let data = { title: 'ProjectFlow', body: 'New team update available' };
+  let data = { title: 'ProjectFlow', body: 'New team update available', url: '/tasks' };
   if (event.data) {
     try {
-      data = event.data.json();
-    } catch (e) {
+      data = { ...data, ...event.data.json() };
+    } catch (_e) {
       data.body = event.data.text();
     }
   }

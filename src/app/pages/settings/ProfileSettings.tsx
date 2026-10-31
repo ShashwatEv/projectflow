@@ -8,13 +8,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin as checkIsSuperAdmin } from '../../../lib/constants';
 
 export default function ProfileSettings() {
   const { user } = useAuth();
   const theme = useAccentTheme();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isSuperAdmin = checkIsSuperAdmin(user?.email, user?.role);
 
   const [formData, setFormData] = useState({
     name: user?.name || '',

@@ -13,7 +13,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isUserVerified, isSuperAdmin } from '../../lib/constants';
 
 interface CommitActivityPoint {
   date: string;
@@ -54,11 +54,11 @@ interface LivePR {
 export default function TeamVelocity() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
-  const is2FaEnabled = Boolean(user?.is_2fa_enabled || isSuperAdmin);
+  const isAdmin = isSuperAdmin(user?.email, user?.role);
+  const isVerified = isUserVerified(user, session);
+  const is2FaEnabled = Boolean(user?.is_2fa_enabled || isAdmin);
   const hasAccess = isVerified && is2FaEnabled;
 
   const currentYear = new Date().getFullYear();

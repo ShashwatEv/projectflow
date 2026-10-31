@@ -6,6 +6,7 @@ import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
 import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
+import { isSuperAdmin } from '../lib/constants';
 
 // Core component imports
 import { ModernHeader } from './components/ModernHeader';
@@ -44,7 +45,7 @@ import ApiDocs from './pages/ApiDocs';
 import Retrospectives from './pages/Retrospectives';
 import TeamVelocity from './pages/TeamVelocity';
 
-// Mobile-specific pages
+// Mobile-specific workflow pages
 import MobileTriageDeck from './pages/MobileTriageDeck';
 import DailyStandupStories from './pages/DailyStandupStories';
 import QuickCaptureSheet from './pages/QuickCaptureSheet';
@@ -64,9 +65,6 @@ const ApiPlayground = lazy(() =>
   }))
 );
 
-const SUPER_ADMIN_EMAIL =
-  import.meta.env.VITE_SUPER_ADMIN_EMAIL?.toLowerCase().trim() || '';
-
 function PageLoader() {
   return (
     <div className="flex h-full w-full items-center justify-center p-12 text-gray-400">
@@ -75,7 +73,7 @@ function PageLoader() {
   );
 }
 
-// Redirects desktop devices to the dashboard to prevent stretched mobile UI layouts
+// Redirects desktop displays to dashboard to prevent stretched mobile UI layouts
 function MobileOnlyGuard({ children }: { children: React.ReactNode }) {
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
@@ -100,19 +98,18 @@ function Layout() {
   const { user, session } = useAuth();
   const navigate = useNavigate();
 
-  const isSuperAdmin =
-    user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isAdmin = isSuperAdmin(user?.email, user?.role);
 
   const isVerified = Boolean(
     user?.is_verified ||
       user?.email_verified ||
       session?.user?.email_confirmed_at ||
-      isSuperAdmin
+      isAdmin
   );
 
   useEffect(() => {
     if (session?.user?.email_confirmed_at && user?.id && !user?.is_verified) {
-      supabase
+      (supabase as any)
         .from('users')
         .update({ is_verified: true })
         .eq('id', user.id)

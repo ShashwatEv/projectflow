@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../../lib/constants';
 
 interface UserProfile {
   id: string;
@@ -79,19 +79,19 @@ export default function Profile() {
       }
 
       const email = data?.email || (targetUserId === currentId ? authUser?.email : '') || '';
-      const isSuperAdmin = email.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+      const isSuperAdminAccount = isSuperAdmin(email, data?.role);
 
       const loadedProfile: UserProfile = {
         id: targetUserId,
         name: data?.name || (targetUserId === currentId ? authUser?.user_metadata?.full_name : 'Member') || 'Member',
         email,
-        role: isSuperAdmin ? 'Admin' : (data?.role || 'Member'),
+        role: isSuperAdminAccount ? 'Admin' : (data?.role || 'Member'),
         bio: data?.bio || '',
         location: data?.location || '',
         website: data?.website || '',
         phone: data?.phone || '',
         avatar: data?.avatar || (targetUserId === currentId ? authUser?.user_metadata?.avatar_url : '/pfp.jpg') || '/pfp.jpg',
-        is_verified: Boolean(data?.is_verified || isSuperAdmin),
+        is_verified: Boolean(data?.is_verified || isSuperAdminAccount),
         created_at: data?.created_at,
       };
 
@@ -149,7 +149,7 @@ export default function Profile() {
   }, [paramUserId]);
 
   const isOwnProfile = !paramUserId || paramUserId === currentAuthId;
-  const isSuperAdminAccount = profile?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isSuperAdminAccount = isSuperAdmin(profile?.email, profile?.role);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

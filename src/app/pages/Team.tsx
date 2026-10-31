@@ -12,7 +12,7 @@ import { useOnlineUsers } from '../../hooks/useOnlineUsers';
 import AddMemberModal from '../components/AddMemberModal';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { SUPER_ADMIN_EMAIL, isSuperAdmin } from '../../lib/constants';
 
 interface UserData {
   id: string;
@@ -63,9 +63,9 @@ export default function Team() {
         const formattedUsers: UserData[] = data.map((u: any) => ({
           ...u,
           name: u.name || 'Member',
-          role: u.email?.toLowerCase() === SUPER_ADMIN_EMAIL ? 'Admin' : (u.role || 'Member'),
+          role: isSuperAdmin(u.email, u.role) ? 'Admin' : (u.role || 'Member'),
           avatar: u.avatar || '/pfp.jpg',
-          is_verified: Boolean(u.is_verified || (u.email?.toLowerCase() === SUPER_ADMIN_EMAIL)),
+          is_verified: Boolean(u.is_verified || isSuperAdmin(u.email, u.role)),
           stats: { 
             workingHours: `${Math.floor(Math.random() * 25) + 20}h`, 
             productivity: Math.floor(Math.random() * 20) + 80 
@@ -273,7 +273,7 @@ export default function Team() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-8">
           {filteredUsers.length > 0 ? filteredUsers.map((user) => {
-            const isRootAdmin = user.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+            const isRootAdmin = isSuperAdmin(user.email, user.role);
             const isOnline = onlineUserIds.has(user.id);
 
             return (
@@ -455,7 +455,7 @@ export default function Team() {
                   <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${getRoleBadge(selectedUser.role, selectedUser.email)}`}>
                     {selectedUser.role}
                   </span>
-                  {selectedUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL && (
+                  {isSuperAdmin(selectedUser.email, selectedUser.role) && (
                     <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30">
                       Root Admin
                     </span>

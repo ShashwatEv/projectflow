@@ -11,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import { recordAuditLog } from '../../lib/auditLogger';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isUserVerified } from '../../lib/constants';
 
 interface Project {
   id: string;
@@ -31,10 +31,9 @@ interface Project {
 export default function Projects() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, session } = useAuth();
 
-  const isSuperAdmin = currentUser?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
-  const isVerified = Boolean(currentUser?.is_verified || isSuperAdmin);
+  const isVerified = isUserVerified(currentUser, session);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);

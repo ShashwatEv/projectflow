@@ -11,7 +11,7 @@ import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isUserVerified, isSuperAdmin } from '../../lib/constants';
 
 interface RetroItem {
   id: string;
@@ -37,11 +37,11 @@ interface ProductivityStats {
 export default function Retrospectives() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
-  const is2FaEnabled = Boolean(user?.is_2fa_enabled || isSuperAdmin);
+  const isAdmin = isSuperAdmin(user?.email, user?.role);
+  const isVerified = isUserVerified(user, session);
+  const is2FaEnabled = Boolean(user?.is_2fa_enabled || isAdmin);
   const canAccessVelocity = isVerified && is2FaEnabled;
 
   const [items, setItems] = useState<RetroItem[]>([]);

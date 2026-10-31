@@ -9,7 +9,7 @@ import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isUserVerified } from '../../lib/constants';
 
 interface Project {
   id: string;
@@ -33,10 +33,9 @@ interface GeneratedTask {
 export default function SprintPlanner() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
-  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
+  const isVerified = isUserVerified(user, session);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');

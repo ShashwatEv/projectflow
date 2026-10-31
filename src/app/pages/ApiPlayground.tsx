@@ -9,8 +9,7 @@ import { recordAuditLog } from '../../lib/auditLogger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
-
-const SUPER_ADMIN_EMAIL = import.meta.env.VITE_SUPER_ADMIN_EMAIL?.toLowerCase().trim() || 'shashwatop69@gmail.com';
+import { isUserVerified } from '../../lib/constants';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -33,10 +32,9 @@ interface ResponseState {
 export default function ApiPlayground() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
-  const isVerified = Boolean(user?.is_verified || isSuperAdmin);
+  const isVerified = isUserVerified(user, session);
 
   const [method, setMethod] = useState<HttpMethod>('POST');
   const [url, setUrl] = useState<string>('https://api.github.com/repos/org/projectflow/hooks');

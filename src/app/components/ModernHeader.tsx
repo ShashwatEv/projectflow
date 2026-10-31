@@ -258,7 +258,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       {/* Clickable Desktop Centered Brand Logo */}
       <Link
         to="/dashboard"
-        className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center select-none hover:opacity-85 transition-opacity"
+        className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center select-none hover:opacity-85 transition-opacity cursor-pointer"
       >
         <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
           <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />

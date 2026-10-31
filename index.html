@@ -12,11 +12,31 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js');
-        });
-      }
+      (function() {
+        const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if ('serviceWorker' in navigator) {
+          if (isDev) {
+            // In local development, unregister service workers and purge caches
+            // to prevent stale Vite modules and broken HMR transforms.
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (const reg of registrations) {
+                reg.unregister();
+              }
+            });
+            if ('caches' in window) {
+              caches.keys().then(function(keys) {
+                for (const key of keys) {
+                  caches.delete(key);
+                }
+              });
+            }
+          } else {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js');
+            });
+          }
+        }
+      })();
     </script>
   </body>
 </html>

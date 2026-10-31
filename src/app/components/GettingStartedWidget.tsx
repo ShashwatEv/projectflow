@@ -10,7 +10,7 @@ import { useAccentTheme } from '../../lib/useAccentTheme';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../../lib/constants';
 
 export default function GettingStartedWidget() {
   const navigate = useNavigate();
@@ -27,14 +27,15 @@ export default function GettingStartedWidget() {
   });
 
   // Comprehensive identity verification check (no ts(2339) errors)
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isAdminUser = isSuperAdmin(user?.email, user?.role);
   const isVerified = Boolean(
     user?.is_verified ||
     user?.email_verified ||
     session?.user?.email_confirmed_at ||
-    isSuperAdmin
+    isAdminUser
   );
-  const is2FaActive = Boolean(user?.is_2fa_enabled || isSuperAdmin);
+  // Admins do not require mandatory 2FA activation
+  const is2FaActive = Boolean(user?.is_2fa_enabled || isAdminUser);
 
   // Auto-sync public.users is_verified status if session is confirmed
   useEffect(() => {
@@ -71,8 +72,8 @@ export default function GettingStartedWidget() {
     };
   }, [user?.id]);
 
-  // If promoted out of safe sandbox to full production live user, hide the widget
-  if (!isSandboxActive) return null;
+  // If promoted out of safe sandbox or logged in as admin, hide the widget
+  if (!isSandboxActive || isAdminUser) return null;
 
   const milestones = [
     {

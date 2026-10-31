@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../../lib/constants';
 const DEMO_OVERRIDE_CODE = '000000'; // Development bypass token for rate-limited testing
 
 function Slot(props: SlotProps) {
@@ -116,8 +116,8 @@ export default function TwoFactorVerify() {
     };
 
     // 1. Super Admin or Dev / Rate-limited Bypass
-    const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
-    if (cleanToken === DEMO_OVERRIDE_CODE || (isSuperAdmin && cleanToken === '123456')) {
+    const isAdmin = isSuperAdmin(user?.email || targetEmail, user?.role);
+    if (cleanToken === DEMO_OVERRIDE_CODE || (isAdmin && cleanToken === '123456')) {
       onVerifiedSuccess();
       setLoading(false);
       return;

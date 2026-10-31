@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useDrag } from 'react-dnd';
 import { 
   Calendar, MessageSquare, Paperclip, Ellipsis, 
-  GitBranch, Check, Copy, ArrowRight, ShieldAlert 
+  GitBranch, Copy, ArrowRight, ShieldAlert 
 } from 'lucide-react';
 import { toast } from 'sonner';
 

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../lib/constants';
 
 export interface UserProfile {
   id: string;
@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string, defaultEmail = '', metadata: Record<string, any> = {}) => {
     try {
-      const isSuperAdmin = defaultEmail.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+      const isInitialAdmin = isSuperAdmin(defaultEmail);
 
       // Use .maybeSingle() to prevent HTTP 406 when no row exists
       const { data, error } = await supabase
@@ -55,11 +55,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data) {
+        const isAdmin = isSuperAdmin(defaultEmail, data.role);
         setUser({
           ...data,
-          role: isSuperAdmin ? 'Admin' : (data.role || 'Member'),
-          is_verified: Boolean(data.is_verified || isSuperAdmin),
-          email_verified: Boolean(data.email_verified || isSuperAdmin),
+          role: isAdmin ? 'Admin' : (data.role || 'Member'),
+          is_verified: Boolean(data.is_verified || isAdmin),
+          email_verified: Boolean(data.email_verified || isAdmin),
           phone_verified: Boolean(data.phone_verified),
         });
       } else {
@@ -69,9 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: metadata.full_name || metadata.name || defaultEmail.split('@')[0] || 'User',
           email: defaultEmail,
           avatar: metadata.avatar_url || '/pfp.jpg',
-          role: isSuperAdmin ? 'Admin' : 'Member',
-          is_verified: isSuperAdmin,
-          email_verified: isSuperAdmin,
+          role: isInitialAdmin ? 'Admin' : 'Member',
+          is_verified: isInitialAdmin,
+          email_verified: isInitialAdmin,
           phone_verified: false,
         });
       }

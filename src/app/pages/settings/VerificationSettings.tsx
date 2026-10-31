@@ -9,13 +9,13 @@ import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
 import { recordAuditLog } from '../../../lib/auditLogger';
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin as checkIsSuperAdmin } from '../../../lib/constants';
 
 export default function VerificationSettings() {
   const { user } = useAuth();
   const theme = useAccentTheme();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL;
+  const isSuperAdmin = checkIsSuperAdmin(user?.email, user?.role);
 
   const [loading, setLoading] = useState(true);
   const [emailVerified, setEmailVerified] = useState(false);

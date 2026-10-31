@@ -2,7 +2,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-export const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { SUPER_ADMIN_EMAIL } from '../lib/constants';
+export { SUPER_ADMIN_EMAIL, isSuperAdmin } from '../lib/constants';
 
 export function useVerificationGate() {
   const { user } = useAuth();

@@ -64,19 +64,19 @@ const DEFAULT_DEMO_TASKS: SandboxTask[] = [
 
 const OnboardingSandboxContext = createContext<OnboardingSandboxContextType | undefined>(undefined);
 
-const SUPER_ADMIN_EMAIL = 'shashwatop69@gmail.com';
+import { isSuperAdmin } from '../lib/constants';
 
 export const OnboardingSandboxProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
-  const isSuperAdmin = user?.email?.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const isAdminUser = isSuperAdmin(user?.email, user?.role);
   
   // Real database write authority requires: Root Admin OR (Verified Email + 2FA Enabled)
-  const canMutateDatabase = isSuperAdmin || Boolean((user?.is_verified || user?.email_verified) && user?.is_2fa_enabled);
+  const canMutateDatabase = isAdminUser || Boolean((user?.is_verified || user?.email_verified) && user?.is_2fa_enabled);
 
-  // Initialize sandbox active state
+  // Initialize sandbox active state - admins are never restricted to sandbox
   const [isSandboxActive, setIsSandboxActive] = useState<boolean>(() => {
-    if (isSuperAdmin) return false;
+    if (isAdminUser) return false;
     return !canMutateDatabase;
   });
 
@@ -89,12 +89,12 @@ export const OnboardingSandboxProvider: React.FC<{ children: React.ReactNode }> 
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (isSuperAdmin) {
+    if (isAdminUser) {
       setIsSandboxActive(false);
       return;
     }
     setIsSandboxActive(!canMutateDatabase);
-  }, [canMutateDatabase, isSuperAdmin]);
+  }, [canMutateDatabase, isAdminUser]);
 
   useEffect(() => {
     localStorage.setItem('pf_sandbox_tasks', JSON.stringify(sandboxTasks));
