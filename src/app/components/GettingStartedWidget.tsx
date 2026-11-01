@@ -25,6 +25,7 @@ export default function GettingStartedWidget() {
   const [isTourDone, setIsTourDone] = useState<boolean>(() => {
     return user?.id ? localStorage.getItem(`pf_tour_${user.id}`) === 'true' : false;
   });
+  const [setupProgressUserId, setSetupProgressUserId] = useState<string | null>(null);
 
   // Comprehensive identity verification check (no ts(2339) errors)
   const isAdminUser = isSuperAdmin(user?.email, user?.role);
@@ -36,6 +37,54 @@ export default function GettingStartedWidget() {
   );
   // Admins do not require mandatory 2FA activation
   const is2FaActive = Boolean(user?.is_2fa_enabled || isAdminUser);
+
+  useEffect(() => {
+    let active = true;
+    const loadProgress = async () => {
+      if (!user?.id) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_setup_progress')
+        .select('completed_steps')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!active) return;
+
+      if (error) {
+        console.warn('Shared onboarding progress is unavailable until the collaboration migration is applied.', error);
+      } else if (data?.completed_steps?.includes('tour')) {
+        setIsTourDone(true);
+        localStorage.setItem(`pf_tour_${user.id}`, 'true');
+      }
+      setSetupProgressUserId(user.id);
+    };
+
+    loadProgress();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || setupProgressUserId !== user.id) return;
+    const completedSteps = [
+      ...(isTourDone ? ['tour'] : []),
+      ...(isVerified ? ['verified'] : []),
+      ...(is2FaActive ? ['two-factor'] : []),
+      ...(hasGithubToken ? ['github'] : []),
+    ];
+    supabase
+      .from('user_setup_progress')
+      .upsert(
+        { user_id: user.id, completed_steps: completedSteps, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      )
+      .then(({ error }) => {
+        if (error) console.warn('Could not save shared onboarding progress:', error);
+      });
+  }, [user?.id, setupProgressUserId, isTourDone, isVerified, is2FaActive, hasGithubToken]);
 
   // Auto-sync public.users is_verified status if session is confirmed
   useEffect(() => {
@@ -55,7 +104,7 @@ export default function GettingStartedWidget() {
     const handleSync = () => {
       setHasGithubToken(Boolean(localStorage.getItem('pf_github_token')));
       if (user?.id) {
-        setIsTourDone(localStorage.getItem(`pf_tour_${user.id}`) === 'true');
+        setIsTourDone((current) => current || localStorage.getItem(`pf_tour_${user.id}`) === 'true');
       }
     };
 

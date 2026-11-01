@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, FolderKanban, Calendar, Plus,
   Loader2, Clock, Trash2, Edit3, ChevronRight, LayoutGrid, List,
-  ArrowRight
+  ArrowRight, Flag, Activity
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -39,6 +39,21 @@ interface TeamMember {
   email: string;
   avatar: string;
   role: string;
+}
+
+interface ProjectMilestone {
+  id: string;
+  title: string;
+  due_date: string | null;
+  status: 'planned' | 'in_progress' | 'complete';
+}
+
+interface ActivityItem {
+  id: string;
+  action: string;
+  details: Record<string, unknown>;
+  created_at: string;
+  source: 'task' | 'project';
 }
 
 const COLUMNS: { id: TaskItem['status']; label: string; color: string; bg: string; dot: string }[] = [
@@ -78,6 +93,11 @@ export default function ProjectDetail() {
   const [editStatus, setEditStatus] = useState('active');
   const [editDueDate, setEditDueDate] = useState('');
   const [savingProject, setSavingProject] = useState(false);
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
+  const [projectActivity, setProjectActivity] = useState<ActivityItem[]>([]);
+  const [milestoneTitle, setMilestoneTitle] = useState('');
+  const [milestoneDueDate, setMilestoneDueDate] = useState('');
+  const [savingMilestone, setSavingMilestone] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -118,6 +138,48 @@ export default function ProjectDetail() {
         setTasks([]);
       } else if (tasksData) {
         setTasks(tasksData);
+      }
+
+      const [
+        { data: milestoneData, error: milestoneError },
+        { data: taskActivityData, error: taskActivityError },
+        { data: projectActivityData, error: projectActivityError },
+      ] =
+        await Promise.all([
+          supabase
+            .from('project_milestones')
+            .select('id, title, due_date, status')
+            .eq('project_id', id)
+            .order('due_date', { ascending: true }),
+          supabase
+            .from('task_activity')
+            .select('id, action, details, created_at')
+            .eq('project_id', id)
+            .order('created_at', { ascending: false })
+            .limit(8),
+          supabase
+            .from('project_activity')
+            .select('id, action, details, created_at')
+            .eq('project_id', id)
+            .order('created_at', { ascending: false })
+            .limit(8),
+        ]);
+      if (milestoneError) {
+        console.error('Could not load project milestones:', milestoneError);
+        toast.error('Milestones are unavailable. Apply the collaboration database migration.');
+      } else {
+        setMilestones(milestoneData || []);
+      }
+      if (taskActivityError || projectActivityError) {
+        console.error('Could not load project activity:', taskActivityError || projectActivityError);
+      } else {
+        const activityItems: ActivityItem[] = [
+          ...((taskActivityData || []).map((item) => ({ ...item, source: 'task' as const }))),
+          ...((projectActivityData || []).map((item) => ({ ...item, source: 'project' as const }))),
+        ];
+        setProjectActivity(activityItems
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 8));
       }
     } catch (err: any) {
       console.error('Error fetching project:', err);
@@ -212,6 +274,48 @@ export default function ProjectDetail() {
       toast.error(err.message || 'Failed to create task');
     } finally {
       setSavingTask(false);
+    }
+  };
+
+  const handleCreateMilestone = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!id || !currentUser || !milestoneTitle.trim()) return;
+    setSavingMilestone(true);
+    try {
+      const { data, error } = await supabase
+        .from('project_milestones')
+        .insert({
+          project_id: id,
+          title: milestoneTitle.trim(),
+          due_date: milestoneDueDate || null,
+          created_by: currentUser.id,
+        })
+        .select('id, title, due_date, status')
+        .single();
+      if (error) throw error;
+      setMilestones((current) => [...current, data].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')));
+      setMilestoneTitle('');
+      setMilestoneDueDate('');
+      toast.success('Milestone added');
+    } catch (error) {
+      console.error('Could not create project milestone:', error);
+      toast.error('Could not add milestone. Check your project access and database migration.');
+    } finally {
+      setSavingMilestone(false);
+    }
+  };
+
+  const handleMilestoneStatusChange = async (milestone: ProjectMilestone, status: ProjectMilestone['status']) => {
+    const previous = milestones;
+    setMilestones((current) => current.map((item) => item.id === milestone.id ? { ...item, status } : item));
+    const { error } = await supabase
+      .from('project_milestones')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', milestone.id);
+    if (error) {
+      setMilestones(previous);
+      console.error('Could not update milestone:', error);
+      toast.error('Could not update milestone');
     }
   };
 
@@ -404,6 +508,116 @@ export default function ProjectDetail() {
           </div>
         </div>
       </div>
+
+      <section className="grid gap-5 lg:grid-cols-2" aria-label="Milestones and project activity">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Flag size={17} className="text-indigo-500" />
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">Milestones</h2>
+              <span className="text-xs text-gray-400">{milestones.length}</span>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreateMilestone} className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <input
+              value={milestoneTitle}
+              onChange={(event) => setMilestoneTitle(event.target.value)}
+              maxLength={120}
+              aria-label="Milestone title"
+              placeholder="Add a project milestone"
+              className="min-w-0 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+            />
+            <input
+              type="date"
+              value={milestoneDueDate}
+              onChange={(event) => setMilestoneDueDate(event.target.value)}
+              aria-label="Milestone due date"
+              className="rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-xs text-gray-700 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            />
+            <button
+              type="submit"
+              disabled={savingMilestone || !milestoneTitle.trim()}
+              className="inline-flex items-center justify-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {savingMilestone ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+              Add
+            </button>
+          </form>
+
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {milestones.length ? milestones.map((milestone) => (
+              <div key={milestone.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-gray-700">
+                <div className="min-w-0">
+                  <p className={`truncate text-xs font-semibold ${milestone.status === 'complete' ? 'text-gray-400 line-through' : 'text-gray-800 dark:text-gray-200'}`}>
+                    {milestone.title}
+                  </p>
+                  {milestone.due_date && (
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
+                      <Calendar size={11} /> {new Date(`${milestone.due_date}T00:00:00`).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+                <select
+                  aria-label={`Status for milestone ${milestone.title}`}
+                  value={milestone.status}
+                  onChange={(event) => handleMilestoneStatusChange(milestone, event.target.value as ProjectMilestone['status'])}
+                  className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] text-gray-700 outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                >
+                  <option value="planned">Planned</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="complete">Complete</option>
+                </select>
+              </div>
+            )) : (
+              <p className="py-3 text-center text-xs text-gray-400">No milestones yet. Add one to make the next checkpoint clear.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center gap-2">
+            <Activity size={17} className="text-indigo-500" />
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent activity</h2>
+          </div>
+          <div className="space-y-3">
+            {projectActivity.length ? projectActivity.map((item) => {
+              const details = item.details || {};
+              const changedFields = Object.keys(details);
+              const activityTitle = typeof details.title === 'string' ? details.title : '';
+              const summary = item.action === 'project_created'
+                ? 'Project created'
+                : item.action === 'project_updated'
+                ? `Project updated · ${changedFields.join(', ')}`
+                : item.action === 'milestone_created'
+                ? `Milestone added · ${activityTitle}`
+                : item.action === 'milestone_updated'
+                ? `Milestone updated · ${activityTitle}`
+                : item.action === 'milestone_deleted'
+                ? `Milestone removed · ${activityTitle}`
+                : item.action === 'created'
+                ? 'Task created'
+                : item.action === 'commented'
+                ? 'Task discussion updated'
+                : changedFields.length
+                ? `Task updated · ${changedFields.join(', ')}`
+                : 'Task updated';
+              return (
+                <div key={item.id} className="flex gap-3 border-l-2 border-indigo-200 pl-3 dark:border-indigo-900">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{summary}</p>
+                    <time className="mt-1 block text-[10px] text-gray-400" dateTime={item.created_at}>
+                      {new Date(item.created_at).toLocaleString()}
+                    </time>
+                  </div>
+                </div>
+              );
+            }) : (
+              <p className="py-3 text-center text-xs text-gray-400">Task changes will appear here as the team works.</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* View Switcher & Toolbar */}
       <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">

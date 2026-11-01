@@ -10,6 +10,7 @@ interface NotificationPreferences {
   project_invites: boolean;
   mentions: boolean;
   task_reminders: boolean;
+  digest_frequency: 'off' | 'daily' | 'weekly';
 }
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -18,6 +19,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   project_invites: false,
   mentions: true,
   task_reminders: false,
+  digest_frequency: 'off',
 };
 
 export default function NotificationsSettings() {
@@ -46,6 +48,16 @@ export default function NotificationsSettings() {
             ...data.notification_preferences,
           });
         }
+
+        const { data: workspacePreferences, error: workspaceError } = await supabase
+          .from('user_notification_preferences')
+          .select('new_comments, project_invites, mentions, task_reminders, digest_frequency')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!workspaceError && workspacePreferences) {
+          setPreferences((current) => ({ ...current, ...workspacePreferences }));
+        }
       } catch (err: any) {
         console.error('Failed to load notification settings:', err);
       } finally {
@@ -57,7 +69,7 @@ export default function NotificationsSettings() {
   }, []);
 
   // 2. Toggle and persist preference state
-  const handleToggle = async (key: keyof NotificationPreferences) => {
+  const handleToggle = async (key: Exclude<keyof NotificationPreferences, 'digest_frequency'>) => {
     const updated = {
       ...preferences,
       [key]: !preferences[key],
@@ -79,11 +91,64 @@ export default function NotificationsSettings() {
         .eq('id', user.id);
 
       if (error) throw error;
+
+      const { error: workspaceError } = await supabase
+        .from('user_notification_preferences')
+        .upsert(
+          {
+            user_id: user.id,
+            new_comments: updated.new_comments,
+            project_invites: updated.project_invites,
+            mentions: updated.mentions,
+            task_reminders: updated.task_reminders,
+            digest_frequency: updated.digest_frequency,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+      if (workspaceError) {
+        console.warn('Workspace notification preferences are unavailable; apply the collaboration migration to sync them.');
+      }
       toast.success('Notification preferences updated');
     } catch (err: any) {
       toast.error('Could not save preference change');
       // Rollback on network failure
       setPreferences(preferences);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleDigestChange = async (digestFrequency: NotificationPreferences['digest_frequency']) => {
+    const previous = preferences;
+    const updated = { ...preferences, digest_frequency: digestFrequency };
+    setPreferences(updated);
+    setSavingKey('digest_frequency');
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (!user) throw new Error('You must be signed in to update notification preferences.');
+
+      const { error } = await supabase
+        .from('user_notification_preferences')
+        .upsert(
+          {
+            user_id: user.id,
+            new_comments: updated.new_comments,
+            project_invites: updated.project_invites,
+            mentions: updated.mentions,
+            task_reminders: updated.task_reminders,
+            digest_frequency: digestFrequency,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+      if (error) throw error;
+      toast.success('Digest preference updated');
+    } catch (err) {
+      setPreferences(previous);
+      toast.error('Apply the collaboration database migration before enabling digest preferences.');
+      console.error('Could not save digest preference:', err);
     } finally {
       setSavingKey(null);
     }
@@ -224,7 +289,7 @@ export default function NotificationsSettings() {
           <div className="py-4 last:pb-0 flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-white">Task Reminders</p>
-              <p className="text-xs text-gray-400">Get a reminder 1 hour before a task is due.</p>
+              <p className="text-xs text-gray-400">Show overdue and due-today tasks in your in-app notifications.</p>
             </div>
             <button
               type="button"
@@ -243,6 +308,28 @@ export default function NotificationsSettings() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-white tracking-tight">Activity digest</h2>
+          <p className="text-xs text-gray-400">
+            Choose a digest cadence. Email delivery requires a configured scheduler and mail provider.
+          </p>
+        </div>
+        <label className="flex items-center justify-between gap-4 text-sm text-gray-200">
+          <span>Digest frequency</span>
+          <select
+            value={preferences.digest_frequency}
+            onChange={(event) => handleDigestChange(event.target.value as NotificationPreferences['digest_frequency'])}
+            disabled={_savingKey === 'digest_frequency'}
+            className="rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="off">Off</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
       </div>
     </div>
   );

@@ -29,7 +29,8 @@ export default function Notifications() {
   // 1. Fetch real notifications and auto-synthesize live project/deadline triggers
   const fetchLiveNotifications = async () => {
     try {
-      await supabase.auth.getUser();
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData.user?.id;
 
       // 1. Fetch stored notifications
       const { data: storedData, error } = await supabase
@@ -73,8 +74,44 @@ export default function Notifications() {
         };
       });
 
+      let dueTaskReminders: NotificationItem[] = [];
+      if (currentUserId) {
+        const { data: preference } = await supabase
+          .from('user_notification_preferences')
+          .select('task_reminders')
+          .eq('user_id', currentUserId)
+          .maybeSingle();
+
+        if (preference?.task_reminders) {
+          const tomorrow = new Date();
+          tomorrow.setHours(24, 0, 0, 0);
+          const { data: dueTasks, error: dueTasksError } = await supabase
+            .from('tasks')
+            .select('id, title, due_date')
+            .eq('assigned_to', currentUserId)
+            .neq('status', 'done')
+            .lt('due_date', tomorrow.toISOString())
+            .order('due_date', { ascending: true })
+            .limit(20);
+
+          if (dueTasksError) {
+            console.error('Could not load due task reminders:', dueTasksError);
+          } else {
+            dueTaskReminders = (dueTasks || []).map((task) => ({
+              id: `automation-deadline-${task.id}`,
+              title: new Date(task.due_date).getTime() < Date.now() ? 'Task overdue' : 'Task due today',
+              message: task.title,
+              type: 'deadline',
+              link: '/tasks',
+              is_read: false,
+              created_at: task.due_date,
+            }));
+          }
+        }
+      }
+
       // Merge and sort newest first
-      const combined = [...realList, ...projectAutomations].sort(
+      const combined = [...realList, ...projectAutomations, ...dueTaskReminders].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Hash, Search, Plus, Smile, MessageSquare,
-  Menu, X, Palette, ExternalLink, Check
+  Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -42,6 +42,10 @@ interface Channel {
   id: string;
   name: string;
   description?: string;
+  is_private?: boolean;
+  created_by?: string | null;
+  last_message?: string;
+  unread_count?: number;
 }
 
 const DEFAULT_CHANNELS: Channel[] = [
@@ -53,7 +57,7 @@ const DEFAULT_CHANNELS: Channel[] = [
 
 export default function Messages() {
   const { user } = useAuth();
-  const { theme, accentColor, chatWallpaper, setChatWallpaper } = useTheme();
+  const { theme, accentColor, chatWallpaper } = useTheme();
   const navigate = useNavigate();
   const { roomId } = useParams<{ roomId: string }>();
   const currentRoomId = roomId || 'room_1';
@@ -63,10 +67,17 @@ export default function Messages() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [users, setUsers] = useState<TeamUser[]>([]);
-  const [channels, setChannels] = useState<Channel[]>(() => {
-    const saved = localStorage.getItem('projectflow_channels');
-    return saved ? JSON.parse(saved) : DEFAULT_CHANNELS;
-  });
+  const [channels, setChannels] = useState<Channel[]>(DEFAULT_CHANNELS);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [lastMessagePreviews, setLastMessagePreviews] = useState<Record<string, string>>({});
+  const [mutedRooms, setMutedRooms] = useState<Record<string, boolean>>({});
+  const [activeWallpaper, setActiveWallpaper] = useState(chatWallpaper);
+  const [isCurrentRoomMuted, setIsCurrentRoomMuted] = useState(false);
+  const [newChannelIsPrivate, setNewChannelIsPrivate] = useState(false);
+  const [inviteeIds, setInviteeIds] = useState<string[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [isChannelLoading, setIsChannelLoading] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,7 +96,14 @@ export default function Messages() {
   const previousMessageCountRef = useRef(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const oldestMessageAtRef = useRef<string | null>(null);
+  const fetchRequestIdRef = useRef(0);
+  const isCurrentRoomMutedRef = useRef(false);
   const { typingUsers, broadcastTyping } = useTyping(currentRoomId);
+
+  useEffect(() => {
+    isCurrentRoomMutedRef.current = isCurrentRoomMuted;
+  }, [isCurrentRoomMuted]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -96,6 +114,135 @@ export default function Messages() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadChannels = async () => {
+      const saved = localStorage.getItem('projectflow_channels');
+      let localChannels: Channel[] = DEFAULT_CHANNELS;
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) localChannels = parsed;
+        } catch (error) {
+          console.error('Could not parse locally saved channels:', error);
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('workspace_channels')
+        .select('id, name, description, is_private, created_by')
+        .order('created_at', { ascending: true });
+      if (!active) return;
+      if (error) {
+        console.warn('Shared channels unavailable; using this browser’s saved channels. Apply the collaboration migration to enable shared channels.', error);
+        setChannels(localChannels);
+        return;
+      }
+
+      const sharedChannels = (data || []) as Channel[];
+      const sharedIds = new Set(sharedChannels.map((channel) => channel.id));
+      const legacyChannels = localChannels.filter(
+        (channel) => !sharedIds.has(channel.id) && !channel.is_private && /^room_[a-z0-9-]+$/.test(channel.id)
+      );
+      if (user?.id && legacyChannels.length) {
+        const { data: migratedLegacyChannels, error: legacyError } = await supabase
+          .from('workspace_channels')
+          .upsert(
+            legacyChannels.map((channel) => ({
+              id: channel.id,
+              name: channel.name,
+              description: channel.description || '',
+              is_private: false,
+              created_by: user.id,
+            })),
+            { onConflict: 'id', ignoreDuplicates: true }
+          )
+          .select('id, name, description, is_private, created_by');
+        if (legacyError) {
+          console.warn('Some browser-local channels could not be migrated to the shared workspace:', legacyError);
+        } else {
+          sharedChannels.push(...((migratedLegacyChannels || []) as Channel[]));
+        }
+      }
+      const migratedIds = new Set(sharedChannels.map((channel) => channel.id));
+      const remainingLocalChannels = legacyChannels.filter((channel) => !migratedIds.has(channel.id));
+      setChannels([...sharedChannels, ...remainingLocalChannels]);
+      if (user?.id) {
+        const { data: unreadData, error: unreadError } = await supabase.rpc('workspace_unread_counts');
+        if (unreadError) {
+          console.warn('Unread chat counts are unavailable until the collaboration migration is applied.', unreadError);
+        } else if (active) {
+          const counts: Record<string, number> = {};
+          (unreadData || []).forEach((row: { room_id: string; unread_count: number }) => {
+            counts[row.room_id] = Number(row.unread_count) || 0;
+          });
+          setUnreadCounts(counts);
+        }
+
+        const { data: preferenceData, error: preferenceError } = await supabase
+          .from('workspace_channel_preferences')
+          .select('channel_id, is_muted')
+          .eq('user_id', user.id)
+          .eq('is_muted', true);
+        if (preferenceError) {
+          console.warn('Muted conversation preferences are unavailable until the collaboration migration is applied.', preferenceError);
+        } else if (active) {
+          const muted: Record<string, boolean> = {};
+          (preferenceData || []).forEach((preference: { channel_id: string; is_muted: boolean }) => {
+            muted[preference.channel_id] = preference.is_muted;
+          });
+          setMutedRooms(muted);
+        }
+
+        const { data: previewData, error: previewError } = await supabase.rpc('workspace_channel_previews');
+        if (previewError) {
+          console.warn('Chat previews are unavailable until the collaboration migration is applied.', previewError);
+        } else if (active) {
+          const previews: Record<string, string> = {};
+          (previewData || []).forEach((row: { room_id: string; last_message: string }) => {
+            previews[row.room_id] = row.last_message || '';
+          });
+          setLastMessagePreviews(previews);
+          setChannels((current) => current.map((channel) => ({
+            ...channel,
+            last_message: previews[channel.id] || '',
+          })));
+        }
+      }
+    };
+    loadChannels();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    const loadRoomPreferences = async () => {
+      const { data, error } = await supabase
+        .from('workspace_channel_preferences')
+        .select('wallpaper, is_muted')
+        .eq('channel_id', currentRoomId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!active) return;
+      if (error) {
+        console.warn('Per-conversation chat settings are unavailable until the collaboration migration is applied.', error);
+        setActiveWallpaper(chatWallpaper);
+        setIsCurrentRoomMuted(false);
+        return;
+      }
+      setActiveWallpaper(data?.wallpaper || chatWallpaper);
+      setIsCurrentRoomMuted(data?.is_muted || false);
+      setMutedRooms((current) => ({ ...current, [currentRoomId]: data?.is_muted || false }));
+    };
+    loadRoomPreferences();
+    return () => {
+      active = false;
+    };
+  }, [currentRoomId, user?.id, chatWallpaper]);
 
   useEffect(() => {
     async function fetchUsers() {
@@ -112,7 +259,20 @@ export default function Messages() {
     setNewMessageCount(0);
     setMessageSearchQuery('');
     setIsMessageSearchOpen(false);
-    fetchMessages();
+    setHasOlderMessages(false);
+    oldestMessageAtRef.current = null;
+    fetchMessages(true, '');
+    void (async () => {
+      await markRoomRead();
+      const { data: refreshedUnread, error: unreadError } = await supabase.rpc('workspace_unread_counts');
+      if (!unreadError) {
+        const refreshedCounts: Record<string, number> = {};
+        (refreshedUnread || []).forEach((row: { room_id: string; unread_count: number }) => {
+          refreshedCounts[row.room_id] = Number(row.unread_count) || 0;
+        });
+        setUnreadCounts((current) => ({ ...current, ...refreshedCounts, [currentRoomId]: 0 }));
+      }
+    })();
 
     const channel = supabase
       .channel(`chat_${currentRoomId}`)
@@ -121,13 +281,15 @@ export default function Messages() {
         { event: '*', schema: 'public', table: 'messages', filter: `room_id=eq.${currentRoomId}` },
         (payload) => {
           handleMessageChange(payload);
-          triggerHaptic('tap');
+          if (payload.eventType === 'INSERT' && payload.new.user_id !== user?.id && !isCurrentRoomMutedRef.current) {
+            triggerHaptic('tap');
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'message_reactions' },
-        () => fetchMessages()
+        () => fetchMessages(true, messageSearchQuery)
       )
       .subscribe();
 
@@ -135,6 +297,37 @@ export default function Messages() {
       supabase.removeChannel(channel);
     };
   }, [currentRoomId]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`workspace_unread_${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const message = payload.new as Message & { room_id: string };
+        if (!message.room_id || message.user_id === user.id || message.room_id === currentRoomId) return;
+        setLastMessagePreviews((current) => ({ ...current, [message.room_id]: message.content || '' }));
+        setUnreadCounts((current) => ({
+          ...current,
+          [message.room_id]: (current[message.room_id] || 0) + 1,
+        }));
+        if (!mutedRooms[message.room_id]) {
+          const roomName = channels.find((item) => item.id === message.room_id)?.name;
+          toast(`${roomName ? `#${roomName}` : 'New direct message'}: ${message.content}`);
+        }
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, currentRoomId, mutedRooms, channels]);
+
+  useEffect(() => {
+    if (!isMessageSearchOpen) return;
+    const timer = window.setTimeout(() => {
+      fetchMessages(true, messageSearchQuery);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [messageSearchQuery, isMessageSearchOpen, currentRoomId]);
 
   useEffect(() => {
     if (messages.length > previousMessageCountRef.current) {
@@ -160,6 +353,17 @@ export default function Messages() {
         if (prev.some((message) => message.id === payload.new.id)) return prev;
         return [...prev, { ...payload.new, user: userData, message_reactions: [] }];
       });
+      setLastMessagePreviews((current) => ({ ...current, [currentRoomId]: payload.new.content || '' }));
+      if (payload.new.user_id !== user?.id) {
+        if (isAtLatestRef.current) {
+          void markRoomRead();
+        } else {
+          setUnreadCounts((current) => ({
+            ...current,
+            [currentRoomId]: (current[currentRoomId] || 0) + 1,
+          }));
+        }
+      }
     }
     if (payload.eventType === 'DELETE') {
       setMessages((prev) => prev.filter((msg) => msg.id !== payload.old.id));
@@ -171,19 +375,96 @@ export default function Messages() {
     }
   };
 
-  const fetchMessages = async () => {
-    const { data, error } = await supabase
+  const markRoomRead = async () => {
+    if (!user?.id) return;
+    const { error } = await supabase
+      .from('workspace_channel_reads')
+      .upsert(
+        { channel_id: currentRoomId, user_id: user.id, last_read_at: new Date().toISOString() },
+        { onConflict: 'channel_id,user_id' }
+      );
+    if (error) {
+      console.warn('Could not save chat read state. Apply the collaboration migration to enable unread counts.', error);
+      return;
+    }
+    setUnreadCounts((current) => ({ ...current, [currentRoomId]: 0 }));
+  };
+
+  const saveRoomPreference = async (updates: { wallpaper?: typeof chatWallpaper; is_muted?: boolean }) => {
+    if (!user?.id) return;
+    const { error } = await supabase.from('workspace_channel_preferences').upsert(
+      {
+        channel_id: currentRoomId,
+        user_id: user.id,
+        wallpaper: updates.wallpaper ?? activeWallpaper,
+        is_muted: updates.is_muted ?? isCurrentRoomMuted,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'channel_id,user_id' }
+    );
+    if (error) {
+      console.warn('Could not save chat preference. Apply the collaboration migration to sync this setting.', error);
+      toast.warning('This preference is only saved for this session until the collaboration migration is applied.');
+    }
+    if (updates.is_muted !== undefined) {
+      setMutedRooms((current) => ({ ...current, [currentRoomId]: updates.is_muted || false }));
+    }
+  };
+
+  const fetchMessages = async (reset = true, search = '') => {
+    const requestId = ++fetchRequestIdRef.current;
+    let query = supabase
       .from('messages')
       .select('*, user:users(name, avatar), message_reactions(*)')
-      .eq('room_id', currentRoomId)
-      .order('created_at', { ascending: true });
+      .eq('room_id', currentRoomId);
+
+    const normalizedSearch = search.trim();
+    if (normalizedSearch) query = query.ilike('content', `%${normalizedSearch}%`);
+    if (!reset && oldestMessageAtRef.current) {
+      query = query.lt('created_at', oldestMessageAtRef.current);
+    }
+
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (error) {
       console.error('Error fetching chat messages:', error);
       toast.error('Could not load messages');
       return;
     }
-    setMessages(data || []);
+
+    const page = (data || []).reverse() as Message[];
+    if (requestId !== fetchRequestIdRef.current) return;
+    if (reset) {
+      oldestMessageAtRef.current = page[0]?.created_at || null;
+      setHasOlderMessages(page.length === 50);
+      setMessages(page);
+    } else {
+      const oldestMessageAt = page[0]?.created_at;
+      if (oldestMessageAt) oldestMessageAtRef.current = oldestMessageAt;
+      setHasOlderMessages(page.length === 50);
+      setMessages((current) => {
+        const existingIds = new Set(current.map((message) => message.id));
+        return [...page.filter((message) => !existingIds.has(message.id)), ...current];
+      });
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!hasOlderMessages || loadingOlderMessages) return;
+    const list = messagesListRef.current;
+    const previousHeight = list?.scrollHeight || 0;
+    const previousTop = list?.scrollTop || 0;
+    setLoadingOlderMessages(true);
+    try {
+      await fetchMessages(false, messageSearchQuery);
+      requestAnimationFrame(() => {
+        if (list) list.scrollTop = previousTop + list.scrollHeight - previousHeight;
+      });
+    } finally {
+      setLoadingOlderMessages(false);
+    }
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -283,8 +564,9 @@ export default function Messages() {
     }
   };
 
-  const handleCreateChannel = (e: React.FormEvent) => {
+  const handleCreateChannel = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) return;
     const formattedName = newChannelName
       .trim()
       .toLowerCase()
@@ -292,22 +574,67 @@ export default function Messages() {
       .replace(/[^a-z0-9-]/g, '');
     if (!formattedName) return;
 
+    setIsChannelLoading(true);
     const newChannel: Channel = {
       id: `room_${formattedName}`,
       name: formattedName,
       description: newChannelDesc.trim() || 'Custom discussion channel',
+      is_private: newChannelIsPrivate,
+      created_by: user.id,
     };
 
-    const updated = [...channels, newChannel];
-    setChannels(updated);
-    localStorage.setItem('projectflow_channels', JSON.stringify(updated));
+    try {
+      const { data: createdChannel, error: createError } = await supabase
+        .from('workspace_channels')
+        .insert({
+          id: newChannel.id,
+          name: newChannel.name,
+          description: newChannel.description,
+          is_private: newChannelIsPrivate,
+          created_by: user.id,
+        })
+        .select('id, name, description, is_private, created_by')
+        .single();
 
-    setIsAddChannelOpen(false);
-    setNewChannelName('');
-    setNewChannelDesc('');
-    toast.success(`Channel #${formattedName} created!`);
-    triggerHaptic('success');
-    navigate(`/messages/${newChannel.id}`);
+      if (createError) {
+        const migrationMissing = ['42P01', 'PGRST202', 'PGRST205'].includes(createError.code || '');
+        if (!migrationMissing || newChannelIsPrivate) throw createError;
+
+        const localChannels = [...channels, newChannel];
+        setChannels(localChannels);
+        localStorage.setItem('projectflow_channels', JSON.stringify(localChannels));
+        toast.warning(`Channel #${formattedName} is local to this browser. Apply the collaboration migration to share it.`);
+      } else {
+        const members = [...new Set([user.id, ...inviteeIds])].map((userId) => ({
+          channel_id: newChannel.id,
+          user_id: userId,
+        }));
+        const { error: membersError } = await supabase
+          .from('workspace_channel_members')
+          .insert(members);
+        if (membersError) {
+          await supabase.from('workspace_channels').delete().eq('id', newChannel.id);
+          throw membersError;
+        }
+        setChannels((current) => [...current, createdChannel as Channel]);
+        toast.success(`Shared channel #${formattedName} created`);
+      }
+
+      setIsAddChannelOpen(false);
+      setNewChannelName('');
+      setNewChannelDesc('');
+      setInviteeIds([]);
+      setNewChannelIsPrivate(false);
+      triggerHaptic('success');
+      navigate(`/messages/${newChannel.id}`);
+    } catch (error) {
+      console.error('Could not create chat channel:', error);
+      toast.error(newChannelIsPrivate
+        ? 'Could not create the private channel. Apply the collaboration migration and check your access.'
+        : 'Could not create this channel. The name may already be in use.');
+    } finally {
+      setIsChannelLoading(false);
+    }
   };
 
   const isDM = currentRoomId.startsWith('dm_');
@@ -421,6 +748,7 @@ export default function Messages() {
             <div className="space-y-0.5">
               {filteredChannels.map((ch) => {
                 const isActive = currentRoomId === ch.id;
+                const unreadCount = unreadCounts[ch.id] || 0;
                 return (
                   <button
                     key={ch.id}
@@ -435,8 +763,20 @@ export default function Messages() {
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-800/60'
                     }`}
                   >
-                    <Hash size={15} className={isActive ? 'text-white' : 'text-gray-400'} />
-                    <span className="truncate flex-1">{ch.name}</span>
+                    {ch.is_private
+                      ? <Lock size={14} className={isActive ? 'text-white' : 'text-gray-400'} />
+                      : <Hash size={15} className={isActive ? 'text-white' : 'text-gray-400'} />}
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate ${unreadCount ? 'font-bold' : ''}`}>{ch.name}</span>
+                      <span className={`block truncate text-[10px] ${isActive ? 'text-indigo-100' : 'text-gray-400'}`}>
+                        {lastMessagePreviews[ch.id] || ch.description || 'No messages yet'}
+                      </span>
+                    </span>
+                    {unreadCount > 0 && (
+                      <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-indigo-600 text-white'}`}>
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -455,6 +795,7 @@ export default function Messages() {
                 const dmId = getDMRoomId(u.id);
                 const isActive = currentRoomId === dmId;
                 const isOnline = onlineUserIds.has(u.id);
+                const unreadCount = unreadCounts[dmId] || 0;
 
                 return (
                   <button
@@ -493,9 +834,14 @@ export default function Messages() {
                           isActive ? 'text-indigo-200' : 'text-gray-400'
                         }`}
                       >
-                        {u.role || 'Member'}
+                        {lastMessagePreviews[dmId] || u.role || 'Member'}
                       </p>
                     </div>
+                    {unreadCount > 0 && (
+                      <span className="min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -576,8 +922,25 @@ export default function Messages() {
             <button
               type="button"
               onClick={() => {
+                const nextMuted = !isCurrentRoomMuted;
+                setIsCurrentRoomMuted(nextMuted);
+                void saveRoomPreference({ is_muted: nextMuted });
+                toast.success(nextMuted ? 'Conversation muted' : 'Conversation unmuted');
+              }}
+              aria-label={isCurrentRoomMuted ? 'Unmute this conversation' : 'Mute this conversation'}
+              aria-pressed={isCurrentRoomMuted}
+              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
+              title={isCurrentRoomMuted ? 'Unmute conversation' : 'Mute conversation'}
+            >
+              {isCurrentRoomMuted ? <BellOff size={16} /> : <Bell size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const closingSearch = isMessageSearchOpen;
                 setIsMessageSearchOpen((open) => !open);
                 setMessageSearchQuery('');
+                if (closingSearch) fetchMessages(true, '');
               }}
               aria-label={isMessageSearchOpen ? 'Close message search' : 'Search this conversation'}
               aria-expanded={isMessageSearchOpen}
@@ -635,39 +998,55 @@ export default function Messages() {
           onScroll={(event) => {
             const element = event.currentTarget;
             const atLatest = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+            const wasAtLatest = isAtLatestRef.current;
             isAtLatestRef.current = atLatest;
-            if (atLatest) setNewMessageCount(0);
+            if (atLatest) {
+              setNewMessageCount(0);
+              if (!wasAtLatest) void markRoomRead();
+            }
           }}
           className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-5 transition-all duration-300 relative touch-scroll-smooth ${
-            chatWallpaper === 'whatsapp'
+            activeWallpaper === 'whatsapp'
               ? 'bg-[#efeae2] dark:bg-[#0b141a]'
-              : chatWallpaper === 'telegram'
+              : activeWallpaper === 'telegram'
               ? 'bg-gradient-to-b from-[#72b5e8]/25 via-[#2a75b2]/15 to-[#0e1621] dark:bg-[#0e1621]'
-              : chatWallpaper === 'cyberpunk'
+              : activeWallpaper === 'cyberpunk'
               ? 'bg-[#06060e] text-white'
-              : chatWallpaper === 'dots'
+              : activeWallpaper === 'dots'
               ? 'bg-[radial-gradient(#6366f125_1.5px,transparent_1.5px)] bg-[size:18px_18px] bg-indigo-50/40 dark:bg-[#0b0e14]'
-              : chatWallpaper === 'gradient'
+              : activeWallpaper === 'gradient'
               ? 'bg-gradient-to-b from-indigo-500/10 via-purple-500/10 to-transparent bg-gray-50 dark:bg-gray-950'
-              : chatWallpaper === 'minimal'
+              : activeWallpaper === 'minimal'
               ? 'bg-gray-50 dark:bg-gray-900'
               : 'bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] bg-gray-50/80 dark:bg-gray-950'
           }`}
           style={{
             backgroundImage:
-              chatWallpaper === 'whatsapp'
+              activeWallpaper === 'whatsapp'
                 ? 'radial-gradient(#128c7e18 1.5px, transparent 1.5px), radial-gradient(#00a88412 1.5px, transparent 1.5px)'
-                : chatWallpaper === 'cyberpunk'
+                : activeWallpaper === 'cyberpunk'
                 ? 'linear-gradient(to right, #ec489915 1px, transparent 1px), linear-gradient(to bottom, #3b82f615 1px, transparent 1px)'
                 : undefined,
             backgroundSize:
-              chatWallpaper === 'whatsapp'
+              activeWallpaper === 'whatsapp'
                 ? '20px 20px, 40px 40px'
-                : chatWallpaper === 'cyberpunk'
+                : activeWallpaper === 'cyberpunk'
                 ? '28px 28px'
                 : undefined,
           }}
         >
+          {hasOlderMessages && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={loadOlderMessages}
+                disabled={loadingOlderMessages}
+                className="rounded-full border border-gray-200 bg-white/80 px-4 py-2 text-xs font-semibold text-gray-600 shadow-sm backdrop-blur transition-colors hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900/80 dark:text-gray-300 dark:hover:text-indigo-300"
+              >
+                {loadingOlderMessages ? 'Loading older messages…' : 'Load older messages'}
+              </button>
+            </div>
+          )}
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 flex items-center justify-center mb-3">
@@ -899,6 +1278,50 @@ export default function Messages() {
                 />
               </div>
 
+              <label className="flex items-start gap-2 rounded-xl border border-gray-200 p-3 text-xs dark:border-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newChannelIsPrivate}
+                  onChange={(event) => {
+                    setNewChannelIsPrivate(event.target.checked);
+                    if (!event.target.checked) setInviteeIds([]);
+                  }}
+                  className="mt-0.5 accent-indigo-600"
+                />
+                <span>
+                  <span className="block font-semibold text-gray-800 dark:text-gray-200">Private channel</span>
+                  <span className="mt-0.5 block text-gray-500 dark:text-gray-400">
+                    Only you and invited members can discover or read this channel.
+                  </span>
+                </span>
+              </label>
+
+              {newChannelIsPrivate && (
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-bold text-gray-700 dark:text-gray-300">Invite members</legend>
+                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-gray-200 p-2 dark:border-gray-700">
+                    {users.filter((member) => member.id !== user?.id).map((member) => (
+                      <label key={member.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-900">
+                        <input
+                          type="checkbox"
+                          checked={inviteeIds.includes(member.id)}
+                          onChange={(event) => setInviteeIds((current) =>
+                            event.target.checked
+                              ? [...current, member.id]
+                              : current.filter((id) => id !== member.id)
+                          )}
+                          className="accent-indigo-600"
+                        />
+                        <span className="truncate">{member.name || member.email}</span>
+                      </label>
+                    ))}
+                    {users.filter((member) => member.id !== user?.id).length === 0 && (
+                      <p className="px-2 py-1 text-xs text-gray-400">No other workspace members found.</p>
+                    )}
+                  </div>
+                </fieldset>
+              )}
+
               <div className="pt-3 flex justify-end gap-2 border-t border-gray-100 dark:border-gray-700">
                 <button
                   type="button"
@@ -909,10 +1332,10 @@ export default function Messages() {
                 </button>
                 <button
                   type="submit"
-                  disabled={!newChannelName.trim()}
+                  disabled={!newChannelName.trim() || isChannelLoading}
                   className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md disabled:opacity-50"
                 >
-                  Create Channel
+                  {isChannelLoading ? 'Creating…' : newChannelIsPrivate ? 'Create Private Channel' : 'Create Channel'}
                 </button>
               </div>
             </form>
@@ -933,7 +1356,7 @@ export default function Messages() {
                     Chat Themes & Wallpaper
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Choose your message backdrop: WhatsApp, Telegram, or Dark Grids
+                    Choose a wallpaper for this conversation only.
                   </p>
                 </div>
               </div>
@@ -1016,14 +1439,16 @@ export default function Messages() {
                     bubbleThem: 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100',
                   },
                 ].map((th) => {
-                  const isSelected = chatWallpaper === th.id;
+                  const isSelected = activeWallpaper === th.id;
                   return (
                     <button
                       key={th.id}
                       type="button"
                       onClick={() => {
                         triggerHaptic('tap');
-                        setChatWallpaper(th.id as any);
+                        const wallpaper = th.id as typeof chatWallpaper;
+                        setActiveWallpaper(wallpaper);
+                        void saveRoomPreference({ wallpaper });
                         toast.success(`Chat theme set to ${th.name}`);
                       }}
                       className={`text-left p-3 rounded-2xl border transition-all flex flex-col justify-between group cursor-pointer ${
@@ -1073,7 +1498,7 @@ export default function Messages() {
 
             <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-900/40">
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                Current: <strong className="text-gray-900 dark:text-white capitalize">{chatWallpaper}</strong>
+                Current: <strong className="text-gray-900 dark:text-white capitalize">{activeWallpaper}</strong>
               </span>
               <button
                 type="button"

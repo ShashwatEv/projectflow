@@ -17,6 +17,7 @@ interface ActivityItem {
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
+    totalProjects: 0,
     activeProjects: 0,
     newProjectsThisWeek: 0,
     totalUsers: 0,
@@ -66,6 +67,7 @@ export default function Dashboard() {
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
       setStats({
+        totalProjects: projects?.length || 0,
         activeProjects,
         newProjectsThisWeek,
         totalUsers,
@@ -182,6 +184,41 @@ export default function Dashboard() {
           trendUp={stats.completionRate >= 50}
         />
       </div>
+
+      {!loading && stats.totalProjects === 0 && stats.totalTasks === 0 && (
+        <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 dark:border-indigo-900/60 dark:from-indigo-950/30 dark:to-gray-900 sm:p-6" aria-labelledby="workspace-setup-heading">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-300">A quick start</p>
+              <h2 id="workspace-setup-heading" className="text-lg font-bold text-gray-900 dark:text-white">Set up your workspace</h2>
+              <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-300">
+                Create a project, add your first task, then start a conversation with your team. Nothing is added until you choose an action.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setIsProjectModalOpen(true)}
+                className="min-h-10 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              >
+                Create a project
+              </button>
+              <Link
+                to="/tasks"
+                className="inline-flex min-h-10 items-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Add a task
+              </Link>
+              <Link
+                to="/messages"
+                className="inline-flex min-h-10 items-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Open team chat
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Activity & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

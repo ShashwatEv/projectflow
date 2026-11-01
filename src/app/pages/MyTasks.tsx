@@ -90,7 +90,7 @@ export default function MyTasks() {
   const [hasRole, setHasRole] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string>('');
 
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'today' | 'overdue'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [newTaskInput, setNewTaskInput] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'priority'>('date');
@@ -310,6 +310,15 @@ export default function MyTasks() {
       if (selectedDate && (!t.due_date || !isSameDay(parseDueDate(t.due_date), selectedDate))) {
         return false;
       }
+      if (filter === 'today' || filter === 'overdue') {
+        if (!t.due_date || t.status === 'done') return false;
+        const dueDate = parseDueDate(t.due_date);
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const isOverdue = dueDate < startOfToday;
+        if (filter === 'today') return isSameDay(dueDate, today);
+        return isOverdue;
+      }
       if (filter === 'pending') return t.status !== 'done';
       if (filter === 'completed') return t.status === 'done';
       return true;
@@ -426,6 +435,14 @@ export default function MyTasks() {
 
               <FilterBtn label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
               <FilterBtn label="Pending" active={filter === 'pending'} onClick={() => setFilter('pending')} />
+              <FilterBtn label="Today" active={filter === 'today'} onClick={() => {
+                setSelectedDate(null);
+                setFilter('today');
+              }} />
+              <FilterBtn label="Overdue" active={filter === 'overdue'} onClick={() => {
+                setSelectedDate(null);
+                setFilter('overdue');
+              }} />
               <FilterBtn label="Done" active={filter === 'completed'} onClick={() => setFilter('completed')} />
               <button
                 type="button"

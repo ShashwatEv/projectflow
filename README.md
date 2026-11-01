@@ -61,6 +61,14 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
    npm run dev
    ```
 
+### Collaboration database migration
+
+Apply `supabase/migrations/202611010001_workspace_collaboration.sql` to the Supabase project before using shared/private channels, chat read markers and per-channel preferences, task comments and mentions, project milestones/activity, or shared onboarding progress. Use the Supabase SQL Editor or the Supabase CLI linked to the intended project. Back up the database and review existing `messages`/`message_reactions` RLS policies before applying; this migration adds restrictive channel/member checks so private conversations remain private even when older permissive policies exist.
+
+The migration assumes the existing `messages` table uses `room_id`, `user_id`, and `created_at`, `message_reactions` uses `message_id` and `user_id`, tasks use `id`, `project_id`, `title`, `status`, `priority`, and `due_date`, and projects use `id` and `owner_id`. Confirm those columns against the target database first. Existing browser-local custom public channels are promoted to shared channels when a signed-in user first opens chat after the migration.
+
+Digest frequency is stored as a preference only. Actual daily/weekly email delivery needs a scheduler and an email provider; neither is configured by this application.
+
 ---
 
 ## 🧪 Development Commands
