@@ -66,6 +66,21 @@ function parseDueDate(value: string) {
   return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
 }
 
+function getDueLabel(value: string, now = new Date()) {
+  const dueDate = parseDueDate(value);
+  if (Number.isNaN(dueDate.getTime())) return null;
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+  const daysUntilDue = Math.round((dueDay.getTime() - today.getTime()) / 86_400_000);
+
+  if (daysUntilDue < 0) return { text: 'Overdue', className: 'text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40' };
+  if (daysUntilDue === 0) return { text: 'Due today', className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
+  if (daysUntilDue === 1) return { text: 'Due tomorrow', className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
+  if (daysUntilDue <= 3) return { text: `Due in ${daysUntilDue} days`, className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
+  return null;
+}
+
 export default function MyTasks() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -301,12 +316,12 @@ export default function MyTasks() {
     })
     .sort((a, b) => {
       if (sortBy === 'priority') {
-        return (priorityScore[b.priority] || 1) - (priorityScore[a.priority] || 1);
+        const priorityDifference = (priorityScore[b.priority] || 1) - (priorityScore[a.priority] || 1);
+        if (priorityDifference) return priorityDifference;
       }
-      if (a.due_date && b.due_date) {
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      }
-      return 0;
+      if (!a.due_date) return b.due_date ? 1 : 0;
+      if (!b.due_date) return -1;
+      return parseDueDate(a.due_date).getTime() - parseDueDate(b.due_date).getTime();
     });
 
   const getNextStatus = (current: Task['status']): Task['status'] | null => {
@@ -451,6 +466,7 @@ export default function MyTasks() {
                   const isDone = task.status === 'done';
                   const isSelected = selectedTasks.includes(task.id);
                   const isMine = task.assigned_to === user?.id;
+                  const dueLabel = !isDone && task.due_date ? getDueLabel(task.due_date) : null;
 
                   return (
                     <div
@@ -519,9 +535,16 @@ export default function MyTasks() {
                         </span>
 
                         {task.due_date && (
-                          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
-                            <Clock size={12} />
-                            <span>{parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
+                              <Clock size={12} />
+                              <span>{parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                            </span>
+                            {dueLabel && (
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${dueLabel.className}`}>
+                                {dueLabel.text}
+                              </span>
+                            )}
                           </div>
                         )}
 
@@ -593,6 +616,9 @@ export default function MyTasks() {
                     <div className="space-y-2.5 flex-1 overflow-y-auto pr-0.5">
                       {colTasks.map(task => {
                         const next = getNextStatus(task.status);
+                        const dueLabel = task.status !== 'done' && task.due_date
+                          ? getDueLabel(task.due_date)
+                          : null;
                         return (
                           <div
                             key={task.id}
@@ -628,6 +654,11 @@ export default function MyTasks() {
                                 <span className="text-gray-400 flex items-center gap-1 text-[10px]">
                                   <Clock size={11} />
                                   {parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                  {dueLabel && (
+                                    <span className={`ml-1 rounded-full px-1.5 py-0.5 font-semibold ${dueLabel.className}`}>
+                                      {dueLabel.text}
+                                    </span>
+                                  )}
                                 </span>
                               ) : <span className="text-gray-400 text-[10px]">—</span>}
 

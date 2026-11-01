@@ -12,6 +12,7 @@ interface Reaction {
 interface MessageBubbleProps {
   message: any;
   isMe: boolean;
+  accentColor?: string;
   onEdit: (id: string, newContent: string) => void;
   onDelete: (id: string) => void;
   onReact: (id: string, emoji: string) => void;
@@ -98,6 +99,7 @@ function AudioPlayer({ src, isMe }: { src: string; isMe: boolean }) {
 export default function MessageBubble({ 
   message, 
   isMe, 
+  accentColor = '#4f46e5',
   onEdit, 
   onDelete, 
   onReact,
@@ -254,11 +256,14 @@ export default function MessageBubble({
         </div>
       )}
 
-      <div className={`p-3.5 shadow-sm text-sm break-words relative transition-all ${
-        isMe 
-          ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm' 
-          : 'bg-white dark:bg-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm'
-      }`}>
+      <div
+        style={isMe ? { backgroundColor: accentColor } : undefined}
+        className={`p-3.5 shadow-sm text-sm break-words relative transition-all ${
+          isMe
+            ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-sm'
+            : 'bg-white dark:bg-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm'
+        }`}
+      >
         {message.file_url && (
           <div className="mb-2.5">
             {isAudioFile ? (

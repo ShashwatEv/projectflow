@@ -53,7 +53,7 @@ const DEFAULT_CHANNELS: Channel[] = [
 
 export default function Messages() {
   const { user } = useAuth();
-  const { theme, chatWallpaper, setChatWallpaper } = useTheme();
+  const { theme, accentColor, chatWallpaper, setChatWallpaper } = useTheme();
   const navigate = useNavigate();
   const { roomId } = useParams<{ roomId: string }>();
   const currentRoomId = roomId || 'room_1';
@@ -70,6 +70,9 @@ export default function Messages() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const [showInputEmojiPicker, setShowInputEmojiPicker] = useState(false);
   const [isAddChannelOpen, setIsAddChannelOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
@@ -77,6 +80,9 @@ export default function Messages() {
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLDivElement>(null);
+  const isAtLatestRef = useRef(true);
+  const previousMessageCountRef = useRef(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { typingUsers, broadcastTyping } = useTyping(currentRoomId);
@@ -101,6 +107,11 @@ export default function Messages() {
 
   useEffect(() => {
     setMessages([]);
+    previousMessageCountRef.current = 0;
+    isAtLatestRef.current = true;
+    setNewMessageCount(0);
+    setMessageSearchQuery('');
+    setIsMessageSearchOpen(false);
     fetchMessages();
 
     const channel = supabase
@@ -126,8 +137,17 @@ export default function Messages() {
   }, [currentRoomId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length, typingUsers]);
+    if (messages.length > previousMessageCountRef.current) {
+      const addedCount = messages.length - previousMessageCountRef.current;
+      if (isAtLatestRef.current) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        setNewMessageCount(0);
+      } else {
+        setNewMessageCount((count) => count + addedCount);
+      }
+    }
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length]);
 
   const handleMessageChange = async (payload: any) => {
     if (payload.eventType === 'INSERT') {
@@ -136,7 +156,10 @@ export default function Messages() {
         .select('name, avatar')
         .eq('id', payload.new.user_id)
         .single();
-      setMessages((prev) => [...prev, { ...payload.new, user: userData, message_reactions: [] }]);
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === payload.new.id)) return prev;
+        return [...prev, { ...payload.new, user: userData, message_reactions: [] }];
+      });
     }
     if (payload.eventType === 'DELETE') {
       setMessages((prev) => prev.filter((msg) => msg.id !== payload.old.id));
@@ -149,13 +172,18 @@ export default function Messages() {
   };
 
   const fetchMessages = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('messages')
       .select('*, user:users(name, avatar), message_reactions(*)')
       .eq('room_id', currentRoomId)
       .order('created_at', { ascending: true });
 
-    if (data) setMessages(data);
+    if (error) {
+      console.error('Error fetching chat messages:', error);
+      toast.error('Could not load messages');
+      return;
+    }
+    setMessages(data || []);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -170,6 +198,7 @@ export default function Messages() {
       textareaRef.current.style.height = 'auto';
     }
 
+    isAtLatestRef.current = true;
     const { error } = await supabase.from('messages').insert({
       room_id: currentRoomId,
       user_id: user.id,
@@ -179,6 +208,9 @@ export default function Messages() {
     if (error) {
       toast.error('Failed to send message');
       setNewMessage(content);
+    } else {
+      isAtLatestRef.current = true;
+      setNewMessageCount(0);
     }
   };
 
@@ -303,6 +335,22 @@ export default function Messages() {
       (u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.role?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+  const visibleMessages = messages.filter((message) => {
+    const query = messageSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      message.content.toLowerCase().includes(query) ||
+      message.user?.name?.toLowerCase().includes(query)
+    );
+  });
+  const accentColors: Record<typeof accentColor, string> = {
+    indigo: '#4f46e5',
+    emerald: '#059669',
+    blue: '#2563eb',
+    purple: '#9333ea',
+    rose: '#e11d48',
+    orange: '#ea580c',
+  };
 
   return (
     <div className="flex h-full bg-white dark:bg-gray-900 overflow-hidden relative">
@@ -528,6 +576,19 @@ export default function Messages() {
             <button
               type="button"
               onClick={() => {
+                setIsMessageSearchOpen((open) => !open);
+                setMessageSearchQuery('');
+              }}
+              aria-label={isMessageSearchOpen ? 'Close message search' : 'Search this conversation'}
+              aria-expanded={isMessageSearchOpen}
+              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
+              title="Search this conversation"
+            >
+              {isMessageSearchOpen ? <X size={17} /> : <Search size={17} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 triggerHaptic('tap');
                 setIsThemeModalOpen(true);
               }}
@@ -549,7 +610,34 @@ export default function Messages() {
           </div>
         </div>
 
+        {isMessageSearchOpen && (
+          <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-800">
+            <Search size={15} className="shrink-0 text-gray-400" />
+            <input
+              type="search"
+              autoFocus
+              value={messageSearchQuery}
+              onChange={(event) => setMessageSearchQuery(event.target.value)}
+              placeholder="Search messages in this conversation..."
+              aria-label="Search messages in this conversation"
+              className="min-w-0 flex-1 bg-transparent py-1 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100"
+            />
+            {messageSearchQuery && (
+              <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+                {visibleMessages.length} {visibleMessages.length === 1 ? 'match' : 'matches'}
+              </span>
+            )}
+          </div>
+        )}
+
         <div
+          ref={messagesListRef}
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const atLatest = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+            isAtLatestRef.current = atLatest;
+            if (atLatest) setNewMessageCount(0);
+          }}
           className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-5 transition-all duration-300 relative touch-scroll-smooth ${
             chatWallpaper === 'whatsapp'
               ? 'bg-[#efeae2] dark:bg-[#0b141a]'
@@ -596,7 +684,14 @@ export default function Messages() {
             </div>
           )}
 
-          {messages.map((msg, index) => {
+          {messages.length > 0 && visibleMessages.length === 0 && (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-gray-500 dark:text-gray-400">
+              <Search size={22} className="text-gray-400" />
+              <p>No messages match “{messageSearchQuery}”.</p>
+            </div>
+          )}
+
+          {visibleMessages.map((msg, index) => {
             const isMe = msg.user_id === user?.id;
             const prevMsg = messages[index - 1];
             const showHeader = index === 0 || prevMsg?.user_id !== msg.user_id;
@@ -626,6 +721,7 @@ export default function Messages() {
                   <MessageBubble
                     message={msg}
                     isMe={isMe}
+                    accentColor={accentColors[accentColor]}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onReact={handleReaction}
@@ -641,6 +737,19 @@ export default function Messages() {
               </div>
             );
           })}
+          {newMessageCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                isAtLatestRef.current = true;
+                setNewMessageCount(0);
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="sticky bottom-2 left-1/2 z-10 mx-auto flex min-h-10 -translate-x-1/2 items-center gap-2 rounded-full border border-indigo-200 bg-white/95 px-4 py-2 text-xs font-semibold text-indigo-700 shadow-lg backdrop-blur-md transition-colors hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900/95 dark:text-indigo-300 dark:hover:bg-gray-800"
+            >
+              {newMessageCount} new {newMessageCount === 1 ? 'message' : 'messages'} · Jump to latest
+            </button>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -681,13 +790,16 @@ export default function Messages() {
                 ref={textareaRef}
                 rows={1}
                 value={newMessage}
+                aria-label="Write a message"
                 onChange={(e) => {
                   setNewMessage(e.target.value);
                   e.target.style.height = 'auto';
                   e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                 }}
                 onFocus={() => {
-                  setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 120);
+                  if (isAtLatestRef.current) {
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 120);
+                  }
                 }}
                 onKeyDown={(e) => {
                   broadcastTyping();

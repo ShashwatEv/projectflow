@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Users, FolderKanban, CheckSquare, Activity,
   ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, UserPlus
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
 import AddMemberModal from '../components/AddMemberModal';
@@ -148,6 +149,7 @@ export default function Dashboard() {
         <StatCard
           title="Active Projects"
           value={loading ? '...' : stats.activeProjects}
+          to="/projects"
           icon={<FolderKanban className="text-indigo-600 dark:text-indigo-400" size={22} />}
           trend={stats.newProjectsThisWeek > 0 ? `+${stats.newProjectsThisWeek} this wk` : 'No new this wk'}
           trendUp={stats.newProjectsThisWeek > 0}
@@ -156,6 +158,7 @@ export default function Dashboard() {
         <StatCard
           title="Team Members"
           value={loading ? '...' : stats.totalUsers}
+          to="/team"
           icon={<Users className="text-emerald-600 dark:text-emerald-400" size={22} />}
           trend={`${stats.onlineUsers} online`}
           trendUp={stats.onlineUsers > 0}
@@ -164,6 +167,7 @@ export default function Dashboard() {
         <StatCard
           title="Total Tasks"
           value={loading ? '...' : stats.totalTasks}
+          to="/tasks"
           icon={<CheckSquare className="text-blue-600 dark:text-blue-400" size={22} />}
           trend={stats.newTasksThisWeek > 0 ? `+${stats.newTasksThisWeek} this wk` : '0 new'}
           trendUp={stats.newTasksThisWeek > 0}
@@ -172,6 +176,7 @@ export default function Dashboard() {
         <StatCard
           title="Completion Rate"
           value={loading ? '...' : `${stats.completionRate}%`}
+          to="/tasks"
           icon={<Activity className="text-purple-600 dark:text-purple-400" size={22} />}
           trend={`${stats.completedTasks}/${stats.totalTasks} done`}
           trendUp={stats.completionRate >= 50}
@@ -192,8 +197,14 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : recentActivity.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 text-sm">
-                No recent activity recorded yet.
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
+                <p>No tasks yet. Create your first task to get started.</p>
+                <Link
+                  to="/tasks"
+                  className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+                >
+                  Open My Tasks
+                </Link>
               </div>
             ) : (
               <div className="space-y-3.5">
@@ -265,9 +276,23 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ title, value, icon, trend, trendUp }: any) {
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: ReactNode;
+  trend: string;
+  trendUp: boolean;
+  to: string;
+}
+
+function StatCard({ title, value, icon, trend, trendUp, to }: StatCardProps) {
   return (
-    <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:shadow-md">
+    <Link
+      to={to}
+      aria-label={`${title}: ${value}. Open related page`}
+      className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+    >
+    <div className="h-full bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex justify-between items-start mb-4">
         <div className="p-2.5 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
           {icon}
@@ -286,5 +311,6 @@ function StatCard({ title, value, icon, trend, trendUp }: any) {
       <h3 className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase tracking-wider">{title}</h3>
       <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{value}</p>
     </div>
+    </Link>
   );
 }

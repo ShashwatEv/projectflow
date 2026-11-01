@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { useAccentTheme } from '../../lib/useAccentTheme';
+import { useAccentTheme, type AccentThemeClasses } from '../../lib/useAccentTheme';
 import GettingStartedWidget from './GettingStartedWidget';
 
 interface SidebarProps {
@@ -96,6 +96,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
             <button 
               type="button"
               onClick={onClose} 
+              aria-label="Close navigation menu"
               className="p-1 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
             >
               <X size={18} />
@@ -103,7 +104,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
           </div>
         )}
 
-        <nav className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
+        <nav aria-label="Main navigation" className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
           <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Overview</div>
           <NavItem to="/dashboard" icon={<LayoutGrid size={18} />} label="Overview" isActive={location.pathname === '/dashboard'} theme={theme} onClick={onClose} />
           <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} desktopOnly />
@@ -157,16 +158,28 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
   );
 }
 
-function NavItem({ icon, label, to, isActive, badge, theme, onClick, desktopOnly }: any) {
+interface NavItemProps {
+  icon: React.ReactNode;
+  label: string;
+  to: string;
+  isActive: boolean;
+  badge?: string;
+  theme: AccentThemeClasses;
+  onClick?: () => void;
+  desktopOnly?: boolean;
+}
+
+function NavItem({ icon, label, to, isActive, badge, theme, onClick, desktopOnly }: NavItemProps) {
   return (
     <Link 
       to={to} 
       onClick={onClick}
-      className={`items-center px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+      aria-current={isActive ? 'page' : undefined}
+      className={`items-center min-h-10 px-3 py-2 rounded-xl text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-900 ${
         desktopOnly ? 'hidden lg:flex' : 'flex'
       } ${
         isActive 
-          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border${theme.borderAccent}/30` 
+          ? `${theme.bgSubtle} ${theme.textAccent} font-bold shadow-sm border-l-2 ${theme.borderAccent}`
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 hover:text-gray-900 dark:hover:text-gray-200'
       }`}
     >
