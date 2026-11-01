@@ -9,7 +9,7 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
 ## 📸 Overview & Key Highlights
 
 * **Interactive Project & Task Kanban:** Real-time drag-and-drop workflow tracking with due dates, priority tags, and owner attribution[cite: 1, 14, 21].
-* **In-Browser Code Studio:** Monaco Editor integration supporting syntax highlighting, branch tracking, and commit/push flows[cite: 1, 11, 21].
+* **In-Browser Code Studio:** Monaco Editor integration supporting syntax highlighting, branch tracking, and commit/push flows, with AI-assisted, reviewable edits across selected repository files[cite: 1, 11, 21].
 * **Realtime Team Engine:** Live notifications, group messaging channels, and synchronized presence powered by Supabase Realtime[cite: 1, 3, 21].
 * **Custom Theming & Accessibility:** Dynamic CSS variable-based accent switching, root typography scaling (Compact, Default, Large), and system-level Reduced Motion toggling[cite: 1, 4, 5, 21].
 * **First-Login Guided Walkthrough:** Built-in multi-step interactive onboarding tour with terms acceptance dialog[cite: 1, 15, 21].
@@ -68,6 +68,12 @@ Apply `supabase/migrations/202611010001_workspace_collaboration.sql` to the Supa
 The migration assumes the existing `messages` table uses `room_id`, `user_id`, and `created_at`, `message_reactions` uses `message_id` and `user_id`, tasks use `id`, `project_id`, `title`, `status`, `priority`, and `due_date`, and projects use `id` and `owner_id`. Confirm those columns against the target database first. Existing browser-local custom public channels are promoted to shared channels when a signed-in user first opens chat after the migration.
 
 Digest frequency is stored as a preference only. Actual daily/weekly email delivery needs a scheduler and an email provider; neither is configured by this application.
+
+### Code Studio AI file edits
+
+In Code Studio, use the file explorer's **File**, **Folder**, and **Delete** actions to create paths or stage file/folder deletions. New files open in a local editor buffer; new folders use a `.gitkeep` placeholder because GitHub does not track empty folders. Push a new file with the normal verified Push flow. Folder deletion stages all tracked files beneath it and applies them in one GitHub commit using **Push staged deletions**; pending deletions can be individually undone before pushing.
+
+For AI edits, open **AI Assist → Edit files**, select up to five tracked files (search by filename or folder path), describe the requested change, and inspect the generated Monaco diff. The assistant panel can be resized by dragging its divider (or with the arrow keys) and its width is remembered on the current browser. Allow or deny each proposed file independently, or use the bulk actions. Allowed changes are staged only in Code Studio's in-memory editor buffers; they are not written to GitHub. Review the normal diff and use the existing verified Push flow to commit. Selected source code is sent to the configured OpenRouter model. The assistant cannot access unselected paths, create files, run shell commands, or push changes.
 
 ---
 

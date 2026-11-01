@@ -5,13 +5,15 @@ import {
   Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
   GitPullRequest, Lock, Unlock, FileDiff, Users, User,
-  Plus, ArrowDownToLine, GitFork
+  Plus, ArrowDownToLine, GitFork, WandSparkles, Search, ChevronDown, GripVertical,
+  FilePlus2, FolderPlus, Trash2, RotateCcw
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { askGeminiCodeAssistant } from '../../lib/geminiClient';
+import { askGeminiCodeAssistant, generateCodeEdits, type ProposedCodeEdit } from '../../lib/geminiClient';
 import { fetchBranches } from '../../lib/githubService';
 import CodeStudioPRModal from '../components/CodeStudioPRModal';
 import MonacoDiffModal from '../components/MonacoDiffModal';
+import CodeEditReviewModal from '../components/CodeEditReviewModal';
 import StudioTerminal from '../components/StudioTerminal';
 import { useStudioPresence } from '../../lib/useStudioPresence';
 import { dispatchAutomation } from '../../lib/automationTrigger';
@@ -57,6 +59,11 @@ interface OpenTab {
   content: string;
   originalContent: string;
   isDirty: boolean;
+}
+
+function isAssistantExcludedPath(path: string) {
+  const filename = path.split('/').pop()?.toLowerCase() || '';
+  return filename === '.env' || filename.startsWith('.env.');
 }
 
 function getGitHubHeaders(token: string): Record<string, string> {
@@ -115,6 +122,12 @@ export default function CodeStudio() {
   const [loadingFiles, setLoadingFiles] = useState<boolean>(false);
   const [loadingContent, setLoadingContent] = useState<boolean>(false);
   const [savingFile, setSavingFile] = useState<boolean>(false);
+  const [fileAction, setFileAction] = useState<'new-file' | 'new-folder' | 'delete' | null>(null);
+  const [fileActionPath, setFileActionPath] = useState('');
+  const [pendingDeletes, setPendingDeletes] = useState<string[]>([]);
+  const [pendingDeleteTarget, setPendingDeleteTarget] = useState<string | null>(null);
+  const [pendingCreateTarget, setPendingCreateTarget] = useState<string | null>(null);
+  const [isPushingDeletes, setIsPushingDeletes] = useState(false);
 
   // Diff Modal & Terminal States
   const [isDiffModalOpen, setIsDiffModalOpen] = useState<boolean>(false);
@@ -122,11 +135,46 @@ export default function CodeStudio() {
 
   // AI Assistant States
   const [showAiDrawer, setShowAiDrawer] = useState<boolean>(false);
+  const [assistantWidth, setAssistantWidth] = useState(() => {
+    if (typeof window === 'undefined') return 440;
+    const savedWidth = Number(window.localStorage.getItem('codestudio-assistant-width'));
+    return Number.isFinite(savedWidth) && savedWidth >= 320 ? Math.min(savedWidth, 720) : 440;
+  });
+  const [isResizingAssistant, setIsResizingAssistant] = useState(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiEditMode, setAiEditMode] = useState(false);
+  const [contextPaths, setContextPaths] = useState<string[]>([]);
+  const [contextSearch, setContextSearch] = useState('');
+  const [isContextPickerOpen, setIsContextPickerOpen] = useState(true);
+  const [editProposal, setEditProposal] = useState<{
+    summary: string;
+    edits: ProposedCodeEdit[];
+    repo: string;
+    branch: string;
+  } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isResizingAssistant) return;
+    const updateWidth = (event: PointerEvent) => {
+      const maxWidth = Math.max(320, Math.min(720, window.innerWidth * 0.7));
+      setAssistantWidth(Math.min(maxWidth, Math.max(320, window.innerWidth - event.clientX)));
+    };
+    const stopResizing = () => setIsResizingAssistant(false);
+    window.addEventListener('pointermove', updateWidth);
+    window.addEventListener('pointerup', stopResizing, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', updateWidth);
+      window.removeEventListener('pointerup', stopResizing);
+    };
+  }, [isResizingAssistant]);
+
+  useEffect(() => {
+    window.localStorage.setItem('codestudio-assistant-width', String(assistantWidth));
+  }, [assistantWidth]);
 
   // Real-time team presence & Cursors
   const activePeers = useStudioPresence(selectedProjectId, activeFile);
@@ -139,6 +187,18 @@ export default function CodeStudio() {
   const activeFileContent = activeTab ? activeTab.content : '// Select a file from the explorer on the left';
   const originalShaContent = activeTab ? activeTab.originalContent : '';
   const activeFileSha = activeTab ? activeTab.sha : '';
+  const filteredContextFiles = files
+    .filter((file) => !isAssistantExcludedPath(file.path))
+    .filter((file) => file.path.toLowerCase().includes(contextSearch.trim().toLowerCase()))
+    .slice(0, 100);
+  const repositoryFolders = [...new Set(files.flatMap((file) => {
+    const segments = file.path.split('/');
+    return segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join('/'));
+  }))].sort();
+
+  useEffect(() => {
+    if (activeFile && !contextPaths.length) setContextPaths([activeFile]);
+  }, [activeFile, contextPaths.length]);
 
   // Resolve Repository Owner GitHub Avatar dynamically
   useEffect(() => {
@@ -379,6 +439,179 @@ export default function CodeStudio() {
     }
   };
 
+  const handleCreateWorkspacePath = (event: React.FormEvent) => {
+    event.preventDefault();
+    const target = `${repoInput}@${selectedBranch}`;
+    if (pendingCreateTarget && pendingCreateTarget !== target) {
+      toast.error('Finish or remove your locally created files on the original repository and branch first.');
+      return;
+    }
+    const rawPath = fileActionPath.trim();
+    const path = rawPath.replace(/\/+$/, '');
+    if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').some((part) => !part || part === '.' || part === '..')) {
+      toast.error('Enter a valid repository-relative path.');
+      return;
+    }
+
+    const targetPath = fileAction === 'new-folder' ? `${path}/.gitkeep` : path;
+    if (isAssistantExcludedPath(targetPath)) {
+      toast.error('Environment files cannot be created in Code Studio.');
+      return;
+    }
+    if (files.some((file) => file.path === targetPath) || openTabs.some((tab) => tab.path === targetPath)) {
+      toast.error(`${targetPath} already exists in this workspace.`);
+      return;
+    }
+
+    setOpenTabs((current) => [...current, {
+      path: targetPath,
+      sha: '',
+      content: '',
+      originalContent: '',
+      isDirty: true,
+    }]);
+    setPendingCreateTarget(target);
+    setFiles((current) => [...current, { path: targetPath, type: 'blob' as const, sha: '' }].sort((a, b) => a.path.localeCompare(b.path)));
+    setActiveFile(targetPath);
+    setFileAction(null);
+    setFileActionPath('');
+    toast.success(fileAction === 'new-folder'
+      ? `Folder staged with ${targetPath} placeholder. Push the file to create it on GitHub.`
+      : `New file staged: ${targetPath}`);
+  };
+
+  const handleStageDelete = (event: React.FormEvent) => {
+    event.preventDefault();
+    const target = `${repoInput}@${selectedBranch}`;
+    if (pendingDeleteTarget && pendingDeleteTarget !== target) {
+      toast.error('Push or undo staged deletions on the original repository and branch first.');
+      return;
+    }
+    const [kind, ...pathSegments] = fileActionPath.split(':');
+    const targetPath = pathSegments.join(':');
+    if (!targetPath || (kind !== 'file' && kind !== 'folder')) {
+      toast.error('Choose a file or folder to delete.');
+      return;
+    }
+
+    const targetFiles = kind === 'file'
+      ? files.filter((file) => file.path === targetPath)
+      : files.filter((file) => file.path.startsWith(`${targetPath}/`));
+    if (!targetFiles.length) {
+      toast.error('That path does not contain any tracked files.');
+      return;
+    }
+    const localOnly = targetFiles.filter((file) => !file.sha).map((file) => file.path);
+    const paths = targetFiles.filter((file) => file.sha && !pendingDeletes.includes(file.path)).map((file) => file.path);
+    if (activeProject?.locked_file && paths.includes(activeProject.locked_file) && activeProject.locked_by !== user?.id && !isSuperAdmin) {
+      toast.error('Cannot delete a file locked by another engineer.');
+      return;
+    }
+
+    const removedSet = new Set([...paths, ...localOnly]);
+    const dirtyPaths = openTabs.filter((tab) => tab.isDirty && removedSet.has(tab.path));
+    if (dirtyPaths.length && !window.confirm(`Stage deletion and discard unsaved changes in ${dirtyPaths.length} file${dirtyPaths.length === 1 ? '' : 's'}?\n\n${dirtyPaths.map((tab) => tab.path).join('\n')}`)) {
+      return;
+    }
+    setPendingDeletes((current) => [...new Set([...current, ...paths])]);
+    if (paths.length) setPendingDeleteTarget(target);
+    if (pendingCreateTarget === target && !openTabs.some((tab) => !removedSet.has(tab.path) && !tab.sha)) {
+      setPendingCreateTarget(null);
+    }
+    setFiles((current) => current.filter((file) => !localOnly.includes(file.path)));
+    setOpenTabs((current) => current.filter((tab) => !removedSet.has(tab.path)));
+    if (removedSet.has(activeFile)) {
+      setActiveFile(openTabs.find((tab) => !removedSet.has(tab.path))?.path || '');
+    }
+    setFileAction(null);
+    setFileActionPath('');
+    if (paths.length) {
+      toast.success(`${paths.length} tracked file${paths.length === 1 ? '' : 's'} staged for deletion. Push staged deletes to apply them.`);
+    } else {
+      toast.success('Removed the locally staged path.');
+    }
+  };
+
+  const handlePushStagedDeletes = async () => {
+    if (!pendingDeletes.length || isPushingDeletes) return;
+    if (pendingDeleteTarget !== `${repoInput}@${selectedBranch}`) {
+      toast.error('Switch back to the repository and branch where these deletions were staged.');
+      return;
+    }
+    if (!isVerified) {
+      toast.error('Identity verification is required to push deletions.');
+      return;
+    }
+    if (!githubToken.trim()) {
+      toast.error('Configure a GitHub token before pushing deletions.');
+      setShowTokenInput(true);
+      return;
+    }
+    const [owner, repo] = repoInput.split('/');
+    if (!owner || !repo || !selectedBranch) {
+      toast.error('Connect a repository and branch before pushing deletions.');
+      return;
+    }
+
+    setIsPushingDeletes(true);
+    const headers = { ...getGitHubHeaders(githubToken), 'Content-Type': 'application/json' };
+    const apiRoot = `https://api.github.com/repos/${owner}/${repo}`;
+    const request = async (url: string, method: string, body?: object) => {
+      const response = await fetch(url, {
+        method,
+        headers,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || `GitHub request failed (${response.status}).`);
+      return result;
+    };
+
+    try {
+      const ref = await request(`${apiRoot}/git/ref/heads/${encodeURIComponent(selectedBranch)}`, 'GET');
+      const commit = await request(`${apiRoot}/git/commits/${ref.object.sha}`, 'GET');
+      const tree = await request(`${apiRoot}/git/trees`, 'POST', {
+        base_tree: commit.tree.sha,
+        tree: [...new Set(pendingDeletes)].map((path) => ({
+          path,
+          mode: '100644',
+          type: 'blob',
+          sha: null,
+        })),
+      });
+      const nextCommit = await request(`${apiRoot}/git/commits`, 'POST', {
+        message: `Delete ${pendingDeletes.length} file${pendingDeletes.length === 1 ? '' : 's'} via ProjectFlow Code Studio`,
+        tree: tree.sha,
+        parents: [ref.object.sha],
+      });
+      await request(`${apiRoot}/git/refs/heads/${encodeURIComponent(selectedBranch)}`, 'PATCH', {
+        sha: nextCommit.sha,
+      });
+
+      const deletedPaths = new Set(pendingDeletes);
+      setFiles((current) => current.filter((file) => !deletedPaths.has(file.path)));
+      setOpenTabs((current) => current.filter((tab) => !deletedPaths.has(tab.path)));
+      setPendingDeletes([]);
+      setPendingDeleteTarget(null);
+      toast.success(`Pushed deletion of ${deletedPaths.size} file${deletedPaths.size === 1 ? '' : 's'}.`);
+      await recordAuditLog(`Pushed deletion of ${deletedPaths.size} Code Studio files`, 'integrations', {
+        branch: selectedBranch,
+        repo: repoInput,
+        paths: [...deletedPaths],
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to push staged deletions.');
+    } finally {
+      setIsPushingDeletes(false);
+    }
+  };
+
+  const handleUndoStagedDelete = (path: string) => {
+    const remaining = pendingDeletes.filter((pendingPath) => pendingPath !== path);
+    setPendingDeletes(remaining);
+    if (!remaining.length) setPendingDeleteTarget(null);
+  };
+
   // Update content for currently active tab
   const handleContentChange = (newVal: string) => {
     setOpenTabs((prev) =>
@@ -525,6 +758,10 @@ export default function CodeStudio() {
 
   // Commit & Push
   const handleCommitAndPush = async () => {
+    if (activeTab && !activeTab.sha && pendingCreateTarget !== `${repoInput}@${selectedBranch}`) {
+      toast.error('Switch back to the repository and branch where this new file was created.');
+      return;
+    }
     if (!isVerified) {
       toast.error('Identity Verification Required', {
         description: 'Please verify your email address to commit and push code changes directly to GitHub repositories.',
@@ -561,7 +798,7 @@ export default function CodeStudio() {
             message: `Update ${activeFile} via ProjectFlow Code Studio`,
             content: encodedContent,
             branch: selectedBranch,
-            sha: activeFileSha,
+            ...(activeFileSha ? { sha: activeFileSha } : {}),
           }),
         }
       );
@@ -579,6 +816,9 @@ export default function CodeStudio() {
               : t
           )
         );
+        if (!activeFileSha && !openTabs.some((tab) => tab.path !== activeFile && !tab.sha)) {
+          setPendingCreateTarget(null);
+        }
 
         await recordAuditLog(`Pushed commit to ${activeFile}`, 'integrations', {
           branch: selectedBranch,
@@ -591,6 +831,9 @@ export default function CodeStudio() {
           description: `Committed changes to \`${activeFile}\` on branch \`${selectedBranch}\` in \`${repoInput}\`.`,
           user: user?.name || 'Authenticated Member',
         });
+        if (!activeFileSha) {
+          await fetchRepoFiles(repoInput, selectedBranch);
+        }
       } else {
         toast.error(resData.message || 'Push failed');
       }
@@ -602,7 +845,11 @@ export default function CodeStudio() {
   };
 
   // AI Assistant Chat Handler
-  const handleAskAi = async (e?: React.FormEvent, customQuery?: string) => {
+  const handleAskAi = async (
+    e?: React.FormEvent,
+    customQuery?: string,
+    contextOverride?: string[]
+  ) => {
     if (e) e.preventDefault();
     const query = (customQuery || aiPrompt).trim();
     if (!query || aiLoading) return;
@@ -621,7 +868,48 @@ export default function CodeStudio() {
     setAiLoading(true);
 
     try {
-      const res = await askGeminiCodeAssistant(query, activeFileContent, activeFile);
+      if (aiEditMode) {
+        const selectedPaths = [...new Set(contextOverride ?? contextPaths)].filter((path) => !isAssistantExcludedPath(path));
+        if (!selectedPaths.length || selectedPaths.length > 5) {
+          throw new Error('Choose between one and five tracked repository files for the edit.');
+        }
+
+        const contextFiles = await Promise.all(selectedPaths.map(async (path) => {
+          const openTab = openTabs.find((tab) => tab.path === path);
+          if (openTab) return { path, content: openTab.content };
+
+          const treeItem = files.find((item) => item.path === path);
+          if (!treeItem) throw new Error(`${path} is no longer in the loaded repository tree. Refresh files and retry.`);
+
+          const [owner, repo] = repoInput.split('/');
+          if (!owner || !repo) throw new Error('Connect a GitHub repository before requesting file edits.');
+          const response = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/git/blobs/${treeItem.sha}`,
+            { headers: getGitHubHeaders(githubToken) }
+          );
+          if (!response.ok) throw new Error(`Could not load ${path} from GitHub (${response.status}).`);
+          const blob = await response.json();
+          if (typeof blob.content !== 'string') throw new Error(`GitHub did not return file content for ${path}.`);
+          const content = decodeURIComponent(escape(window.atob(blob.content.replace(/\s/g, ''))));
+          return { path, content };
+        }));
+
+        const proposal = await generateCodeEdits(query, contextFiles);
+        setEditProposal({ ...proposal, repo: repoInput, branch: selectedBranch });
+        setMessages((prev) => [...prev, {
+          id: crypto.randomUUID(),
+          sender: 'assistant',
+          text: `${proposal.summary}\n\n${proposal.edits.length} file${proposal.edits.length === 1 ? '' : 's'} proposed. Review the diff before applying any changes.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+        toast.success(`AI prepared ${proposal.edits.length} file change${proposal.edits.length === 1 ? '' : 's'} for review`);
+        return;
+      }
+
+      const assistantFile = isAssistantExcludedPath(activeFile) ? '' : activeFile;
+      const selectedCode = assistantFile ? editorRef.current?.getModel()?.getValueInRange(editorRef.current.getSelection()) : '';
+      const assistantCode = selectedCode?.trim() ? selectedCode : assistantFile ? activeFileContent : '';
+      const res = await askGeminiCodeAssistant(query, assistantCode, assistantFile);
       const botMsg: ChatMessage = {
         id: crypto.randomUUID(),
         sender: 'assistant',
@@ -643,8 +931,67 @@ export default function CodeStudio() {
     }
   };
 
+  const handleApplyAiEdits = (edits: ProposedCodeEdit[]): boolean => {
+    if (edits.some((edit) => isAssistantExcludedPath(edit.path))) {
+      toast.error('The assistant cannot edit environment files.');
+      return false;
+    }
+    const missingFiles = edits.filter((edit) => !files.some((file) => file.path === edit.path));
+    if (missingFiles.length) {
+      toast.error('The repository tree changed. Refresh files and generate the edit again.');
+      return false;
+    }
+
+    const lockedPaths = edits.filter((edit) =>
+      activeProject?.locked_file === edit.path &&
+      activeProject.locked_by !== user?.id &&
+      !isSuperAdmin
+    );
+    if (lockedPaths.length) {
+      toast.error(`Cannot edit files locked by another engineer: ${lockedPaths.map((edit) => edit.path).join(', ')}`);
+      return false;
+    }
+
+    setOpenTabs((currentTabs) => {
+      const nextTabs = [...currentTabs];
+      edits.forEach((edit) => {
+        const existingIndex = nextTabs.findIndex((tab) => tab.path === edit.path);
+        const treeItem = files.find((item) => item.path === edit.path);
+        if (!treeItem) return;
+        if (existingIndex >= 0) {
+          const currentTab = nextTabs[existingIndex];
+          if (currentTab) {
+            nextTabs[existingIndex] = {
+              ...currentTab,
+              content: edit.content,
+              isDirty: edit.content !== currentTab.originalContent,
+            };
+          }
+        } else {
+          nextTabs.push({
+            path: edit.path,
+            sha: treeItem.sha,
+            content: edit.content,
+            originalContent: edit.originalContent,
+            isDirty: edit.content !== edit.originalContent,
+          });
+        }
+      });
+      return nextTabs;
+    });
+
+    const nextActiveFile = edits[0]?.path;
+    if (nextActiveFile) setActiveFile(nextActiveFile);
+    toast.success('Reviewed AI edits applied to local Code Studio buffers. Use Review Diff before pushing.');
+    return true;
+  };
+
   // Apply snippet directly into Monaco Editor buffer
   const handleApplySnippetToEditor = (rawSnippet: string) => {
+    if (isAssistantExcludedPath(activeFile)) {
+      toast.error('The assistant cannot edit environment files.');
+      return;
+    }
     if (!editorRef.current) {
       toast.error('Editor is not mounted');
       return;
@@ -1007,13 +1354,144 @@ export default function CodeStudio() {
 
       {/* Main Studio Area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {fileAction && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="studio-file-action-title"
+              className="w-full max-w-md rounded-2xl border border-gray-700 bg-[#161b22] p-5 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 id="studio-file-action-title" className="text-sm font-bold text-white">
+                    {fileAction === 'new-file' ? 'Create file' : fileAction === 'new-folder' ? 'Create folder' : 'Delete file or folder'}
+                  </h2>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-400">
+                    {fileAction === 'new-file'
+                      ? 'New files open as local buffers. Use Push to create them on the selected branch.'
+                      : fileAction === 'new-folder'
+                        ? 'GitHub stores files, not empty folders. A .gitkeep placeholder will be created for this folder.'
+                        : 'This only stages the deletion locally. Push staged deletions to create one GitHub commit.'}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setFileAction(null)} aria-label="Close file actions" className="rounded-lg p-1 text-gray-400 hover:bg-gray-800 hover:text-white">
+                  <X size={15} />
+                </button>
+              </div>
+
+              <form onSubmit={fileAction === 'delete' ? handleStageDelete : handleCreateWorkspacePath} className="space-y-4">
+                {fileAction === 'delete' ? (
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-semibold text-gray-300">Tracked path</span>
+                    <select
+                      value={fileActionPath}
+                      onChange={(event) => setFileActionPath(event.target.value)}
+                      required
+                      className="w-full rounded-lg border border-gray-700 bg-[#0d1117] px-3 py-2 text-xs text-gray-200 outline-none focus:border-rose-500"
+                    >
+                      <option value="">Choose file or folder…</option>
+                      {files.filter((file) => !pendingDeletes.includes(file.path)).map((file) => (
+                        <option key={`file:${file.path}`} value={`file:${file.path}`}>File: {file.path}</option>
+                      ))}
+                      {repositoryFolders.map((folder) => {
+                        const count = files.filter((file) => file.path.startsWith(`${folder}/`) && !pendingDeletes.includes(file.path)).length;
+                        if (!count) return null;
+                        return <option key={`folder:${folder}`} value={`folder:${folder}`}>Folder: {folder} ({count} files)</option>;
+                      })}
+                    </select>
+                    <span className="block text-[10px] text-rose-300/80">
+                      Deleting a folder stages all {fileActionPath.startsWith('folder:')
+                        ? files.filter((file) => file.path.startsWith(`${fileActionPath.slice(7)}/`) && !pendingDeletes.includes(file.path)).length
+                        : 'tracked'} file(s) inside it.
+                    </span>
+                  </label>
+                ) : (
+                  <label className="block space-y-1.5">
+                    <span className="text-[11px] font-semibold text-gray-300">{fileAction === 'new-file' ? 'File path' : 'Folder path'}</span>
+                    <input
+                      autoFocus
+                      value={fileActionPath}
+                      onChange={(event) => setFileActionPath(event.target.value)}
+                      placeholder={fileAction === 'new-file' ? 'src/components/NewComponent.tsx' : 'src/components/new-folder'}
+                      required
+                      className="w-full rounded-lg border border-gray-700 bg-[#0d1117] px-3 py-2 font-mono text-xs text-gray-200 outline-none focus:border-indigo-500"
+                    />
+                    <span className="block text-[10px] text-gray-500">Path is relative to the repository root on branch {selectedBranch || '—'}.</span>
+                  </label>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setFileAction(null)} className="rounded-lg border border-gray-700 px-3 py-2 text-xs font-semibold text-gray-300 hover:bg-gray-800">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={fileAction === 'delete' ? !fileActionPath : !fileActionPath.trim()}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-40 ${
+                      fileAction === 'delete' ? 'bg-rose-700 hover:bg-rose-600' : 'bg-indigo-600 hover:bg-indigo-500'
+                    }`}
+                  >
+                    {fileAction === 'new-file' ? <FilePlus2 size={13} /> : fileAction === 'new-folder' ? <FolderPlus size={13} /> : <Trash2 size={13} />}
+                    {fileAction === 'delete' ? 'Stage deletion' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
         {/* File Explorer Sidebar */}
         <div className="w-56 md:w-64 bg-[#161b22] border-r border-gray-800 flex flex-col shrink-0 min-h-0">
-          <div className="p-3 border-b border-gray-800 flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider shrink-0">
-            <span>Files ({files.length})</span>
-            <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white" title="Refresh tree">
-              <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
-            </button>
+          <div className="border-b border-gray-800 p-2.5 shrink-0">
+            <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-gray-400">
+              <span>Files ({files.length})</span>
+              <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white" title="Refresh tree">
+                <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
+              </button>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => { setFileAction('new-file'); setFileActionPath(''); }}
+                disabled={!selectedBranch}
+                className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-gray-700 px-1.5 py-1.5 text-[10px] font-semibold text-gray-300 hover:border-indigo-500/60 hover:bg-indigo-950/30 hover:text-indigo-200 disabled:opacity-40"
+                title="Create a file"
+              >
+                <FilePlus2 size={12} /> File
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFileAction('new-folder'); setFileActionPath(''); }}
+                disabled={!selectedBranch}
+                className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-gray-700 px-1.5 py-1.5 text-[10px] font-semibold text-gray-300 hover:border-indigo-500/60 hover:bg-indigo-950/30 hover:text-indigo-200 disabled:opacity-40"
+                title="Create a folder"
+              >
+                <FolderPlus size={12} /> Folder
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFileAction('delete');
+                  setFileActionPath(activeFile ? `file:${activeFile}` : '');
+                }}
+                disabled={!files.length}
+                className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-gray-700 px-1.5 py-1.5 text-[10px] font-semibold text-gray-300 hover:border-rose-800 hover:bg-rose-950/30 hover:text-rose-300 disabled:opacity-40"
+                title="Delete a file or folder"
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
+            {pendingDeletes.length > 0 && (
+              <button
+                type="button"
+                onClick={handlePushStagedDeletes}
+                disabled={isPushingDeletes}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-rose-700/80 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-rose-600 disabled:opacity-50"
+              >
+                {isPushingDeletes ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                Push {pendingDeletes.length} staged deletion{pendingDeletes.length === 1 ? '' : 's'}
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-0.5 custom-scrollbar text-xs min-h-0">
@@ -1027,20 +1505,38 @@ export default function CodeStudio() {
                 {selectedBranch ? `No files found on branch ${selectedBranch}.` : 'Select a branch to explore files.'}
               </div>
             ) : (
-              files.map((file) => (
-                <button
-                  key={file.sha}
-                  onClick={() => loadFileContent(file)}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left truncate transition-colors ${
-                    activeFile === file.path 
-                      ? `${theme.bgSubtle} ${theme.textAccent} font-semibold border${theme.borderAccent}/30` 
-                      : 'text-gray-300 hover:bg-gray-800/60 hover:text-white'
-                  }`}
-                >
-                  <FileCode size={14} className={activeFile === file.path ? theme.textAccent : 'text-gray-500'} />
-                  <span className="truncate">{file.path}</span>
-                </button>
-              ))
+              files.map((file) => {
+                const isPendingDelete = pendingDeletes.includes(file.path);
+                return (
+                  <div key={`${file.path}-${file.sha}`} className="group flex items-center gap-1">
+                    <button
+                      onClick={() => !isPendingDelete && loadFileContent(file)}
+                      disabled={isPendingDelete}
+                      className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left truncate transition-colors ${
+                        isPendingDelete
+                          ? 'text-rose-300/70 line-through'
+                          : activeFile === file.path
+                            ? `${theme.bgSubtle} ${theme.textAccent} font-semibold border${theme.borderAccent}/30`
+                            : 'text-gray-300 hover:bg-gray-800/60 hover:text-white'
+                      }`}
+                    >
+                      <FileCode size={14} className={`shrink-0 ${isPendingDelete ? 'text-rose-400/70' : activeFile === file.path ? theme.textAccent : 'text-gray-500'}`} />
+                      <span className="truncate">{file.path}</span>
+                    </button>
+                    {isPendingDelete && (
+                      <button
+                        type="button"
+                        onClick={() => handleUndoStagedDelete(file.path)}
+                        className="rounded p-1 text-gray-500 hover:bg-gray-800 hover:text-white"
+                        title={`Undo deletion of ${file.path}`}
+                        aria-label={`Undo deletion of ${file.path}`}
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -1122,24 +1618,177 @@ export default function CodeStudio() {
 
         {/* AI Assistant Side Drawer */}
         {showAiDrawer && (
-          <div className="w-80 md:w-96 bg-[#161b22] border-l border-gray-800 flex flex-col shrink-0 min-h-0 shadow-2xl animate-in slide-in-from-right-10 duration-200">
+          <>
+          <div
+            role="separator"
+            aria-label="Resize code assistant"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuemax={720}
+            aria-valuenow={assistantWidth}
+            tabIndex={0}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setIsResizingAssistant(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              setAssistantWidth((width) => Math.min(720, Math.max(320, width + (event.key === 'ArrowLeft' ? -24 : 24))));
+            }}
+            className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center border-l border-gray-800 bg-[#161b22] text-gray-600 hover:text-purple-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+            title="Drag to resize. Use arrow keys for precise resizing."
+          >
+            <GripVertical size={14} />
+          </div>
+          <div
+            style={{ width: `${assistantWidth}px`, maxWidth: '70vw' }}
+            className={`flex shrink-0 flex-col border-l border-gray-800 bg-[#161b22] shadow-2xl min-h-0 ${isResizingAssistant ? 'select-none' : 'animate-in slide-in-from-right-10 duration-200'}`}
+          >
             {/* Drawer Header */}
             <div className="p-3.5 border-b border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-purple-400 text-xs font-bold">
                 <Bot size={16} />
                 <span>Code Assistant</span>
               </div>
-              <button onClick={() => setShowAiDrawer(false)} className="text-gray-400 hover:text-white">
-                <X size={16} />
+              <div className="flex items-center gap-2">
+                <span className="hidden text-[9px] text-gray-500 sm:inline">{assistantWidth}px</span>
+                <button type="button" onClick={() => setShowAiDrawer(false)} aria-label="Close code assistant" className="text-gray-400 hover:text-white">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1 border-b border-gray-800 p-2">
+              <button
+                type="button"
+                onClick={() => setAiEditMode(false)}
+                aria-pressed={!aiEditMode}
+                className={`rounded-lg px-2 py-2 text-[11px] font-semibold ${!aiEditMode ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
+              >
+                Ask questions
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiEditMode(true)}
+                aria-pressed={aiEditMode}
+                className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-semibold ${aiEditMode ? 'bg-purple-600/30 text-purple-200' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
+              >
+                <WandSparkles size={13} /> Edit files
               </button>
             </div>
+
+            {aiEditMode && (
+              <section className="border-b border-gray-800 bg-[#11161e]">
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-gray-200">Edit context <span className="ml-1 font-normal text-gray-500">{contextPaths.length}/5 files</span></p>
+                    <p className="mt-0.5 truncate text-[9px] text-gray-500">
+                      {contextPaths.length ? contextPaths.join(', ') : 'Select tracked files to give the assistant context'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {activeFile && !contextPaths.includes(activeFile) && !isAssistantExcludedPath(activeFile) && (
+                      <button
+                        type="button"
+                        disabled={contextPaths.length >= 5}
+                        onClick={() => setContextPaths((current) => [...current, activeFile])}
+                        className="rounded-md px-2 py-1 text-[9px] font-semibold text-purple-300 hover:bg-purple-950/40 disabled:opacity-40"
+                      >
+                        + Current file
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-expanded={isContextPickerOpen}
+                      aria-label={isContextPickerOpen ? 'Collapse edit context picker' : 'Expand edit context picker'}
+                      onClick={() => setIsContextPickerOpen((open) => !open)}
+                      className="rounded-md p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                    >
+                      <ChevronDown size={14} className={isContextPickerOpen ? '' : '-rotate-90'} />
+                    </button>
+                  </div>
+                </div>
+                {isContextPickerOpen && (
+                <div className="border-t border-gray-800/80 p-3">
+                <p className="mb-2 text-[10px] leading-relaxed text-gray-500">
+                  Choose tracked files or filter by a folder path. Selected source is sent to the configured AI provider. Approved edits stay local until you push.
+                </p>
+                <label className="relative mb-2 block">
+                  <Search size={12} className="absolute left-2.5 top-2.5 text-gray-500" />
+                  <input
+                    type="search"
+                    value={contextSearch}
+                    onChange={(event) => setContextSearch(event.target.value)}
+                    aria-label="Filter repository files by name or folder"
+                    placeholder="Filter files or folder (src/components/)"
+                    className="w-full rounded-lg border border-gray-700 bg-[#0d1117] py-2 pl-8 pr-2 text-[10px] text-gray-200 outline-none focus:border-purple-500"
+                  />
+                </label>
+                {contextSearch.includes('/') && filteredContextFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const remaining = Math.max(0, 5 - contextPaths.length);
+                      const additions = filteredContextFiles
+                        .filter((file) => !contextPaths.includes(file.path))
+                        .slice(0, remaining)
+                        .map((file) => file.path);
+                      setContextPaths((current) => [...current, ...additions]);
+                      if (filteredContextFiles.length - additions.length > 0) {
+                        toast.info('Context is limited to five files per edit request.');
+                      }
+                    }}
+                    disabled={contextPaths.length >= 5}
+                    className="mb-2 w-full rounded-lg border border-purple-800/60 bg-purple-950/30 px-2 py-1.5 text-left text-[10px] font-semibold text-purple-300 hover:bg-purple-900/40 disabled:opacity-40"
+                  >
+                    Select matching files in this path
+                  </button>
+                )}
+                <div className="max-h-36 space-y-0.5 overflow-y-auto rounded-lg border border-gray-800 p-1">
+                  {filteredContextFiles.map((file) => (
+                    <label key={`${file.path}-${file.sha}`} className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-gray-800">
+                      <input
+                        type="checkbox"
+                        checked={contextPaths.includes(file.path)}
+                        disabled={!contextPaths.includes(file.path) && contextPaths.length >= 5}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            if (contextPaths.length >= 5) {
+                              toast.info('Choose at most five files for each edit request.');
+                              return;
+                            }
+                            setContextPaths((current) => [...current, file.path]);
+                          } else {
+                            setContextPaths((current) => current.filter((path) => path !== file.path));
+                          }
+                        }}
+                        className="accent-purple-500"
+                      />
+                      <span className="truncate font-mono text-[10px] text-gray-300">{file.path}</span>
+                    </label>
+                  ))}
+                  {filteredContextFiles.length === 0 && (
+                    <p className="px-2 py-3 text-center text-[10px] text-gray-500">
+                      {loadingFiles ? 'Loading repository files…' : 'No tracked files match this filter.'}
+                    </p>
+                  )}
+                </div>
+                </div>
+                )}
+              </section>
+            )}
 
             {/* Conversation Messages Viewport */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0 text-xs">
               {messages.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 space-y-2">
                   <Sparkles size={28} className="mx-auto text-purple-400/50" />
-                  <p className="text-xs">Ask the assistant to refactor, write unit tests, or generate patches for {activeFile || 'the buffer'}.</p>
+                  <p className="text-xs">
+                    {aiEditMode
+                      ? 'Describe what to change. The assistant prepares a multi-file diff for review before it touches your workspace buffers.'
+                      : `Ask the assistant to refactor, write unit tests, or explain ${activeFile || 'your code'}.`}
+                  </p>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -1172,7 +1821,7 @@ export default function CodeStudio() {
                           {msg.sender === 'assistant' && (
                             <>
                               {/* Apply to Editor Button */}
-                              {activeFile && (
+                              {!aiEditMode && activeFile && !isAssistantExcludedPath(activeFile) && (
                                 <button
                                   onClick={() => handleApplySnippetToEditor(msg.text)}
                                   className="px-1.5 py-0.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded flex items-center gap-1 text-[10px] font-semibold"
@@ -1228,25 +1877,48 @@ export default function CodeStudio() {
             </div>
 
             {/* Prompt Input Form */}
-            <form onSubmit={(e) => handleAskAi(e)} className="p-3 border-t border-gray-800 bg-[#0d1117] space-y-2 shrink-0">
+            <form onSubmit={(e) => handleAskAi(e)} className="space-y-2 border-t border-gray-800 bg-[#0d1117] p-3 shrink-0">
+              <div className="flex flex-wrap gap-1">
+                {(aiEditMode
+                  ? ['Fix bugs in these files', 'Add tests for this code', 'Refactor for readability']
+                  : ['Explain this file', 'Find potential bugs', 'Write unit tests']
+                ).map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setAiPrompt(suggestion)}
+                    className="rounded-full border border-gray-800 px-2 py-1 text-[9px] text-gray-400 transition hover:border-purple-700/70 hover:bg-purple-950/30 hover:text-purple-200"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
               <div className="relative">
-                <input
-                  type="text"
+                <textarea
+                  rows={aiEditMode ? 3 : 2}
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Ask a technical question..."
-                  className="w-full bg-[#161b22] border border-gray-800 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  aria-label={aiEditMode ? 'Describe the code changes to make' : 'Ask a coding question'}
+                  placeholder={aiEditMode ? 'Describe the changes you want across the selected files…' : 'Ask a technical question…'}
+                  className="w-full resize-none bg-[#161b22] border border-gray-800 rounded-xl pl-3 pr-10 py-2.5 text-xs text-white outline-none focus:border-purple-500"
                 />
                 <button
                   type="submit"
-                  disabled={aiLoading || !aiPrompt.trim()}
+                  disabled={aiLoading || !aiPrompt.trim() || (aiEditMode && contextPaths.length === 0)}
+                  aria-label={aiEditMode ? 'Generate file edits for review' : 'Send question'}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-purple-400 hover:text-purple-300 disabled:opacity-40"
                 >
-                  {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {aiLoading ? <Loader2 size={14} className="animate-spin" /> : aiEditMode ? <WandSparkles size={14} /> : <Send size={14} />}
                 </button>
               </div>
+              {aiEditMode && (
+                <p className="text-[9px] text-gray-500">
+                  {contextPaths.length ? 'Review and allow changes per file; nothing is pushed to GitHub automatically.' : 'Select at least one tracked file above.'}
+                </p>
+              )}
             </form>
           </div>
+          </>
         )}
       </div>
 
@@ -1260,6 +1932,33 @@ export default function CodeStudio() {
         onConfirmPush={handleCommitAndPush}
         isPushing={savingFile}
       />
+
+      {editProposal && (
+        <CodeEditReviewModal
+          summary={editProposal.summary}
+          edits={editProposal.edits}
+          onClose={() => setEditProposal(null)}
+          onApply={(edits) => {
+            if (editProposal.repo !== repoInput || editProposal.branch !== selectedBranch) {
+              toast.error('The connected repository or branch changed. Generate a fresh proposal before applying.');
+              return;
+            }
+            if (handleApplyAiEdits(edits)) {
+              const appliedPaths = new Set(edits.map((edit) => edit.path));
+              setEditProposal((current) => {
+                if (!current) return null;
+                const remaining = current.edits.filter((edit) => !appliedPaths.has(edit.path));
+                return remaining.length ? { ...current, edits: remaining } : null;
+              });
+            }
+          }}
+          onDeny={(path) => setEditProposal((current) => {
+            if (!current) return null;
+            const remaining = current.edits.filter((edit) => edit.path !== path);
+            return remaining.length ? { ...current, edits: remaining } : null;
+          })}
+        />
+      )}
 
       {/* Pull Request Creation Modal */}
       <CodeStudioPRModal

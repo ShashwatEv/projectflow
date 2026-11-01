@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { verifyOpenRouterConnection } from '../../lib/geminiClient';
+import { parseCodeEditResponse, verifyOpenRouterConnection } from '../../lib/geminiClient';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -67,6 +67,38 @@ describe('geminiClient', () => {
       const result = await verifyOpenRouterConnection();
       
       expect(result).toBe(false);
+    });
+
+    describe('parseCodeEditResponse', () => {
+      it('parses a proposal and preserves original contents for diff review', () => {
+        const contextFiles = [{ path: 'src/App.tsx', content: 'export default 1;' }];
+        const result = parseCodeEditResponse(
+          '```json\n{"summary":"Update app","edits":[{"path":"src/App.tsx","content":"export default 2;"}]}\n```',
+          contextFiles
+        );
+
+        expect(result).toEqual({
+          summary: 'Update app',
+          edits: [{
+            path: 'src/App.tsx',
+            content: 'export default 2;',
+            originalContent: 'export default 1;',
+          }],
+        });
+      });
+
+      it('rejects edits to paths outside the selected repository context', () => {
+        expect(() => parseCodeEditResponse(
+          '{"edits":[{"path":"../../.env","content":"exfiltrate"}]}',
+          [{ path: 'src/App.tsx', content: 'source' }]
+        )).toThrow('unselected file');
+      });
+
+      it('rejects proposals with no file edits', () => {
+        expect(() => parseCodeEditResponse('{"summary":"No context needed","edits":[]}', [
+          { path: 'src/App.tsx', content: 'source' },
+        ])).toThrow('did not propose any file changes');
+      });
     });
   });
 });
