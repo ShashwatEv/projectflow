@@ -12,12 +12,11 @@ interface ActivityItem {
   title: string;
   status: string;
   created_at: string;
-  type: 'task';
 }
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
-    totalProjects: 0,
+    activeProjects: 0,
     newProjectsThisWeek: 0,
     totalUsers: 0,
     onlineUsers: 0,
@@ -29,37 +28,36 @@ export default function Dashboard() {
 
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
-      setLoading(true);
-
       // Date baseline for week-over-week trends (last 7 days)
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-      // 1. Projects Query: Total & Created This Week
-      const { data: projects } = await supabase
+      const { data: projects, error: projectsError } = await supabase
         .from('projects')
         .select('id, created_at, status');
+      if (projectsError) throw projectsError;
 
-      const totalProjects = projects?.length || 0;
+      const activeProjects = projects?.filter(p => p.status === 'active').length || 0;
       const newProjectsThisWeek = projects?.filter(p => new Date(p.created_at) >= oneWeekAgo).length || 0;
 
-      // 2. Users Query: Total & Active/Online Status
-      const { data: users } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, status');
+      if (usersError) throw usersError;
 
       const totalUsers = users?.length || 0;
       const onlineUsers = users?.filter(u => u.status === 'online').length || 0;
 
-      // 3. Tasks Query: Total, Completed, & Created This Week
-      const { data: tasks } = await supabase
+      const { data: tasks, error: tasksError } = await supabase
         .from('tasks')
         .select('id, status, created_at');
+      if (tasksError) throw tasksError;
 
       const totalTasks = tasks?.length || 0;
       const completedTasks = tasks?.filter(t => t.status === 'done').length || 0;
@@ -67,7 +65,7 @@ export default function Dashboard() {
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
       setStats({
-        totalProjects,
+        activeProjects,
         newProjectsThisWeek,
         totalUsers,
         onlineUsers,
@@ -77,12 +75,12 @@ export default function Dashboard() {
         completionRate,
       });
 
-      // 4. Fetch Recent Activity (Last 5 tasks)
-      const { data: recentTasks } = await supabase
+      const { data: recentTasks, error: recentTasksError } = await supabase
         .from('tasks')
         .select('id, title, status, created_at')
         .order('created_at', { ascending: false })
         .limit(5);
+      if (recentTasksError) throw recentTasksError;
 
       if (recentTasks) {
         setRecentActivity(
@@ -91,12 +89,13 @@ export default function Dashboard() {
             title: t.title,
             status: t.status,
             created_at: t.created_at,
-            type: 'task',
           }))
         );
       }
+      setLoadError(null);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      setLoadError('Dashboard data could not be refreshed. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -128,13 +127,29 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={fetchData}
+            className="rounded-lg px-3 py-1.5 font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/40"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Real Dynamic Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Active Projects"
-          value={loading ? '...' : stats.totalProjects}
+          value={loading ? '...' : stats.activeProjects}
           icon={<FolderKanban className="text-indigo-600 dark:text-indigo-400" size={22} />}
-          trend={stats.newProjectsThisWeek > 0 ? `+${stats.newProjectsThisWeek} this wk` : 'Stable'}
+          trend={stats.newProjectsThisWeek > 0 ? `+${stats.newProjectsThisWeek} this wk` : 'No new this wk'}
           trendUp={stats.newProjectsThisWeek > 0}
         />
 
@@ -142,7 +157,7 @@ export default function Dashboard() {
           title="Team Members"
           value={loading ? '...' : stats.totalUsers}
           icon={<Users className="text-emerald-600 dark:text-emerald-400" size={22} />}
-          trend={stats.onlineUsers > 0 ? `${stats.onlineUsers} online` : `${stats.totalUsers} active`}
+          trend={`${stats.onlineUsers} online`}
           trendUp={stats.onlineUsers > 0}
         />
 
@@ -168,7 +183,7 @@ export default function Dashboard() {
         {/* Real Activity Stream */}
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+            <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recently Created Tasks</h3>
 
             {loading ? (
               <div className="space-y-4">
@@ -195,11 +210,11 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-gray-900 dark:text-white font-medium truncate">
-                        {item.status === 'done' ? 'Completed task:' : 'Active task:'}{' '}
+                        Task created:{' '}
                         <span className="text-gray-600 dark:text-gray-300 font-normal">{item.title}</span>
                       </p>
                       <p className="text-[11px] text-gray-400 capitalize">
-                        {item.status} • {new Date(item.created_at).toLocaleDateString()}
+                        Current status: {item.status} • Created {new Date(item.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>

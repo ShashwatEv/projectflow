@@ -259,3 +259,44 @@ html.reduce-motion *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Preserve each button's existing theme colors while adding a subtle glass finish. */
+button:not([class*="bg-gradient"]):not(:disabled),
+[data-slot="button"]:not([class*="bg-gradient"]):not(:disabled),
+a[role="button"]:not([class*="bg-gradient"]) {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, currentColor 8%, transparent),
+    transparent 58%
+  );
+}
+
+button:not(:disabled),
+[data-slot="button"]:not(:disabled),
+a[role="button"] {
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+  transition:
+    transform 160ms ease,
+    filter 160ms ease;
+}
+
+button:not(:disabled):hover,
+[data-slot="button"]:not(:disabled):hover,
+a[role="button"]:hover {
+  filter: saturate(1.12) brightness(1.02);
+}
+
+button:not(:disabled):active,
+[data-slot="button"]:not(:disabled):active,
+a[role="button"]:active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled),
+  [data-slot="button"]:not(:disabled),
+  a[role="button"] {
+    transition: none;
+  }
+}

@@ -4,7 +4,7 @@ import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
   ArrowUpDown, ChevronLeft, ChevronRight, X,
   LayoutGrid, List, ArrowRight, FolderKanban,
-  ShieldAlert, UserCheck, User
+  ShieldAlert, UserCheck, User, PanelRightClose, PanelRightOpen
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -43,10 +43,12 @@ const COLUMNS: { id: Task['status']; label: string; dot: string; color: string }
 function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={() => {
         triggerHaptic('tap');
         onClick();
       }}
+      aria-pressed={active}
       className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
         active
           ? 'bg-indigo-600 text-white shadow-sm'
@@ -59,6 +61,10 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
 }
 
 const priorityScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
+function parseDueDate(value: string) {
+  return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+}
 
 export default function MyTasks() {
   const { user } = useAuth();
@@ -78,6 +84,7 @@ export default function MyTasks() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(true);
 
   useEffect(() => {
     async function verifyUserRole() {
@@ -123,25 +130,22 @@ export default function MyTasks() {
   };
 
   useEffect(() => {
-    if (hasRole) {
-      fetchTasks();
+    if (!user) return;
+    fetchTasks();
 
-      const channel = supabase
-        .channel(`my_tasks_${user?.id}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'tasks', filter: `assigned_to=eq.${user?.id}` },
-          () => fetchTasks()
-        )
-        .subscribe();
+    const channel = supabase
+      .channel(`my_tasks_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks', filter: `assigned_to=eq.${user.id}` },
+        () => fetchTasks()
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    } else if (hasRole === false) {
-      setLoading(false);
-    }
-  }, [hasRole, user?.id]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -288,6 +292,9 @@ export default function MyTasks() {
 
   const processedTasks = tasks
     .filter(t => {
+      if (selectedDate && (!t.due_date || !isSameDay(parseDueDate(t.due_date), selectedDate))) {
+        return false;
+      }
       if (filter === 'pending') return t.status !== 'done';
       if (filter === 'completed') return t.status === 'done';
       return true;
@@ -312,33 +319,6 @@ export default function MyTasks() {
     }
   };
 
-  if (hasRole === false) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-3xl p-8 border border-gray-200 dark:border-gray-700 shadow-xl text-center space-y-5 animate-in zoom-in-95 duration-200">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-500 flex items-center justify-center mx-auto">
-            <ShieldAlert size={32} />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Role Configuration Required</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-              You must configure your professional role before accessing your assigned deliverables.
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              triggerHaptic('tap');
-              navigate('/profile');
-            }}
-            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2"
-          >
-            <UserCheck size={16} /> Configure Role in Profile
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const pendingCount = tasks.filter(t => t.status !== 'done').length;
   const completedCount = tasks.filter(t => t.status === 'done').length;
 
@@ -346,6 +326,22 @@ export default function MyTasks() {
     <PullToRefresh onRefresh={fetchTasks}>
       <div className="flex h-full">
         <div className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto flex flex-col h-full relative custom-scrollbar">
+          {hasRole === false && (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+              <span className="flex items-center gap-2">
+                <ShieldAlert size={15} className="shrink-0" />
+                Your role is not configured. You can still manage tasks; add a role to complete your profile.
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate('/profile')}
+                className="inline-flex items-center gap-1 font-bold underline underline-offset-2"
+              >
+                <UserCheck size={14} /> Complete profile
+              </button>
+            </div>
+          )}
+
           {/* Top Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
@@ -358,15 +354,17 @@ export default function MyTasks() {
                 )}
               </div>
               {selectedDate ? (
-                <p 
-                  className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 flex items-center gap-1.5 cursor-pointer font-medium hover:underline" 
+                <button
+                  type="button"
+                  aria-label="Clear due date filter"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 mt-1 flex items-center gap-1.5 font-medium hover:underline"
                   onClick={() => {
                     triggerHaptic('tap');
                     setSelectedDate(null);
                   }}
                 >
                   Filtered for {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} <X size={13} />
-                </p>
+                </button>
               ) : (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Showing deliverables assigned to your account. Tap any item to inspect details.
@@ -381,8 +379,9 @@ export default function MyTasks() {
                     triggerHaptic('tap');
                     setViewMode('list');
                   }}
+                  aria-label="List view"
+                  aria-pressed={viewMode === 'list'}
                   className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  title="List View"
                 >
                   <List size={16} />
                 </button>
@@ -391,8 +390,9 @@ export default function MyTasks() {
                     triggerHaptic('tap');
                     setViewMode('board');
                   }}
+                  aria-label="Board view"
+                  aria-pressed={viewMode === 'board'}
                   className={`p-1.5 rounded-lg transition-colors ${viewMode === 'board' ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  title="Board View"
                 >
                   <LayoutGrid size={16} />
                 </button>
@@ -412,6 +412,16 @@ export default function MyTasks() {
               <FilterBtn label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
               <FilterBtn label="Pending" active={filter === 'pending'} onClick={() => setFilter('pending')} />
               <FilterBtn label="Done" active={filter === 'completed'} onClick={() => setFilter('completed')} />
+              <button
+                type="button"
+                onClick={() => setIsCalendarOpen(open => !open)}
+                aria-label={isCalendarOpen ? 'Hide task calendar' : 'Show task calendar'}
+                aria-expanded={isCalendarOpen}
+                className="hidden xl:inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                {isCalendarOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+                {isCalendarOpen ? 'Hide calendar' : 'Show calendar'}
+              </button>
             </div>
           </div>
 
@@ -424,6 +434,7 @@ export default function MyTasks() {
               type="text"
               value={newTaskInput}
               onChange={(e) => setNewTaskInput(e.target.value)}
+              aria-label="New task title"
               placeholder="Add a new task assigned to you..."
               className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all text-sm"
             />
@@ -510,11 +521,12 @@ export default function MyTasks() {
                         {task.due_date && (
                           <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
                             <Clock size={12} />
-                            <span>{new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                            <span>{parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                           </div>
                         )}
 
                         <select
+                          aria-label={`Status for ${task.title}`}
                           value={task.status}
                           onChange={(e) => handleUpdateStatus(task.id, e.target.value as Task['status'])}
                           className="text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg px-2 py-1 outline-none border border-transparent focus:border-indigo-500 cursor-pointer"
@@ -529,8 +541,20 @@ export default function MyTasks() {
                 })}
 
                 {processedTasks.length === 0 && (
-                  <div className="py-16 text-center text-gray-400 text-xs">
-                    No tasks found in this view.
+                  <div className="py-16 flex flex-col items-center gap-3 text-center text-gray-500 dark:text-gray-400 text-xs">
+                    <span>No tasks match these filters.</span>
+                    {(selectedDate || filter !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(null);
+                          setFilter('all');
+                        }}
+                        className="rounded-lg px-3 py-1.5 font-semibold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/30"
+                      >
+                        Clear filters
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -603,7 +627,7 @@ export default function MyTasks() {
                               {task.due_date ? (
                                 <span className="text-gray-400 flex items-center gap-1 text-[10px]">
                                   <Clock size={11} />
-                                  {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                  {parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </span>
                               ) : <span className="text-gray-400 text-[10px]">—</span>}
 
@@ -657,16 +681,17 @@ export default function MyTasks() {
         </div>
 
         {/* MINI CALENDAR AND RIGHT OVERVIEW */}
+        {isCalendarOpen && (
         <div className="w-72 border-l border-gray-200 dark:border-gray-800 p-5 hidden xl:flex flex-col bg-white dark:bg-gray-800/40">
           <div className="flex justify-between items-center mb-4">
             <span className="font-bold text-sm text-gray-900 dark:text-white">
               {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </span>
             <div className="flex gap-1">
-              <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+              <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)} className="min-h-9 min-w-9 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
                 <ChevronLeft size={16} />
               </button>
-              <button onClick={() => changeMonth(1)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+              <button type="button" aria-label="Next month" onClick={() => changeMonth(1)} className="min-h-9 min-w-9 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -678,7 +703,7 @@ export default function MyTasks() {
 
           <div className="grid grid-cols-7 gap-1 text-center text-xs">
             {Array.from({ length: getFirstDayOfMonth(currentMonth) }).map((_, i) => (
-              <div key={`empty-${i}`} className="h-7 w-7" />
+              <div key={`empty-${i}`} className="h-9 w-full max-w-9 justify-self-center" />
             ))}
 
             {Array.from({ length: getDaysInMonth(currentMonth) }).map((_, i) => {
@@ -690,11 +715,14 @@ export default function MyTasks() {
               return (
                 <button
                   key={day}
+                  type="button"
                   onClick={() => {
                     triggerHaptic('tap');
                     setSelectedDate(isSelected ? null : dateObj);
                   }}
-                  className={`h-7 w-7 rounded-full text-xs font-medium flex items-center justify-center transition-all ${
+                  aria-label={`${dateObj.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}${isToday ? ', today' : ''}`}
+                  aria-pressed={Boolean(isSelected)}
+                  className={`h-9 w-full max-w-9 justify-self-center rounded-full text-xs font-medium flex items-center justify-center transition-all ${
                     isSelected
                       ? 'bg-indigo-600 text-white font-bold'
                       : isToday
@@ -726,6 +754,7 @@ export default function MyTasks() {
             </div>
           </div>
         </div>
+        )}
 
         {/* MOBILE SLIDE-UP BOTTOM SHEET */}
         <TaskDetailModal

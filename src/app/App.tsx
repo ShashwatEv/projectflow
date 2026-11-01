@@ -170,13 +170,26 @@ function Layout() {
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(() => {
-    return !sessionStorage.getItem('pf_splash_shown');
+    const isMobileViewport =
+      typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+    return isMobileViewport && !sessionStorage.getItem('pf_splash_shown');
   });
 
   const handleFinishSplash = () => {
     sessionStorage.setItem('pf_splash_shown', 'true');
     setShowSplash(false);
   };
+
+  useEffect(() => {
+    const mobileViewport = window.matchMedia('(max-width: 767px)');
+    const hideDesktopSplash = () => {
+      if (!mobileViewport.matches) setShowSplash(false);
+    };
+
+    hideDesktopSplash();
+    mobileViewport.addEventListener('change', hideDesktopSplash);
+    return () => mobileViewport.removeEventListener('change', hideDesktopSplash);
+  }, []);
 
   return (
     <>

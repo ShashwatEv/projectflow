@@ -270,6 +270,15 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
       {/* Right Area: Search, APK Download, Timer, Theme toggle, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+          aria-label="Open search"
+          className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 sm:hidden"
+        >
+          <Search size={18} />
+        </button>
+
         {/* Search */}
         <div className="relative hidden sm:block" ref={searchRef}>
           <div
