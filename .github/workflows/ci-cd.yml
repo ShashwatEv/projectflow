@@ -94,6 +94,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'pull_request'
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -103,10 +106,10 @@ jobs:
 
       - name: Deploy to Render Preview
         uses: render/actions/render-deploy-action@v1
-        if: ${{ secrets.RENDER_API_KEY != '' }}
+        if: ${{ env.RENDER_API_KEY != '' }}
         with:
-          api-key: ${{ secrets.RENDER_API_KEY }}
-          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ env.RENDER_API_KEY }}
+          service-id: ${{ env.RENDER_SERVICE_ID }}
           wait-for-completion: true
 
   deploy-production:
@@ -115,6 +118,9 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -124,8 +130,8 @@ jobs:
 
       - name: Deploy to Render Production
         uses: render/actions/render-deploy-action@v1
-        if: ${{ secrets.RENDER_API_KEY != '' }}
+        if: ${{ env.RENDER_API_KEY != '' }}
         with:
-          api-key: ${{ secrets.RENDER_API_KEY }}
-          service-id: ${{ secrets.RENDER_SERVICE_ID }}
+          api-key: ${{ env.RENDER_API_KEY }}
+          service-id: ${{ env.RENDER_SERVICE_ID }}
           wait-for-completion: true
