@@ -221,6 +221,7 @@ export default function OnboardingTour() {
       if (user?.id) {
         const completionKey = `pf_tour_${user.id}`;
         localStorage.setItem(completionKey, 'true');
+        window.dispatchEvent(new CustomEvent('onboarding-tour-completed'));
         let isPersisted = false;
 
         const profileResult = await supabase

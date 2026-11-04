@@ -27,6 +27,27 @@ export default function GettingStartedWidget() {
   });
   const [setupProgressUserId, setSetupProgressUserId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const savedCollapsedState = localStorage.getItem(`pf_sandbox_widget_collapsed_${user.id}`);
+    setIsCollapsed(
+      savedCollapsedState === null
+        ? localStorage.getItem(`pf_tour_${user.id}`) === 'true'
+        : savedCollapsedState === 'true'
+    );
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !isTourDone) return;
+
+    const collapsedKey = `pf_sandbox_widget_collapsed_${user.id}`;
+    if (localStorage.getItem(collapsedKey) === null) {
+      localStorage.setItem(collapsedKey, 'true');
+      setIsCollapsed(true);
+    }
+  }, [user?.id, isTourDone]);
+
   // Comprehensive identity verification check (no ts(2339) errors)
   const isAdminUser = isSuperAdmin(user?.email, user?.role);
   const isVerified = Boolean(
@@ -108,16 +129,25 @@ export default function GettingStartedWidget() {
       }
     };
 
+    const handleTourCompleted = () => {
+      if (!user?.id) return;
+      setIsTourDone(true);
+      setIsCollapsed(true);
+      localStorage.setItem(`pf_sandbox_widget_collapsed_${user.id}`, 'true');
+    };
+
     window.addEventListener('storage', handleSync);
     window.addEventListener('focus', handleSync);
     window.addEventListener('github-token-updated', handleSync);
     window.addEventListener('user-profile-updated', handleSync);
+    window.addEventListener('onboarding-tour-completed', handleTourCompleted);
 
     return () => {
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('focus', handleSync);
       window.removeEventListener('github-token-updated', handleSync);
       window.removeEventListener('user-profile-updated', handleSync);
+      window.removeEventListener('onboarding-tour-completed', handleTourCompleted);
     };
   }, [user?.id]);
 
@@ -192,7 +222,15 @@ export default function GettingStartedWidget() {
 
         <button
           type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => {
+            const nextCollapsedState = !isCollapsed;
+            setIsCollapsed(nextCollapsedState);
+            if (user?.id) {
+              localStorage.setItem(`pf_sandbox_widget_collapsed_${user.id}`, String(nextCollapsedState));
+            }
+          }}
+          aria-label={isCollapsed ? 'Expand sandbox setup panel' : 'Collapse sandbox setup panel'}
+          aria-expanded={!isCollapsed}
           className="text-gray-400 hover:text-white p-0.5 rounded transition-colors"
         >
           {isCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
