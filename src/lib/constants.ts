@@ -55,8 +55,8 @@ export function isUserVerified(
   if (!user) return false;
   if (isSuperAdmin(user)) return true;
   if (user.role?.toLowerCase() === 'admin') return true;
-  if (Boolean(user.is_verified)) return true;
-  if (Boolean(user.email_verified)) return true;
+  if (user.is_verified) return true;
+  if (user.email_verified) return true;
   if (session?.user?.email_confirmed_at) return true;
   return false;
 }

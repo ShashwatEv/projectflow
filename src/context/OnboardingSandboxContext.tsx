@@ -13,7 +13,11 @@ interface OnboardingSandboxContextType {
   sandboxTasks: SandboxTask[];
   activeStepIndex: number;
   isTourOpen: boolean;
+  isGuideOpen: boolean;
+  guideSession: number;
   startTour: () => void;
+  beginTour: () => void;
+  closeGuide: () => void;
   closeTour: () => void;
   setTourStep: (index: number) => void;
   nextStep: () => void;
@@ -87,6 +91,8 @@ export const OnboardingSandboxProvider: React.FC<{ children: React.ReactNode }> 
 
   const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [guideSession, setGuideSession] = useState<number>(0);
 
   useEffect(() => {
     if (isAdminUser) {
@@ -124,11 +130,24 @@ export const OnboardingSandboxProvider: React.FC<{ children: React.ReactNode }> 
 
   const startTour = () => {
     setActiveStepIndex(0);
+    setIsTourOpen(false);
+    setIsGuideOpen(true);
+    setGuideSession((current) => current + 1);
+  };
+
+  const beginTour = () => {
+    setIsGuideOpen(false);
+    setActiveStepIndex(0);
     setIsTourOpen(true);
+  };
+
+  const closeGuide = () => {
+    setIsGuideOpen(false);
   };
 
   const closeTour = () => {
     setIsTourOpen(false);
+    setIsGuideOpen(false);
   };
 
   const setTourStep = (index: number) => {
@@ -166,7 +185,11 @@ export const OnboardingSandboxProvider: React.FC<{ children: React.ReactNode }> 
         sandboxTasks,
         activeStepIndex,
         isTourOpen,
+        isGuideOpen,
+        guideSession,
         startTour,
+        beginTour,
+        closeGuide,
         closeTour,
         setTourStep,
         nextStep,

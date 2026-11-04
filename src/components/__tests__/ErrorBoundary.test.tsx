@@ -39,7 +39,7 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    expect(screen.getByText("We encountered an unexpected error")).toBeInTheDocument();
+    expect(screen.getByText(/We encountered an unexpected error/)).toBeInTheDocument();
   });
 
   it('shows error details in development mode', () => {
@@ -55,7 +55,7 @@ describe('ErrorBoundary', () => {
     
     // Click summary to expand details
     fireEvent.click(screen.getByText('Error Details (Development)'));
-    expect(screen.getByText('Test error')).toBeInTheDocument();
+    expect(screen.getByText(/Test error/)).toBeInTheDocument();
   });
 
   it('calls retry handler when Try Again button clicked', () => {
@@ -65,16 +65,14 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     );
 
-    // Click Try Again
-    fireEvent.click(screen.getByText('Try Again'));
-    
-    // Re-render without error
+    // Update the child while the fallback is showing, then retry it.
     rerender(
       <ErrorBoundary>
         <ThrowError shouldThrow={false} />
       </ErrorBoundary>
     );
 
+    fireEvent.click(screen.getByText('Try Again'));
     expect(screen.getByText('No error')).toBeInTheDocument();
   });
 

@@ -196,7 +196,10 @@ export default function QuickCaptureSheet() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-[#080b12] text-gray-900 dark:text-white p-4 select-none overflow-y-auto custom-scrollbar transition-colors duration-200">
+    <div
+      className="flex h-full flex-col overflow-y-auto bg-gray-50 p-4 text-gray-900 transition-colors duration-200 dark:bg-[#080b12] dark:text-white"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       {/* top bar */}
       <div className="flex items-center justify-between pb-3 shrink-0">
         <button
@@ -227,12 +230,11 @@ export default function QuickCaptureSheet() {
             </label>
             <input
               required
-              autoFocus
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Audit Redis session invalidation"
-              className={`w-full px-3.5 py-3 rounded-2xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none ${theme.ringAccent} shadow-xs`}
+              className={`w-full px-3.5 py-3 rounded-2xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-base text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none ${theme.ringAccent} shadow-xs`}
             />
           </div>
 
@@ -260,7 +262,7 @@ export default function QuickCaptureSheet() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Tap voice dictate to speak or type acceptance criteria..."
-              className={`w-full px-3.5 py-2.5 rounded-2xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none ${theme.ringAccent} shadow-xs resize-none leading-relaxed`}
+              className={`w-full px-3.5 py-2.5 rounded-2xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-base text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none ${theme.ringAccent} shadow-xs resize-none leading-relaxed`}
             />
           </div>
 
@@ -321,7 +323,7 @@ export default function QuickCaptureSheet() {
               <select
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
-                className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
+                className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-base sm:text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
               >
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -338,7 +340,7 @@ export default function QuickCaptureSheet() {
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
-                className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
+                className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-base sm:text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -357,7 +359,7 @@ export default function QuickCaptureSheet() {
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
+              className={`w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#111726] border border-gray-200 dark:border-white/10 text-base sm:text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent} shadow-xs`}
             />
           </div>
         </div>

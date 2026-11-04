@@ -83,15 +83,35 @@ const ACCENT_CLASS_MAP: Record<AccentColor, Omit<AccentThemeClasses, 'accent' | 
   },
 };
 
+const isAccentColor = (value: string | null): value is AccentColor =>
+  value === 'indigo' ||
+  value === 'rose' ||
+  value === 'orange' ||
+  value === 'emerald' ||
+  value === 'blue' ||
+  value === 'purple';
+
+const getStoredAccent = (): AccentColor => {
+  const accentColor = localStorage.getItem('pf_accent_color');
+  if (isAccentColor(accentColor)) return accentColor;
+
+  const legacyAccent = localStorage.getItem('pf_accent_theme');
+  return isAccentColor(legacyAccent) ? legacyAccent : 'indigo';
+};
+
 export function useAccentTheme(): AccentThemeClasses {
-  const [accent, setAccentState] = useState<AccentColor>(() => {
-    return (localStorage.getItem('pf_accent_theme') as AccentColor) || 'indigo';
-  });
+  const [accent, setAccentState] = useState<AccentColor>(getStoredAccent);
 
   useEffect(() => {
-    const handleStorage = () => {
-      const current = (localStorage.getItem('pf_accent_theme') as AccentColor) || 'indigo';
-      setAccentState(current);
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        (event.key === 'pf_accent_color' || event.key === 'pf_accent_theme') &&
+        isAccentColor(event.newValue)
+      ) {
+        setAccentState(event.newValue);
+        return;
+      }
+      setAccentState(getStoredAccent());
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
@@ -99,8 +119,9 @@ export function useAccentTheme(): AccentThemeClasses {
 
   const setAccent = (color: AccentColor) => {
     localStorage.setItem('pf_accent_theme', color);
+    localStorage.setItem('pf_accent_color', color);
     setAccentState(color);
-    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'pf_accent_color', newValue: color }));
   };
 
   return {

@@ -51,20 +51,23 @@ export default function DailyStandupStories() {
     async function fetchStandupFeed() {
       setLoading(true);
       try {
-        const { data: doneData } = await supabase
+        const { data: doneData, error: doneError } = await supabase
           .from('tasks')
           .select('id, title, priority, status, project:projects(name)')
           .eq('status', 'done')
           .order('created_at', { ascending: false })
           .limit(5);
 
-        const { data: alertData } = await supabase
+        const { data: alertData, error: alertError } = await supabase
           .from('tasks')
           .select('id, title, priority, status, project:projects(name)')
           .in('priority', ['urgent', 'high'])
           .neq('status', 'done')
           .order('created_at', { ascending: false })
           .limit(5);
+
+        if (doneError) throw doneError;
+        if (alertError) throw alertError;
 
         const format = (list: any[]): StandupTask[] =>
           (list || []).map((item) => ({
@@ -148,7 +151,10 @@ export default function DailyStandupStories() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-[#080b12] text-gray-900 dark:text-white p-4 select-none overflow-hidden relative transition-colors duration-200">
+    <div
+      className="relative flex h-full flex-col overflow-hidden bg-gray-50 p-4 text-gray-900 transition-colors duration-200 dark:bg-[#080b12] dark:text-white"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+    >
       {/* top progress indicators */}
       <div className="flex items-center gap-1.5 pt-1 pb-3 shrink-0">
         {Array.from({ length: totalStories }).map((_, idx) => (

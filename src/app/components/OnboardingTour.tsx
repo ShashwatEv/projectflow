@@ -7,6 +7,9 @@ import {
   ShieldAlert,
   Layers,
   Code2,
+  CheckCircle2,
+  CirclePlay,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +17,14 @@ import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import OnboardingSpotlight from './OnboardingSpotlight';
 import { toast } from 'sonner';
+import guideVideoUrl from '../../../guide video.mp4';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 
 interface TourStep {
   title: string;
@@ -66,12 +77,36 @@ export default function OnboardingTour() {
   const theme = useAccentTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isTourOpen, startTour, closeTour, isSandboxActive, promoteUserToLive, canMutateDatabase } = useOnboardingSandbox();
+  const {
+    isTourOpen,
+    isGuideOpen,
+    guideSession,
+    startTour,
+    beginTour,
+    closeGuide,
+    closeTour,
+    isSandboxActive,
+    promoteUserToLive,
+    canMutateDatabase,
+  } = useOnboardingSandbox();
 
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
+  const [hasWatchedGuide, setHasWatchedGuide] = useState<boolean>(false);
+  const [guideVideoError, setGuideVideoError] = useState<boolean>(false);
+  const [guideVideoAttempt, setGuideVideoAttempt] = useState<number>(0);
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
   const [agreedTerms, setAgreedTerms] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    setHasWatchedGuide(false);
+    setGuideVideoError(false);
+    setGuideVideoAttempt(0);
+  }, [guideSession]);
+
+  useEffect(() => {
+    if (isTourOpen) setCurrentStepIndex(0);
+  }, [isTourOpen]);
 
   // Auto-prompt tour on first visit if not yet completed
   useEffect(() => {
@@ -165,6 +200,90 @@ export default function OnboardingTour() {
 
   return (
     <>
+      <Dialog
+        open={isGuideOpen}
+        onOpenChange={(open) => {
+          if (!open) closeGuide();
+        }}
+      >
+        <DialogContent className="max-h-[92dvh] w-[min(94vw,760px)] max-w-none gap-0 overflow-y-auto rounded-2xl border border-border bg-background p-0 text-foreground shadow-2xl sm:rounded-3xl">
+          <div className="px-5 pb-5 pt-6 pr-14 sm:px-8 sm:pb-6 sm:pt-8">
+            <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-500">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-border bg-indigo-50 text-indigo-500 dark:bg-indigo-950/40">
+                <Sparkles size={13} />
+              </span>
+              Getting started <span className="text-muted-foreground/60">/</span> Step 1 of 2
+            </div>
+            <DialogHeader className="gap-2 text-left">
+              <DialogTitle className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                Meet your ProjectFlow workspace
+              </DialogTitle>
+              <DialogDescription className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Watch this quick beginner guide, then explore the key features in an interactive tour.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="space-y-4 px-5 pb-5 sm:px-8 sm:pb-8">
+            <div className="overflow-hidden rounded-xl border border-border bg-black shadow-xl sm:rounded-2xl">
+              <video
+                key={guideVideoAttempt}
+                className="aspect-video w-full bg-black"
+                controls
+                playsInline
+                preload="metadata"
+                onEnded={() => setHasWatchedGuide(true)}
+                onError={() => setGuideVideoError(true)}
+              >
+                <source src={guideVideoUrl} type="video/mp4" />
+                Your browser does not support video playback.
+              </video>
+            </div>
+
+            {guideVideoError ? (
+              <div role="alert" className="flex flex-col gap-3 rounded-xl border border-destructive/25 bg-destructive/10 p-3.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+                <span>The guide could not be loaded. Check your connection and try again.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGuideVideoError(false);
+                    setGuideVideoAttempt((attempt) => attempt + 1);
+                  }}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-destructive/25 px-3 py-2 font-semibold transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <RotateCcw size={14} />
+                  Retry video
+                </button>
+              </div>
+            ) : (
+              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${hasWatchedGuide ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+                {hasWatchedGuide ? <CheckCircle2 size={18} className="shrink-0" /> : <CirclePlay size={18} className="shrink-0 text-indigo-500" />}
+                <span className="leading-relaxed">
+                  {hasWatchedGuide
+                    ? 'Guide complete. Your interactive tour is ready.'
+                    : 'Watch the video to the end to continue.'}
+                </span>
+              </div>
+            )}
+
+            <div className="border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={beginTour}
+                disabled={!hasWatchedGuide || guideVideoError}
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
+              >
+                Continue to interactive tour
+                <CirclePlay size={17} />
+              </button>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Your tour will open in the workspace as soon as you continue.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 1. Dynamic Element Spotlight Mask */}
       {isTourOpen && step && (
         <OnboardingSpotlight

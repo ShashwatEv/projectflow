@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
@@ -18,6 +18,7 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import DesktopOnlyGuard from './components/DesktopOnlyGuard';
 import SplashScreen from './components/SplashScreen';
 import NetworkStatusPill from './components/NetworkStatusPill';
+import MobileBottomNav from './components/MobileBottomNav';
 
 // Core authentication and layout pages
 import Dashboard from './pages/Dashboard';
@@ -44,6 +45,10 @@ import SprintPlanner from './pages/SprintPlanner';
 import ApiDocs from './pages/ApiDocs';
 import Retrospectives from './pages/Retrospectives';
 import TeamVelocity from './pages/TeamVelocity';
+import ProjectFlowAbout from './pages/ProjectFlowAbout';
+import MobileProjectsOverview from './pages/MobileProjectsOverview';
+import MobileUnifiedInbox from './pages/MobileUnifiedInbox';
+import MobilePeopleDirectory from './pages/MobilePeopleDirectory';
 
 // Mobile-specific workflow pages
 import MobileTriageDeck from './pages/MobileTriageDeck';
@@ -94,7 +99,10 @@ function MobileOnlyGuard({ children }: { children: React.ReactNode }) {
 
 function Layout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 1024
+  );
+  const isDesktopLayout = useRef(typeof window !== 'undefined' && window.innerWidth >= 1024);
   const { user, session } = useAuth();
   const navigate = useNavigate();
 
@@ -106,6 +114,19 @@ function Layout() {
       session?.user?.email_confirmed_at ||
       isAdmin
   );
+
+  useEffect(() => {
+    const syncSidebarToViewport = () => {
+      const isDesktop = window.innerWidth >= 1024;
+      if (isDesktop !== isDesktopLayout.current) {
+        isDesktopLayout.current = isDesktop;
+        setIsSidebarOpen(isDesktop);
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', syncSidebarToViewport);
+    return () => window.removeEventListener('resize', syncSidebarToViewport);
+  }, []);
 
   useEffect(() => {
     if (session?.user?.email_confirmed_at && user?.id && !user?.is_verified) {
@@ -120,7 +141,7 @@ function Layout() {
   }, [session?.user?.email_confirmed_at, user?.id, user?.is_verified]);
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div className="flex h-[100dvh] flex-col bg-gray-50 transition-colors duration-200 dark:bg-gray-900">
       <CommandMenu />
       <OnboardingTour />
       <NetworkStatusPill />
@@ -149,7 +170,7 @@ function Layout() {
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <ModernSidebar
           isOpen={isSidebarOpen || isMobileMenuOpen}
           onClose={() => {
@@ -158,12 +179,13 @@ function Layout() {
           }}
         />
 
-        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-full transition-all duration-300 ease-in-out">
+        <main className="min-h-0 w-full flex-1 overflow-y-auto bg-gray-50 text-gray-900 transition-all duration-300 ease-in-out dark:bg-gray-900 dark:text-gray-100">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
           </Suspense>
         </main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }
@@ -214,6 +236,10 @@ export default function App() {
                   <Route element={<RequireAuth />}>
                     <Route element={<Layout />}>
                       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/about" element={<ProjectFlowAbout />} />
+                      <Route path="/mobile/projects" element={<MobileProjectsOverview />} />
+                      <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
+                      <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
                       <Route path="/dashboard" element={<Dashboard />} />
 
                       {/* Work routes */}

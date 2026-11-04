@@ -15,8 +15,9 @@ Object.defineProperty(window, 'localStorage', {
   writable: true,
 });
 
-// Mock window.dispatchEvent
-window.dispatchEvent = vi.fn();
+// Track dispatches while preserving delivery to registered listeners.
+const dispatchEvent = window.dispatchEvent.bind(window);
+window.dispatchEvent = vi.fn((event: Event) => dispatchEvent(event));
 
 describe('useAccentTheme', () => {
   beforeEach(() => {
@@ -25,7 +26,7 @@ describe('useAccentTheme', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('returns default accent (indigo) when no localStorage value', () => {
@@ -61,7 +62,7 @@ describe('useAccentTheme', () => {
     
     // Simulate storage event from another tab
     const storageEvent = new StorageEvent('storage', {
-      key: 'pf_accent_theme',
+      key: 'pf_accent_color',
       newValue: 'blue',
     });
     

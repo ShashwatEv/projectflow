@@ -80,9 +80,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_OPENROUTER_API_KEY: ${{ secrets.VITE_OPENROUTER_API_KEY }}
           VITE_SUPER_ADMIN_EMAIL: ${{ secrets.VITE_SUPER_ADMIN_EMAIL }}
-          VITE_GITHUB_TOKEN: ${{ secrets.VITE_GITHUB_TOKEN }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

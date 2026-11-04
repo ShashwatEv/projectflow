@@ -5,8 +5,6 @@ module.exports = {
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
-    'plugin:react-hooks/recommended',
-    'plugin:react-refresh/only-export-components',
   ],
   ignorePatterns: ['dist', '.eslintrc.cjs', 'node_modules', 'package-lock.json'],
   parser: '@typescript-eslint/parser',
@@ -14,10 +12,12 @@ module.exports = {
     ecmaVersion: 'latest',
     ecmaFeatures: { jsx: true },
     sourceType: 'module',
-    project: ['./tsconfig.app.json'],
+    project: ['./tsconfig.json'],
   },
-  plugins: ['@typescript-eslint', 'react-refresh'],
+  plugins: ['@typescript-eslint', 'react-hooks', 'react-refresh'],
   rules: {
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
     'react/requires-interaction': 'off',
     '@typescript-eslint/no-unused-vars': [
       'error',

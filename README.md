@@ -51,10 +51,10 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
    
    Optional variables:
    ```env
-   VITE_OPENROUTER_API_KEY=your_openrouter_api_key
    VITE_SUPER_ADMIN_EMAIL=your_admin_email@example.com
-   VITE_GITHUB_TOKEN=your_github_personal_access_token
    ```
+
+   Do not put AI provider keys in `VITE_*` variables for a public build: Vite embeds them in browser assets. AI requests use a browser-local key instead.
 
 3. **Run the local development server:**
    ```bash

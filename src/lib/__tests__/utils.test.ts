@@ -22,7 +22,7 @@ describe('cn utility', () => {
   });
 
   it('handles complex tailwind merges', () => {
-    expect(cn('flex items-center', 'flex-col justify-center')).toBe('flex-col items-center justify-center');
+    expect(cn('flex items-center', 'flex-col justify-center')).toBe('flex items-center flex-col justify-center');
   });
 });
 

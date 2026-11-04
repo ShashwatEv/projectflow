@@ -88,6 +88,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     root.setAttribute('data-accent', accentColor);
     localStorage.setItem('pf_accent_color', accentColor);
+    localStorage.setItem('pf_accent_theme', accentColor);
   }, [accentColor]);
 
   // Handle Typography Scale (updates data-size attribute)
@@ -119,6 +120,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setAccentColor = (color: AccentColor) => {
     setAccentColorState(color);
+    localStorage.setItem('pf_accent_color', color);
+    localStorage.setItem('pf_accent_theme', color);
+    window.dispatchEvent(new Event('storage'));
   };
 
   const setTypographySize = (size: TypographySize) => {

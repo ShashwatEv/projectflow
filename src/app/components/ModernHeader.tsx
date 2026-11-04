@@ -15,14 +15,12 @@ import {
   Users,
   X,
   Code2,
-  Sparkles,
   Smartphone,
   Download,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { supabase } from '../../lib/supabaseClient';
 import HeaderTaskTimer from './HeaderTaskTimer';
 
@@ -57,7 +55,6 @@ const ANDROID_APK_URL =
 export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { startTour } = useOnboardingSandbox();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -224,7 +221,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
         {/* Clickable Mobile Brand Logo */}
         <Link
-          to="/dashboard"
+          to="/about"
+          aria-label="About ProjectFlow"
           className="flex items-center select-none md:hidden hover:opacity-85 transition-opacity"
         >
           <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2 shrink-0 overflow-hidden">
@@ -257,7 +255,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
       {/* Clickable Desktop Centered Brand Logo */}
       <Link
-        to="/dashboard"
+        to="/about"
+        aria-label="About ProjectFlow"
         className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center select-none hover:opacity-85 transition-opacity cursor-pointer"
       >
         <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
@@ -503,25 +502,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                   <Settings size={15} />
                   <span>Settings</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    startTour();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                >
-                  <Sparkles size={15} />
-                  <span>Restart Tour</span>
-                </button>
-                <a
-                  href={ANDROID_APK_URL}
-                  download="ProjectFlow.apk"
-                  className="hidden md:flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                >
-                  <Smartphone size={15} />
-                  <span>Download APK</span>
-                </a>
               </div>
 
               <div className="border-t border-gray-100 p-1.5 dark:border-gray-700">

@@ -39,6 +39,7 @@ export default function MobileTriageDeck() {
   const [loading, setLoading] = useState(true);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isActionPending, setIsActionPending] = useState(false);
   const [exitingDirection, setExitingDirection] = useState<'left' | 'right' | 'up' | null>(null);
 
   const touchStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -77,44 +78,51 @@ export default function MobileTriageDeck() {
     fetchTriagePool();
   }, []);
 
-  const handleAction = async (task: TriageTask, direction: 'left' | 'right' | 'up') => {
+  const handleAction = (task: TriageTask, direction: 'left' | 'right' | 'up') => {
+    if (isActionPending) return;
+    setIsActionPending(true);
     setExitingDirection(direction);
     triggerHaptic(direction === 'right' ? 'success' : direction === 'up' ? 'tap' : 'warning');
 
     setTimeout(async () => {
-      setDeck((prev) => prev.filter((t) => t.id !== task.id));
-      setDragOffset({ x: 0, y: 0 });
-      setExitingDirection(null);
-
       try {
+        let updateError: { message: string } | null = null;
         if (direction === 'right') {
-          await supabase
+          ({ error: updateError } = await supabase
             .from('tasks')
             .update({ assigned_to: user?.id, status: 'inProgress' })
-            .eq('id', task.id);
-          toast.success('Claimed to In Progress');
+            .eq('id', task.id));
         } else if (direction === 'left') {
-          await supabase
+          ({ error: updateError } = await supabase
             .from('tasks')
             .update({ status: 'todo' })
-            .eq('id', task.id);
-          toast.info('Deferred to backlog');
+            .eq('id', task.id));
         } else if (direction === 'up') {
-          await supabase
+          ({ error: updateError } = await supabase
             .from('tasks')
             .update({ status: 'done' })
-            .eq('id', task.id);
-          toast.success('Marked done');
+            .eq('id', task.id));
         }
-      } catch {
-        toast.error('Failed to update task state');
+        if (updateError) throw updateError;
+        setDeck((prev) => prev.filter((item) => item.id !== task.id));
+        if (direction === 'right') toast.success('Claimed to In Progress');
+        else if (direction === 'left') toast.info('Deferred to backlog');
+        else toast.success('Marked done');
+      } catch (error) {
+        console.error('Could not update triage task:', error);
+        toast.error('Could not update this task. It is still in your deck.');
+        triggerHaptic('error');
+      } finally {
+        setDragOffset({ x: 0, y: 0 });
+        setExitingDirection(null);
+        setIsActionPending(false);
       }
     }, 220);
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
-    if (!touch || deck.length === 0) return;
+    if (!touch || deck.length === 0 || isActionPending) return;
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
     setIsDragging(true);
   };
@@ -349,6 +357,7 @@ export default function MobileTriageDeck() {
           <button
             type="button"
             onClick={() => handleAction(activeTask, 'left')}
+            disabled={isActionPending}
             className="py-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform shadow-xs"
           >
             <Clock size={14} />
@@ -357,6 +366,7 @@ export default function MobileTriageDeck() {
           <button
             type="button"
             onClick={() => handleAction(activeTask, 'up')}
+            disabled={isActionPending}
             className="py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform shadow-xs"
           >
             <Check size={14} />
@@ -365,6 +375,7 @@ export default function MobileTriageDeck() {
           <button
             type="button"
             onClick={() => handleAction(activeTask, 'right')}
+            disabled={isActionPending}
             className={`py-3 rounded-2xl ${theme.bgSubtle} border ${theme.borderAccent}/30 ${theme.textAccent} font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform shadow-xs`}
           >
             <Flame size={14} />
