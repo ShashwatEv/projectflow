@@ -32,6 +32,7 @@ interface TourStep {
   selector: string;
   description: string;
   actionHint: string;
+  shortcuts?: { keys: string[]; label: string }[];
 }
 
 const TOUR_STEPS: TourStep[] = [
@@ -69,6 +70,22 @@ const TOUR_STEPS: TourStep[] = [
     selector: 'main',
     description: 'Real-time telemetry showing workload distribution by priority and completion ratios across all active repositories.',
     actionHint: 'Inspect velocity charts powered by Supabase realtime feeds.',
+  },
+  {
+    title: 'Search & Keyboard Shortcuts',
+    path: '/dashboard',
+    selector: 'button[aria-label="Search projects, people, and pages"], button[aria-label="Open search"]',
+    description: 'Jump to projects, people, and workspace pages from the search palette—or use a shortcut to get there instantly.',
+    actionHint: 'Open Search to explore commands. Shortcuts work anywhere in the workspace except while typing in a field.',
+    shortcuts: [
+      { keys: ['Ctrl', 'K'], label: 'Open search' },
+      { keys: ['Alt', 'N'], label: 'New task' },
+      { keys: ['Alt', 'P'], label: 'Projects' },
+      { keys: ['Alt', 'I'], label: 'Inbox' },
+      { keys: ['Alt', 'U'], label: 'People' },
+      { keys: ['Alt', 'Shift', 'D'], label: 'Dashboard' },
+      { keys: ['Alt', 'Shift', 'N'], label: 'Quick capture' },
+    ],
   },
 ];
 
@@ -291,6 +308,7 @@ export default function OnboardingTour() {
           title={step.title}
           description={step.description}
           actionHint={step.actionHint}
+          shortcuts={step.shortcuts}
           stepIndex={currentStepIndex}
           totalSteps={TOUR_STEPS.length}
           onNext={handleNext}

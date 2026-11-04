@@ -1,12 +1,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { ArrowRight, ArrowLeft, X, Sparkles, Compass, GripHorizontal } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Sparkles, Compass, GripHorizontal, Keyboard } from 'lucide-react';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+
+interface ShortcutTip {
+  keys: string[];
+  label: string;
+}
 
 interface SpotlightProps {
   targetSelector: string;
   title: string;
   description: string;
   actionHint: string;
+  shortcuts?: ShortcutTip[];
   stepIndex: number;
   totalSteps: number;
   onNext: () => void;
@@ -26,6 +32,7 @@ export default function OnboardingSpotlight({
   title,
   description,
   actionHint,
+  shortcuts,
   stepIndex,
   totalSteps,
   onNext,
@@ -57,8 +64,8 @@ export default function OnboardingSpotlight({
       const domRect = el.getBoundingClientRect();
       if (domRect.width > 0 && domRect.height > 0) {
         setRect({
-          top: domRect.top + window.scrollY,
-          left: domRect.left + window.scrollX,
+          top: domRect.top,
+          left: domRect.left,
           width: domRect.width,
           height: domRect.height,
         });
@@ -140,14 +147,15 @@ export default function OnboardingSpotlight({
 
   // Base calculated coordinates
   const baseTop = rect
-    ? Math.min(viewportHeight - 290, Math.max(20, rect.top + rect.height + 16))
+    ? Math.min(viewportHeight - (tooltipRef.current?.offsetHeight ?? 360) - 20, Math.max(20, rect.top + rect.height + 16))
     : viewportHeight / 2 - 140;
 
   const baseLeft = rect
     ? Math.min(viewportWidth - 420, Math.max(20, rect.left))
     : viewportWidth / 2 - 190;
 
-  const computedTop = Math.max(10, Math.min(viewportHeight - 240, baseTop + dragOffset.y));
+  const tooltipHeight = tooltipRef.current?.offsetHeight ?? 360;
+  const computedTop = Math.max(10, Math.min(viewportHeight - tooltipHeight - 10, baseTop + dragOffset.y));
   const computedLeft = Math.max(10, Math.min(viewportWidth - 410, baseLeft + dragOffset.x));
 
   return (
@@ -199,7 +207,7 @@ export default function OnboardingSpotlight({
           top: computedTop,
           left: computedLeft,
         }}
-        className="absolute w-[400px] max-w-[calc(100vw-2.5rem)] bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-5 shadow-2xl text-xs text-gray-800 dark:text-gray-200 z-50 animate-in fade-in zoom-in-95 duration-200 select-none"
+        className="absolute max-h-[min(82dvh,620px)] w-[400px] max-w-[calc(100vw-2.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-5 shadow-2xl text-xs text-gray-800 dark:text-gray-200 z-50 animate-in fade-in zoom-in-95 duration-200 select-none"
       >
         {/* Header - Drag Handle */}
         <div 
@@ -222,9 +230,12 @@ export default function OnboardingSpotlight({
           <div className="flex items-center gap-1">
             <GripHorizontal size={15} className="text-gray-400 dark:text-gray-500" />
             <button
+              type="button"
               onClick={onSkip}
+              aria-label="Close tour"
+              title="Close tour"
               onMouseDown={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors"
+              className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-gray-800 dark:hover:text-white"
             >
               <X size={15} />
             </button>
@@ -244,6 +255,38 @@ export default function OnboardingSpotlight({
               {actionHint}
             </span>
           </div>
+
+          {shortcuts && shortcuts.length > 0 && (
+            <section
+              aria-label="Keyboard shortcuts"
+              className="rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/60"
+            >
+              <h5 className="mb-2.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                <Keyboard size={13} className={theme.textAccent} />
+                Quick shortcuts
+              </h5>
+              <div className="grid grid-cols-2 gap-2">
+                {shortcuts.map(({ keys, label }) => (
+                  <div
+                    key={label}
+                    className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-gray-200/80 bg-white px-2.5 py-2 dark:border-gray-700 dark:bg-gray-800/80"
+                  >
+                    <span className="truncate text-[10px] font-medium text-gray-600 dark:text-gray-300">{label}</span>
+                    <span className="flex shrink-0 items-center gap-0.5">
+                      {keys.map((key) => (
+                        <kbd
+                          key={key}
+                          className="rounded-md border border-gray-200 bg-gray-100 px-1 py-0.5 text-[9px] font-bold leading-none text-gray-600 shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                        >
+                          {key}
+                        </kbd>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Footer Navigation */}

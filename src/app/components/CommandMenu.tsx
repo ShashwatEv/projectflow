@@ -4,10 +4,19 @@ import { Command } from 'cmdk';
 import { 
   LayoutGrid, FolderKanban, CheckSquare, Users, Calendar, 
   BarChart2, MessageSquare, Clock, Zap, Settings, Sun, Moon, 
-  Plus, Search, ArrowRight, Code2, Sparkles, Terminal
+  Plus, Search, ArrowRight, Code2, Sparkles, Terminal, X
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
+
+const SHORTCUT_ROUTES: Record<string, string> = {
+  n: '/tasks',
+  p: '/projects',
+  i: '/mobile/inbox',
+  u: '/mobile/people',
+  'shift+d': '/dashboard',
+  'shift+n': '/capture',
+};
 
 export default function CommandMenu() {
   const [open, setOpen] = useState(false);
@@ -22,6 +31,30 @@ export default function CommandMenu() {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setOpen((prev) => !prev);
+        return;
+      }
+
+      const target = e.target;
+      const isEditingText =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.matches('input, textarea, select, [role="textbox"]'));
+      if (
+        isEditingText ||
+        !e.altKey ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.repeat
+      ) {
+        return;
+      }
+
+      const shortcutKey = `${e.shiftKey ? 'shift+' : ''}${e.key.toLowerCase()}`;
+      const shortcutPath = SHORTCUT_ROUTES[shortcutKey];
+
+      if (shortcutPath) {
+        e.preventDefault();
+        setOpen(false);
+        navigate(shortcutPath, shortcutPath === '/tasks' ? { state: { focusNewTask: true } } : undefined);
       }
     };
 
@@ -33,7 +66,7 @@ export default function CommandMenu() {
       document.removeEventListener('keydown', down);
       window.removeEventListener('open-command-palette', handleOpenTrigger);
     };
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!open) return;
@@ -70,9 +103,15 @@ export default function CommandMenu() {
               placeholder="Type a command or jump to projects, people, views..."
               className="w-full py-4 text-sm bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-400"
             />
-            <span className="text-[10px] font-bold text-gray-400 uppercase bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600">
-              ESC
-            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close search"
+              title="Close search"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-white"
+            >
+              <X size={15} />
+            </button>
           </div>
 
           <Command.List className="max-h-80 overflow-y-auto p-2 divide-y divide-gray-100 dark:divide-gray-800 custom-scrollbar">
@@ -208,9 +247,14 @@ export default function CommandMenu() {
             )}
           </Command.List>
 
-          <div className="p-3 border-t border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/50 text-[11px] text-gray-400 flex items-center justify-between">
-            <span>Use arrow keys to navigate</span>
-            <span>Enter to select</span>
+          <div className="space-y-2 border-t border-gray-100 bg-gray-50/50 p-3 text-[11px] text-gray-400 dark:border-gray-700/60 dark:bg-gray-900/50">
+            <div className="flex items-center justify-between">
+              <span>Use arrow keys to navigate</span>
+              <span>Enter to select</span>
+            </div>
+            <p className="leading-relaxed">
+              Shortcuts: Alt+N new task · Alt+P projects · Alt+I inbox · Alt+U people · Alt+Shift+D dashboard · Alt+Shift+N capture
+            </p>
           </div>
         </Command>
       </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
   ArrowUpDown, ChevronLeft, ChevronRight, X,
@@ -84,6 +84,8 @@ function getDueLabel(value: string, now = new Date()) {
 export default function MyTasks() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const newTaskInputRef = useRef<HTMLInputElement>(null);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +102,14 @@ export default function MyTasks() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(true);
+
+  useEffect(() => {
+    const shouldFocusNewTask = (location.state as { focusNewTask?: boolean } | null)?.focusNewTask;
+    if (!shouldFocusNewTask) return;
+
+    newTaskInputRef.current?.focus();
+    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+  }, [location.hash, location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     async function verifyUserRole() {
@@ -463,6 +473,7 @@ export default function MyTasks() {
               <Plus className="text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
             </div>
             <input
+              ref={newTaskInputRef}
               type="text"
               value={newTaskInput}
               onChange={(e) => setNewTaskInput(e.target.value)}

@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Bell,
-  CheckSquare,
   ChevronRight,
-  FolderKanban,
-  LayoutGrid,
   LogOut,
   Menu,
   Moon,
@@ -12,9 +9,6 @@ import {
   Settings,
   Sun,
   User,
-  Users,
-  X,
-  Code2,
   Smartphone,
   Download,
 } from 'lucide-react';
@@ -23,25 +17,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabaseClient';
 import HeaderTaskTimer from './HeaderTaskTimer';
-
-interface SearchProject {
-  id: string;
-  name: string;
-  status: string;
-}
-
-interface SearchUser {
-  id: string;
-  name: string;
-  avatar: string;
-  role: string;
-}
-
-interface SearchPage {
-  name: string;
-  path: string;
-  icon: React.ReactNode;
-}
 
 interface ModernHeaderProps {
   onMenuClick?: () => void;
@@ -59,10 +34,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   const location = useLocation();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [showResults, setShowResults] = useState(false);
-  const [projects, setProjects] = useState<SearchProject[]>([]);
-  const [users, setUsers] = useState<SearchUser[]>([]);
 
   const [currentAvatar, setCurrentAvatar] = useState<string>(user?.avatar || '/pfp.jpg');
   const [currentName, setCurrentName] = useState<string>(user?.name || 'Guest');
@@ -73,7 +44,6 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   const [recentNotifs, setRecentNotifs] = useState<any[]>([]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,24 +108,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   }, [user]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: projectsData } = await supabase.from('projects').select('id, name, status');
-      if (projectsData) setProjects(projectsData);
-
-      const { data: usersData } = await supabase.from('users').select('id, name, avatar, role');
-      if (usersData) setUsers(usersData);
-    };
-
-    fetchData();
-  }, []);
-
-  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsProfileOpen(false);
-      }
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setShowResults(false);
       }
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setIsNotifOpen(false);
@@ -166,37 +121,10 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchablePages: SearchPage[] = [
-    { name: 'Dashboard', path: '/dashboard', icon: <LayoutGrid size={14} /> },
-    { name: 'Code Studio', path: '/code', icon: <Code2 size={14} /> },
-    { name: 'My Tasks', path: '/tasks', icon: <CheckSquare size={14} /> },
-    { name: 'Projects', path: '/projects', icon: <FolderKanban size={14} /> },
-    { name: 'Team', path: '/team', icon: <Users size={14} /> },
-    { name: 'Settings', path: '/settings', icon: <Settings size={14} /> },
-  ];
-
-  const filteredPages = searchablePages.filter((page) =>
-    page.name.toLowerCase().includes(query.toLowerCase()),
-  );
-  const filteredProjects = projects.filter((project) =>
-    project.name.toLowerCase().includes(query.toLowerCase()),
-  );
-  const filteredUsers = users.filter((searchUser) =>
-    searchUser.name?.toLowerCase().includes(query.toLowerCase()),
-  );
-  const hasResults =
-    filteredPages.length > 0 || filteredProjects.length > 0 || filteredUsers.length > 0;
-
   const handleLogout = async () => {
     await signOut();
     setIsProfileOpen(false);
     navigate('/login');
-  };
-
-  const handleSearchResultClick = (path: string) => {
-    navigate(path);
-    setShowResults(false);
-    setQuery('');
   };
 
   const getPageTitle = () => {
@@ -278,93 +206,16 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <Search size={18} />
         </button>
 
-        {/* Search */}
-        <div className="relative hidden sm:block" ref={searchRef}>
-          <div
-            onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
-            className="group relative flex cursor-pointer items-center"
-            title="Press Ctrl+K to search"
-          >
-            <Search
-              className="pointer-events-none absolute left-3.5 top-2.5 text-gray-400 transition-colors group-hover:text-indigo-500"
-              size={15}
-            />
-            <input
-              type="text"
-              placeholder="Search or jump to..."
-              value={query}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setShowResults(true);
-              }}
-              onFocus={() => setShowResults(true)}
-              className="w-60 rounded-xl border border-transparent bg-gray-100/80 py-2 pl-9 pr-14 text-xs text-gray-700 outline-none transition-all hover:border-indigo-500/30 focus:border-indigo-500 focus:bg-white dark:bg-gray-800/80 dark:text-gray-300 dark:placeholder-gray-400 dark:focus:bg-gray-900 lg:w-72"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setQuery('');
-                  setShowResults(false);
-                }}
-                className="absolute right-2.5 top-2.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
-              >
-                <X size={14} />
-              </button>
-            )}
-            <div className="pointer-events-none absolute right-2.5 top-2 flex items-center gap-0.5">
-              <span className="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-gray-400 shadow-2xs dark:border-gray-600 dark:bg-gray-700">
-                Ctrl K
-              </span>
-            </div>
-          </div>
-
-          {showResults && query && (
-            <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800 lg:w-96">
-              {hasResults ? (
-                <div className="max-h-[70vh] overflow-y-auto py-2">
-                  {filteredPages.length > 0 && (
-                    <div className="mb-2">
-                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Pages</h4>
-                      {filteredPages.map((page) => (
-                        <button
-                          type="button"
-                          key={page.path}
-                          onClick={() => handleSearchResultClick(page.path)}
-                          className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700/50"
-                        >
-                          <div className="rounded-md bg-gray-100 p-1.5 text-gray-500 dark:bg-gray-700 dark:text-gray-300">{page.icon}</div>
-                          {page.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {filteredProjects.length > 0 && (
-                    <div className="mb-2">
-                      <h4 className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Projects</h4>
-                      {filteredProjects.map((project) => (
-                        <button
-                          type="button"
-                          key={project.id}
-                          onClick={() => handleSearchResultClick(`/projects/${project.id}`)}
-                          className="flex w-full items-center justify-between px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                        >
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{project.name}</span>
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-gray-500 dark:bg-gray-700">{project.status}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">No results for "{query}"</div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Search opens in the command palette so it never pushes into the brand. */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}
+          aria-label="Search projects, people, and pages"
+          title="Search projects, people, and pages (Ctrl+K)"
+          className="hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 sm:inline-flex"
+        >
+          <Search size={17} />
+        </button>
 
         {/* Desktop-only Android APK Download button */}
         <a
