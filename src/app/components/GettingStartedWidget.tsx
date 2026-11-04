@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  CheckCircle2, Circle, ChevronDown, ChevronUp, 
+  CheckCircle2, Circle, ChevronDown, ChevronUp, X,
   Sparkles, ShieldCheck, Lock, ArrowRight, ShieldAlert 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -19,6 +19,9 @@ export default function GettingStartedWidget() {
   const { isSandboxActive, startTour, promoteUserToLive } = useOnboardingSandbox();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(() =>
+    user?.id ? localStorage.getItem(`pf_sandbox_widget_dismissed_${user.id}`) === 'true' : false
+  );
   const [hasGithubToken, setHasGithubToken] = useState<boolean>(() => 
     Boolean(localStorage.getItem('pf_github_token'))
   );
@@ -31,6 +34,7 @@ export default function GettingStartedWidget() {
     if (!user?.id) return;
 
     const savedCollapsedState = localStorage.getItem(`pf_sandbox_widget_collapsed_${user.id}`);
+    setIsDismissed(localStorage.getItem(`pf_sandbox_widget_dismissed_${user.id}`) === 'true');
     setIsCollapsed(
       savedCollapsedState === null
         ? localStorage.getItem(`pf_tour_${user.id}`) === 'true'
@@ -68,16 +72,22 @@ export default function GettingStartedWidget() {
 
       const { data, error } = await supabase
         .from('user_setup_progress')
-        .select('completed_steps')
+        .select('completed_steps, dismissed_at')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!active) return;
 
       if (error) {
         console.warn('Shared onboarding progress is unavailable until the collaboration migration is applied.', error);
-      } else if (data?.completed_steps?.includes('tour')) {
-        setIsTourDone(true);
-        localStorage.setItem(`pf_tour_${user.id}`, 'true');
+      } else if (data) {
+        if (data.completed_steps?.includes('tour')) {
+          setIsTourDone(true);
+          localStorage.setItem(`pf_tour_${user.id}`, 'true');
+        }
+        if (data.dismissed_at) {
+          setIsDismissed(true);
+          localStorage.setItem(`pf_sandbox_widget_dismissed_${user.id}`, 'true');
+        }
       }
       setSetupProgressUserId(user.id);
     };
@@ -152,7 +162,52 @@ export default function GettingStartedWidget() {
   }, [user?.id]);
 
   // If promoted out of safe sandbox or logged in as admin, hide the widget
-  if (!isSandboxActive || isAdminUser) return null;
+  const handleDismiss = async () => {
+    if (!user?.id) return;
+
+    setIsDismissed(true);
+    localStorage.setItem(`pf_sandbox_widget_dismissed_${user.id}`, 'true');
+
+    const { data, error: readError } = await supabase
+      .from('user_setup_progress')
+      .select('completed_steps')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (readError) {
+      console.error('Could not read setup progress while dismissing the sandbox panel.', readError);
+      toast.error('The panel was hidden on this device, but dismissal could not be synced to your account.');
+      return;
+    }
+
+    const completedSteps = new Set(data?.completed_steps ?? []);
+    const currentSteps = [
+      isTourDone && 'tour',
+      isVerified && 'verified',
+      is2FaActive && 'two-factor',
+      hasGithubToken && 'github',
+    ].filter((step): step is string => Boolean(step));
+    currentSteps.forEach((step) => completedSteps.add(step));
+
+    const { error: saveError } = await supabase
+      .from('user_setup_progress')
+      .upsert(
+        {
+          user_id: user.id,
+          completed_steps: [...completedSteps],
+          dismissed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
+
+    if (saveError) {
+      console.error('Could not sync sandbox panel dismissal to the account.', saveError);
+      toast.error('The panel was hidden on this device, but dismissal could not be synced to your account.');
+    }
+  };
+
+  if (!isSandboxActive || isAdminUser || isDismissed) return null;
 
   const milestones = [
     {
@@ -220,21 +275,32 @@ export default function GettingStartedWidget() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            const nextCollapsedState = !isCollapsed;
-            setIsCollapsed(nextCollapsedState);
-            if (user?.id) {
-              localStorage.setItem(`pf_sandbox_widget_collapsed_${user.id}`, String(nextCollapsedState));
-            }
-          }}
-          aria-label={isCollapsed ? 'Expand sandbox setup panel' : 'Collapse sandbox setup panel'}
-          aria-expanded={!isCollapsed}
-          className="text-gray-400 hover:text-white p-0.5 rounded transition-colors"
-        >
-          {isCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              const nextCollapsedState = !isCollapsed;
+              setIsCollapsed(nextCollapsedState);
+              if (user?.id) {
+                localStorage.setItem(`pf_sandbox_widget_collapsed_${user.id}`, String(nextCollapsedState));
+              }
+            }}
+            aria-label={isCollapsed ? 'Expand sandbox setup panel' : 'Collapse sandbox setup panel'}
+            aria-expanded={!isCollapsed}
+            className="text-gray-400 hover:text-white p-0.5 rounded transition-colors"
+          >
+            {isCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={handleDismiss}
+            aria-label="Dismiss sandbox setup panel"
+            title="Dismiss panel"
+            className="rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Expanded Checklist */}
