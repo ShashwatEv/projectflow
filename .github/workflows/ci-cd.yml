@@ -105,12 +105,32 @@ jobs:
           path: dist
 
       - name: Deploy to Render Preview
-        uses: render/actions/render-deploy-action@v1
         if: ${{ env.RENDER_API_KEY != '' }}
-        with:
-          api-key: ${{ env.RENDER_API_KEY }}
-          service-id: ${{ env.RENDER_SERVICE_ID }}
-          wait-for-completion: true
+        run: |
+          set -euo pipefail
+          deploy_id=$(curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"commitId\":\"${GITHUB_SHA}\"}" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" | jq -er '.id')
+          echo "Triggered Render deployment ${deploy_id}"
+          for attempt in $(seq 1 60); do
+            status=$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${deploy_id}" | jq -er '.status')
+            echo "Render deployment status: ${status}"
+            if [ "${status}" = "live" ]; then exit 0; fi
+            case "${status}" in
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                echo "Render deployment ended with status ${status}" >&2
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Render deployment did not become live before timeout" >&2
+          exit 1
 
   deploy-production:
     name: Deploy Production
@@ -129,9 +149,29 @@ jobs:
           path: dist
 
       - name: Deploy to Render Production
-        uses: render/actions/render-deploy-action@v1
         if: ${{ env.RENDER_API_KEY != '' }}
-        with:
-          api-key: ${{ env.RENDER_API_KEY }}
-          service-id: ${{ env.RENDER_SERVICE_ID }}
-          wait-for-completion: true
+        run: |
+          set -euo pipefail
+          deploy_id=$(curl --fail --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${RENDER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"commitId\":\"${GITHUB_SHA}\"}" \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" | jq -er '.id')
+          echo "Triggered Render deployment ${deploy_id}"
+          for attempt in $(seq 1 60); do
+            status=$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${deploy_id}" | jq -er '.status')
+            echo "Render deployment status: ${status}"
+            if [ "${status}" = "live" ]; then exit 0; fi
+            case "${status}" in
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                echo "Render deployment ended with status ${status}" >&2
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+          echo "Render deployment did not become live before timeout" >&2
+          exit 1
