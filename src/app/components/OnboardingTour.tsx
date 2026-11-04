@@ -127,30 +127,59 @@ export default function OnboardingTour() {
 
   // Auto-prompt tour on first visit if not yet completed
   useEffect(() => {
+    let active = true;
+
     async function checkTourStatus() {
       if (!user?.id) return;
 
-      const localDone = localStorage.getItem(`pf_tour_${user.id}`);
-      if (localDone === 'true') return;
+      const completionKey = `pf_tour_${user.id}`;
+      if (localStorage.getItem(completionKey) === 'true') return;
 
       try {
-        const { data } = await supabase
-          .from('users')
-          .select('onboarding_completed')
-          .eq('id', user.id)
-          .maybeSingle();
+        const [profileResult, progressResult] = await Promise.all([
+          supabase
+            .from('users')
+            .select('onboarding_completed')
+            .eq('id', user.id)
+            .maybeSingle(),
+          supabase
+            .from('user_setup_progress')
+            .select('completed_steps')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+        ]);
+        if (!active) return;
 
-        if (!data?.onboarding_completed) {
+        if (profileResult.error && progressResult.error) {
+          console.error('Could not check whether onboarding was completed.', {
+            profileError: profileResult.error,
+            progressError: progressResult.error,
+          });
           startTour();
-        } else {
-          localStorage.setItem(`pf_tour_${user.id}`, 'true');
+          return;
         }
-      } catch {
-        startTour();
+
+        const completed =
+          profileResult.data?.onboarding_completed === true ||
+          progressResult.data?.completed_steps?.includes('tour') === true;
+
+        if (completed) {
+          localStorage.setItem(completionKey, 'true');
+        } else {
+          startTour();
+        }
+      } catch (error) {
+        if (active) {
+          console.error('Could not check whether onboarding was completed.', error);
+          startTour();
+        }
       }
     }
 
     checkTourStatus();
+    return () => {
+      active = false;
+    };
   }, [user?.id]);
 
   const goToStep = (index: number) => {
@@ -190,11 +219,53 @@ export default function OnboardingTour() {
     setSubmitting(true);
     try {
       if (user?.id) {
-        localStorage.setItem(`pf_tour_${user.id}`, 'true');
-        await supabase
+        const completionKey = `pf_tour_${user.id}`;
+        localStorage.setItem(completionKey, 'true');
+        let isPersisted = false;
+
+        const profileResult = await supabase
           .from('users')
           .update({ onboarding_completed: true })
-          .eq('id', user.id);
+          .eq('id', user.id)
+          .select('id')
+          .maybeSingle();
+        if (profileResult.error) {
+          console.error('Could not save onboarding completion to the user profile.', profileResult.error);
+        } else {
+          isPersisted = Boolean(profileResult.data?.id);
+        }
+
+        const progressResult = await supabase
+          .from('user_setup_progress')
+          .select('completed_steps')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (progressResult.error) {
+          console.error('Could not read shared onboarding progress.', progressResult.error);
+        } else {
+          const completedSteps = new Set(progressResult.data?.completed_steps ?? []);
+          completedSteps.add('tour');
+          const saveProgressResult = await supabase
+            .from('user_setup_progress')
+            .upsert(
+              {
+                user_id: user.id,
+                completed_steps: [...completedSteps],
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+          if (saveProgressResult.error) {
+            console.error('Could not save shared onboarding progress.', saveProgressResult.error);
+          } else {
+            isPersisted = true;
+          }
+        }
+
+        if (!isPersisted) {
+          toast.error('The tour is complete, but we could not sync it to your account. It may appear again on another device.');
+        }
       }
 
       if (canMutateDatabase) {
