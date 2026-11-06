@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';
-import AddMemberModal from '../components/AddMemberModal';
+import ProjectInviteModal from '../components/ProjectInviteModal';
 import { toast } from 'sonner';
 
 import { SUPER_ADMIN_EMAIL, isSuperAdmin } from '../../lib/constants';
@@ -176,7 +176,7 @@ export default function Team() {
           className={`flex items-center gap-2 px-5 py-3 ${theme.btnPrimary} font-bold text-xs rounded-xl transition-all shadow-md active:scale-95`}
         >
           <UserPlus size={16} /> 
-          <span>Add Member</span>
+          <span>Invite to Project</span>
         </button>
       </div>
 
@@ -513,10 +513,10 @@ export default function Team() {
       )}
 
       {/* Add Member Modal */}
-      <AddMemberModal 
+      <ProjectInviteModal
         isOpen={isAddModalOpen} 
         onClose={() => setIsAddModalOpen(false)} 
-        onMemberAdded={fetchUsers} 
+        onAccessGranted={fetchUsers}
       />
 
     </div>

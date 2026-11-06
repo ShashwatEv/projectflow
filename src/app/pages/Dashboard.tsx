@@ -6,7 +6,7 @@ import {
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import CreateProjectModal from '../components/CreateProjectModal';
-import AddMemberModal from '../components/AddMemberModal';
+import ProjectInviteModal from '../components/ProjectInviteModal';
 
 interface ActivityItem {
   id: string;
@@ -304,10 +304,10 @@ export default function Dashboard() {
         onProjectCreated={fetchData}
       />
 
-      <AddMemberModal
+      <ProjectInviteModal
         isOpen={isAddMemberModalOpen}
         onClose={() => setIsAddMemberModalOpen(false)}
-        onMemberAdded={fetchData}
+        onAccessGranted={fetchData}
       />
     </div>
   );
