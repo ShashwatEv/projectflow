@@ -86,7 +86,6 @@ export default function NotificationsSettings() {
         .from('users')
         .update({
           notification_preferences: updated,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
 

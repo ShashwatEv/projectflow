@@ -165,7 +165,6 @@ export default function Profile() {
         phone: phone.trim(),
         bio: bio.trim(),
         avatar: selectedAvatar,
-        updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase

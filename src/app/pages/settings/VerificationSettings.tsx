@@ -132,7 +132,6 @@ export default function VerificationSettings() {
         .update({
           email_verified: true,
           is_verified: true,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
 

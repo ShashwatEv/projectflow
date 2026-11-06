@@ -116,7 +116,6 @@ export default function ProfileSettings() {
           role: finalRole,
           location: formData.location.trim(),
           phone: formData.phone.trim(),
-          updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
 
