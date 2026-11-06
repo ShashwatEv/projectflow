@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { 
-  Code2, GitBranch, FileCode, Save, RefreshCw, Key, 
+  Code2, GitBranch, Workflow, FileCode, Save, RefreshCw, Key,
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
   GitPullRequest, Lock, Unlock, FileDiff, Users, User,
   Plus, ArrowDownToLine, GitFork, WandSparkles, Search, ChevronDown, GripVertical,
@@ -15,10 +15,12 @@ import CodeStudioPRModal from '../components/CodeStudioPRModal';
 import MonacoDiffModal from '../components/MonacoDiffModal';
 import CodeEditReviewModal from '../components/CodeEditReviewModal';
 import StudioTerminal from '../components/StudioTerminal';
+import ProjectWorkflowCanvas from '../components/ProjectWorkflowCanvas';
 import { useStudioPresence } from '../../lib/useStudioPresence';
 import { dispatchAutomation } from '../../lib/automationTrigger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { toast } from 'sonner';
 import { recordAuditLog } from '../../lib/auditLogger';
 
@@ -27,6 +29,7 @@ import { isUserVerified, isSuperAdmin as checkIsSuperAdmin } from '../../lib/con
 interface Project {
   id: string;
   name: string;
+  owner_id?: string | null;
   github_repo?: string;
   locked_file?: string | null;
   locked_by?: string | null;
@@ -82,17 +85,24 @@ function getGitHubHeaders(token: string): Record<string, string> {
 export default function CodeStudio() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
+  const { theme: colorMode } = useTheme();
   const { user, session } = useAuth();
+  const workflowQuery = new URLSearchParams(window.location.search);
+  const requestedWorkflowProject = workflowQuery.get('workflowProject');
+  const isWorkflowViewLink = workflowQuery.get('workflowView') === '1';
 
   const isSuperAdmin = checkIsSuperAdmin(user?.email, user?.role);
   const isVerified = isUserVerified(user, session);
+  const [studioMode, setStudioMode] = useState<'editor' | 'workflow'>(
+    requestedWorkflowProject || isWorkflowViewLink ? 'workflow' : 'editor'
+  );
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
 
   // Persisted state from localStorage
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
-    return localStorage.getItem('pf_selected_project_id') || '';
+    return requestedWorkflowProject || localStorage.getItem('pf_selected_project_id') || '';
   });
   const [repoInput, setRepoInput] = useState<string>(() => {
     return localStorage.getItem('pf_active_repo') || '';
@@ -232,8 +242,8 @@ export default function CodeStudio() {
       if (!error && data && data.length > 0) {
         setProjects(data);
 
-        const savedProjectId = localStorage.getItem('pf_selected_project_id');
-        const activeProj = data.find((p) => p.id === savedProjectId) || data[0];
+        const savedProjectId = requestedWorkflowProject || localStorage.getItem('pf_selected_project_id');
+        const activeProj = data.find((p) => p.id === savedProjectId) || (requestedWorkflowProject ? undefined : data[0]);
 
         if (activeProj) {
           setSelectedProjectId(activeProj.id);
@@ -249,7 +259,7 @@ export default function CodeStudio() {
     }
 
     loadProjects();
-  }, []);
+  }, [requestedWorkflowProject]);
 
   // 2. Real-time Cursor Broadcast Listener
   useEffect(() => {
@@ -1040,9 +1050,9 @@ export default function CodeStudio() {
     !isSuperAdmin;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] bg-[#0d1117] text-gray-200 overflow-hidden">
+    <div className="code-studio-page flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] bg-[#0d1117] text-gray-200 overflow-hidden" data-theme={colorMode}>
       {/* Top Studio Bar */}
-      <div className="h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
+      <div className="code-studio-topbar h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
         <div className="flex items-center gap-2.5">
           <Code2 className="text-indigo-400" size={20} />
           <h2 className="font-bold text-sm text-white hidden md:block">Code Studio</h2>
@@ -1070,6 +1080,27 @@ export default function CodeStudio() {
               </option>
             ))}
           </select>
+
+          <div className="flex items-center rounded-lg border border-gray-700 bg-[#0d1117] p-0.5">
+            <button
+              type="button"
+              onClick={() => setStudioMode('editor')}
+              className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                studioMode === 'editor' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Code
+            </button>
+            <button
+              type="button"
+              onClick={() => setStudioMode('workflow')}
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                studioMode === 'workflow' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <Workflow size={12} /> Workflow
+            </button>
+          </div>
 
           {/* Repo Input */}
           <div className="flex items-center gap-1.5 bg-[#0d1117] border border-gray-700 rounded-lg px-2 py-1">
@@ -1353,7 +1384,17 @@ export default function CodeStudio() {
       )}
 
       {/* Main Studio Area */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      {studioMode === 'workflow' ? (
+        <ProjectWorkflowCanvas
+          projectId={selectedProjectId || null}
+          projectName={activeProject?.name}
+          projectOwnerId={activeProject?.owner_id}
+          currentUserId={user?.id}
+          isAdmin={isSuperAdmin}
+          forceReadOnly={isWorkflowViewLink}
+        />
+      ) : (
+      <div className="code-studio-workspace flex flex-1 min-h-0 overflow-hidden" data-theme={colorMode}>
         {fileAction && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
             <section
@@ -1591,7 +1632,7 @@ export default function CodeStudio() {
 
             <Editor
               height="100%"
-              theme="vs-dark"
+              theme={colorMode === 'dark' ? 'vs-dark' : 'light'}
               language={getLanguageFromPath(activeFile)}
               value={activeFileContent}
               onMount={handleEditorDidMount}
@@ -1921,6 +1962,7 @@ export default function CodeStudio() {
           </>
         )}
       </div>
+      )}
 
       {/* Monaco Diff Modal */}
       <MonacoDiffModal

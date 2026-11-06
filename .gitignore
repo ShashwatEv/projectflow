@@ -18,3 +18,5 @@ snap.py
 project_snapshot_new.txt
 202611060002_harden_user_profile_reads.sql
 202611060001_project_membership_and_task_priority.sql
+202611060004_workflow_history_runs_templates.sql
+202611060003_project_workflows.sql

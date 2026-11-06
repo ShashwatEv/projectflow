@@ -300,3 +300,101 @@ a[role="button"]:active {
     transition: none;
   }
 }
+
+.code-studio-page[data-theme="light"] {
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+.code-studio-topbar[data-theme="light"],
+.code-studio-page[data-theme="light"] .code-studio-topbar {
+  background-color: #ffffff;
+  border-color: #d1d5db;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="bg-[#0d1117]"] {
+  background-color: #f8fafc !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="border-gray-700"],
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="border-gray-800"] {
+  border-color: #d1d5db !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="text-gray-300"],
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="text-gray-400"] {
+  color: #4b5563 !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar h2[class~="text-white"] {
+  color: #111827 !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar :is(input, select)[class~="text-white"] {
+  color: #111827 !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="bg-gray-800"] {
+  background-color: #e5e7eb !important;
+}
+
+.code-studio-page[data-theme="light"] .code-studio-topbar [class~="hover:bg-gray-700"]:hover {
+  background-color: #d1d5db !important;
+}
+
+.code-studio-workspace[data-theme="light"] {
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="bg-[#0d1117]"],
+.code-studio-workspace[data-theme="light"] [class~="bg-gray-900"] {
+  background-color: #f8fafc !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="bg-[#161b22]"] {
+  background-color: #ffffff !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="bg-[#11161e]"],
+.code-studio-workspace[data-theme="light"] [class~="bg-[#1f242c]"],
+.code-studio-workspace[data-theme="light"] [class~="bg-gray-800"] {
+  background-color: #f3f4f6 !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="bg-gray-700"] {
+  background-color: #e5e7eb !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="border-gray-800"],
+.code-studio-workspace[data-theme="light"] [class~="border-gray-800/80"],
+.code-studio-workspace[data-theme="light"] [class~="border-gray-800/60"],
+.code-studio-workspace[data-theme="light"] [class~="border-gray-700"] {
+  border-color: #d1d5db !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="text-gray-100"],
+.code-studio-workspace[data-theme="light"] [class~="text-gray-200"],
+.code-studio-workspace[data-theme="light"] [class~="text-gray-300"] {
+  color: #374151 !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="text-gray-400"],
+.code-studio-workspace[data-theme="light"] [class~="text-gray-500"] {
+  color: #6b7280 !important;
+}
+
+.code-studio-workspace[data-theme="light"] :is(h1, h2, h3, h4, p, span, label)[class~="text-white"]:not(button *) {
+  color: #111827 !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="bg-[#0d1117]"][class~="text-white"],
+.code-studio-workspace[data-theme="light"] :is(input, select, textarea)[class~="text-white"] {
+  color: #111827 !important;
+}
+
+.code-studio-workspace[data-theme="light"] [class~="hover:bg-gray-800"]:hover,
+.code-studio-workspace[data-theme="light"] [class~="hover:bg-gray-800/50"]:hover,
+.code-studio-workspace[data-theme="light"] [class~="hover:bg-gray-700"]:hover {
+  background-color: #e5e7eb !important;
+}
