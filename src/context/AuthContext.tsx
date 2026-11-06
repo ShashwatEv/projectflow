@@ -90,6 +90,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    if (!session?.user) return;
+
+    const handleProfileUpdated = () => {
+      void fetchProfile(session.user.id, session.user.email ?? '', session.user.user_metadata);
+    };
+    window.addEventListener('user-profile-updated', handleProfileUpdated);
+    return () => window.removeEventListener('user-profile-updated', handleProfileUpdated);
+  }, [session?.user?.id]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {

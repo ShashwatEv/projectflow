@@ -245,12 +245,34 @@ export default function Messages() {
   }, [currentRoomId, user?.id, chatWallpaper]);
 
   useEffect(() => {
+    let active = true;
     async function fetchUsers() {
-      const { data, error } = await supabase.from('user_profiles').select('id, name, avatar, email, role');
-      if (data && !error) setUsers(data);
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, name, avatar, email, role');
+      if (error) {
+        console.warn('Could not load workspace member profiles:', error);
+        return;
+      }
+      if (!active || !data) return;
+
+      setUsers(data);
+      const profilesById = new Map(data.map((profile: TeamUser) => [profile.id, profile]));
+      setMessages((current) => current.map((message) => {
+        const profile = profilesById.get(message.user_id);
+        return profile
+          ? { ...message, user: { name: profile.name, avatar: profile.avatar } }
+          : message;
+      }));
     }
-    fetchUsers();
-  }, []);
+    const handleProfileUpdated = () => void fetchUsers();
+    void fetchUsers();
+    window.addEventListener('user-profile-updated', handleProfileUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('user-profile-updated', handleProfileUpdated);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     setMessages([]);
@@ -344,14 +366,23 @@ export default function Messages() {
 
   const handleMessageChange = async (payload: any) => {
     if (payload.eventType === 'INSERT') {
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('user_profiles')
         .select('name, avatar')
         .eq('id', payload.new.user_id)
         .single();
+      if (userError) {
+        console.warn('Could not load the sender profile for a new message:', userError);
+      }
       setMessages((prev) => {
         if (prev.some((message) => message.id === payload.new.id)) return prev;
-        return [...prev, { ...payload.new, user: userData, message_reactions: [] }];
+        return [...prev, {
+          ...payload.new,
+          user: userData || (payload.new.user_id === user?.id
+            ? { name: user?.name || 'User', avatar: user?.avatar || '/pfp.jpg' }
+            : { name: 'User', avatar: '/pfp.jpg' }),
+          message_reactions: [],
+        }];
       });
       setLastMessagePreviews((current) => ({ ...current, [currentRoomId]: payload.new.content || '' }));
       if (payload.new.user_id !== user?.id) {
@@ -415,7 +446,7 @@ export default function Messages() {
     const requestId = ++fetchRequestIdRef.current;
     let query = supabase
       .from('messages')
-      .select('*, user:users(name, avatar), message_reactions(*)')
+      .select('*, message_reactions(*)')
       .eq('room_id', currentRoomId);
 
     const normalizedSearch = search.trim();
@@ -434,7 +465,30 @@ export default function Messages() {
       return;
     }
 
-    const page = (data || []).reverse() as Message[];
+    const rawPage = (data || []).reverse() as Message[];
+    const senderIds = [...new Set(rawPage.map((message) => message.user_id))];
+    const { data: profileData, error: profilesError } = senderIds.length
+      ? await supabase
+        .from('user_profiles')
+        .select('id, name, avatar')
+        .in('id', senderIds)
+      : { data: [], error: null };
+    if (profilesError) {
+      console.warn('Could not load chat sender profiles:', profilesError);
+    }
+
+    const profilesById = new Map(
+      (profileData || []).map((profile: { id: string; name: string | null; avatar: string | null }) => [
+        profile.id,
+        { name: profile.name || 'User', avatar: profile.avatar || '/pfp.jpg' },
+      ])
+    );
+    const page = rawPage.map((message) => ({
+      ...message,
+      user: profilesById.get(message.user_id) || (message.user_id === user?.id
+        ? { name: user?.name || 'User', avatar: user?.avatar || '/pfp.jpg' }
+        : { name: 'User', avatar: '/pfp.jpg' }),
+    }));
     if (requestId !== fetchRequestIdRef.current) return;
     if (reset) {
       oldestMessageAtRef.current = page[0]?.created_at || null;
@@ -1084,6 +1138,9 @@ export default function Messages() {
                         msg.user?.avatar ||
                         `https://ui-avatars.com/api/?name=${msg.user?.name || 'User'}`
                       }
+                      onError={(event) => {
+                        event.currentTarget.src = '/pfp.jpg';
+                      }}
                       className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover"
                       alt="avatar"
                     />

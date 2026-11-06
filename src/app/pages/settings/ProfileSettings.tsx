@@ -7,6 +7,7 @@ import {
   ChevronDown, BadgeCheck 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getGoogleProfilePhoto } from '../../../lib/profileAvatar';
 
 import { isSuperAdmin as checkIsSuperAdmin } from '../../../lib/constants';
 
@@ -29,12 +30,14 @@ export default function ProfileSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [googleAvatar, setGoogleAvatar] = useState<string | null>(null);
   const avatarMenuRef = useRef<HTMLDivElement>(null);
 
   const avatars = [
     { src: '/male.jpg', label: 'Male' },
     { src: '/female.jpg', label: 'Female' },
     { src: '/pfp.jpg', label: 'Default' },
+    ...(googleAvatar ? [{ src: googleAvatar, label: 'Google photo' }] : []),
   ];
 
   // "Admin" is removed completely from the selectable list
@@ -54,6 +57,7 @@ export default function ProfileSettings() {
       try {
         const { data: authData } = await supabase.auth.getUser();
         const authUser = authData?.user;
+        setGoogleAvatar(getGoogleProfilePhoto(authUser));
         const isAuthEmailConfirmed = Boolean(authUser?.email_confirmed_at);
 
         const { data: dbData } = await supabase
@@ -124,6 +128,7 @@ export default function ProfileSettings() {
       localStorage.setItem('pf_user_name', formData.name.trim());
       localStorage.setItem('pf_user_avatar', formData.avatar);
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('user-profile-updated'));
 
       setIsLoading(false);
       setSuccess(true);

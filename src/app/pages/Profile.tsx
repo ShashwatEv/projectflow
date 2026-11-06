@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
+import { getGoogleProfilePhoto } from '../../lib/profileAvatar';
 
 import { isSuperAdmin } from '../../lib/constants';
 
@@ -48,11 +49,13 @@ export default function Profile() {
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('/pfp.jpg');
+  const [googleAvatar, setGoogleAvatar] = useState<string | null>(null);
 
   const avatarOptions = [
     { id: 'male', src: '/male.jpg', label: 'Male' },
     { id: 'female', src: '/female.jpg', label: 'Female' },
     { id: 'default', src: '/pfp.jpg', label: 'Default' },
+    ...(googleAvatar ? [{ id: 'google', src: googleAvatar, label: 'Google photo' }] : []),
   ];
 
   // 1. Fetch user data & task metrics from Supabase
@@ -66,6 +69,7 @@ export default function Profile() {
       setCurrentAuthId(currentId);
 
       const targetUserId = paramUserId || currentId;
+      setGoogleAvatar(targetUserId === currentId ? getGoogleProfilePhoto(authUser) : null);
 
       // Fetch user profile row
       const { data, error } = await supabase
@@ -178,6 +182,7 @@ export default function Profile() {
       localStorage.setItem('pf_user_name', fullName.trim());
       localStorage.setItem('pf_user_avatar', selectedAvatar);
       window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('user-profile-updated'));
 
       setProfile((prev) => (prev ? { ...prev, ...updates } : null));
       toast.success('Profile credentials synchronized!');
