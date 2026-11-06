@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function Signup() {
         password,
         options: {
           data: {
+            name: name.trim(),
             full_name: name.trim(),
             avatar_url: selectedAvatar,
           },
@@ -176,6 +178,18 @@ export default function Signup() {
             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Create Account'}
           </button>
         </form>
+
+        <div className="relative py-1">
+          <div className="absolute inset-0 flex items-center" aria-hidden="true">
+            <div className="w-full border-t border-gray-200 dark:border-gray-800" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs text-gray-500 dark:bg-[#161b22] dark:text-gray-400">
+              or
+            </span>
+          </div>
+        </div>
+        <GoogleSignInButton />
 
         {/* Footer Link */}
         <div className="text-center pt-2 border-t border-gray-100 dark:border-gray-800/80">
