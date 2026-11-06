@@ -21,3 +21,4 @@ project_snapshot_new.txt
 202611060004_workflow_history_runs_templates.sql
 202611060003_project_workflows.sql
 202611060005_fix_user_insert_trigger.sql
+202611060006_project_invite_codes.sql
