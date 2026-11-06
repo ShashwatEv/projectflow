@@ -54,7 +54,7 @@ export default function Team() {
   const fetchUsers = async () => {
     try {
       const { data, error } = await supabase
-        .from('users')
+        .from('user_profiles')
         .select('*')
         .order('name', { ascending: true });
 

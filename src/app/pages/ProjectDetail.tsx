@@ -191,7 +191,7 @@ export default function ProjectDetail() {
 
   const fetchTeamMembers = async () => {
     try {
-      const { data, error } = await supabase.from('users').select('id, name, email, avatar, role');
+      const { data, error } = await supabase.from('user_profiles').select('id, name, email, avatar, role');
       if (data && !error) setTeamMembers(data);
     } catch (err) {
       console.error('Error fetching team members:', err);

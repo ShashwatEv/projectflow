@@ -60,7 +60,7 @@ export default function Projects() {
       if (projectError) throw projectError;
 
       const { data: userData } = await supabase
-        .from('users')
+        .from('user_profiles')
         .select('id, name, avatar');
 
       const userMap = new Map((userData || []).map((u) => [u.id, u]));

@@ -49,7 +49,7 @@ export default function Dashboard() {
       const newProjectsThisWeek = projects?.filter(p => new Date(p.created_at) >= oneWeekAgo).length || 0;
 
       const { data: users, error: usersError } = await supabase
-        .from('users')
+        .from('user_profiles')
         .select('id, status');
       if (usersError) throw usersError;
 

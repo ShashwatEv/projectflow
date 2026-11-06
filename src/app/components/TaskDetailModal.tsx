@@ -80,7 +80,7 @@ export default function TaskDetailModal({
 
       const userIds = [...new Set((data || []).map((comment) => comment.user_id))];
       const { data: authors, error: authorsError } = userIds.length
-        ? await supabase.from('users').select('id, name, avatar').in('id', userIds)
+        ? await supabase.from('user_profiles').select('id, name, avatar').in('id', userIds)
         : { data: [], error: null };
       if (authorsError) throw authorsError;
       const authorById = new Map((authors || []).map((author) => [author.id, author]));
@@ -143,7 +143,7 @@ export default function TaskDetailModal({
   useEffect(() => {
     let active = true;
     supabase
-      .from('users')
+      .from('user_profiles')
       .select('id, name')
       .then(({ data, error }) => {
         if (error) {

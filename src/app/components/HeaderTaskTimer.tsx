@@ -90,13 +90,16 @@ export default function HeaderTaskTimer() {
 
       // Save to timesheets
       if (hoursLogged > 0.005) {
-        await supabase.from('timesheets').insert({
+        const { error } = await supabase.from('timesheets').insert({
           user_id: user.id,
           task_id: activeTask.id,
           hours: Math.max(0.1, hoursLogged),
+          duration_minutes: Math.max(1, Math.round(elapsedSec / 60)),
           description: `Logged via Live Header Timer on "${activeTask.title}"`,
           date: new Date().toISOString().split('T')[0],
+          status: 'approved',
         });
+        if (error) throw error;
         toast.success(`Logged ${Math.max(0.1, hoursLogged)} hrs to Timesheets!`);
       } else {
         toast.info('Session stopped (under 30s, discarded).');

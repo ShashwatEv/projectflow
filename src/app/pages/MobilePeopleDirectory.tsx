@@ -28,7 +28,7 @@ export default function MobilePeopleDirectory() {
     setLoading(true);
     setLoadError(null);
     const { data, error } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('id, name, role, avatar, is_verified')
       .order('name', { ascending: true });
 

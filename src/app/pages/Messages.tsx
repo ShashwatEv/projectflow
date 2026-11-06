@@ -246,7 +246,7 @@ export default function Messages() {
 
   useEffect(() => {
     async function fetchUsers() {
-      const { data, error } = await supabase.from('users').select('id, name, avatar, email, role');
+      const { data, error } = await supabase.from('user_profiles').select('id, name, avatar, email, role');
       if (data && !error) setUsers(data);
     }
     fetchUsers();
@@ -345,7 +345,7 @@ export default function Messages() {
   const handleMessageChange = async (payload: any) => {
     if (payload.eventType === 'INSERT') {
       const { data: userData } = await supabase
-        .from('users')
+        .from('user_profiles')
         .select('name, avatar')
         .eq('id', payload.new.user_id)
         .single();

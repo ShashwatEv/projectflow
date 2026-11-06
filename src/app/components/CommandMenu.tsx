@@ -75,7 +75,7 @@ export default function CommandMenu() {
       const { data: projData } = await supabase.from('projects').select('id, name, status').limit(8);
       if (projData) setProjects(projData);
 
-      const { data: userData } = await supabase.from('users').select('id, name, role, avatar').limit(8);
+      const { data: userData } = await supabase.from('user_profiles').select('id, name, role, avatar').limit(8);
       if (userData) setUsers(userData);
     }
 

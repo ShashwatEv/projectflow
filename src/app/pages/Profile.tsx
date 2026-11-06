@@ -69,7 +69,7 @@ export default function Profile() {
 
       // Fetch user profile row
       const { data, error } = await supabase
-        .from('users')
+        .from(targetUserId === currentId ? 'users' : 'user_profiles')
         .select('*')
         .eq('id', targetUserId)
         .single();
