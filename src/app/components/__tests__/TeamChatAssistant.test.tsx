@@ -210,6 +210,34 @@ describe('TeamChatAssistant', () => {
     );
   });
 
+  it('posts the generated response publicly for an explicit @AI request', async () => {
+    const onPublicReply = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TeamChatAssistant
+        isOpen
+        onClose={vi.fn()}
+        messages={[{ content: 'hello @AI', user: { name: 'Rae' } }]}
+        initialPrompt="hello"
+        publicReplyRoom="room-1"
+        onPublicReply={onPublicReply}
+      />
+    );
+
+    await screen.findByText(/the generated answer will be posted publicly in this team chat/i);
+    fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
+      target: { value: 'user-owned-test-key' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow sending chat data to OpenRouter' }));
+    fireEvent.click(screen.getByRole('button', { name: /Test & connect/ }));
+    await screen.findByText('OpenRouter key verified');
+    fireEvent.click(screen.getByRole('button', { name: 'Generate AI reply in team chat' }));
+
+    await waitFor(() => expect(onPublicReply).toHaveBeenCalledWith(
+      'Platform is active. What would you like to work on?',
+      'room-1'
+    ));
+  });
+
   it('turns an AI task proposal into a review draft and creates it only after confirmation', async () => {
     mocks.askAgent.mockResolvedValue(JSON.stringify({
       reply: 'I suggest adding an audit logging task to Platform. Please review the draft.',

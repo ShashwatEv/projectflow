@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractExplicitTaskTitle,
+  getTeamChatAssistantMentionPrompt,
   findTaskSuggestions,
   getAssistantCapabilitiesReply,
   getAssistantContextErrorMessage,
@@ -14,6 +15,13 @@ describe('team chat assistant intent helpers', () => {
     expect(extractExplicitTaskTitle('create task: Add audit logging.')).toBe('Add audit logging');
     expect(extractExplicitTaskTitle('what tasks are open?')).toBeNull();
     expect(extractExplicitTaskTitle(`create task: ${'x'.repeat(181)}`)).toBeNull();
+  });
+
+  it('extracts an @AI request from a team chat message', () => {
+    expect(getTeamChatAssistantMentionPrompt('@AI')).toBe('Please respond to the recent team discussion.');
+    expect(getTeamChatAssistantMentionPrompt('hello @AI')).toBe('hello');
+    expect(getTeamChatAssistantMentionPrompt('@AI, summarize the release decision')).toBe('summarize the release decision');
+    expect(getTeamChatAssistantMentionPrompt('hello team')).toBeNull();
   });
 
   it('extracts distinct actionable discussion items without treating ordinary chat as tasks', () => {
