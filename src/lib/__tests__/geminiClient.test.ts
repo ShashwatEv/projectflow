@@ -65,7 +65,9 @@ describe('geminiClient', () => {
       const options = mockedFetch.mock.calls[0]?.[1];
       const headers = options?.headers as Record<string, string>;
       expect((headers.Authorization || '').startsWith('Bearer ')).toBe(true);
-      expect(JSON.parse(String(options?.body)).messages).toEqual([
+      const requestBody = JSON.parse(String(options?.body));
+      expect(requestBody.model).toBe('openrouter/free');
+      expect(requestBody.messages).toEqual([
         { role: 'system', content: 'system prompt' },
         { role: 'user', content: 'Authorized project context' },
         { role: 'assistant', content: 'Previous answer' },
@@ -84,8 +86,10 @@ describe('geminiClient', () => {
       await verifyOpenRouterApiKey('personal-key');
       const options = mockedFetch.mock.calls[0]?.[1];
       expect((options?.headers as Record<string, string>).Authorization?.startsWith('Bearer ')).toBe(true);
+      const requestBody = JSON.parse(String(options?.body));
+      expect(requestBody.model).toBe('openrouter/free');
       expect(String(options?.body)).not.toContain('personal-key');
-      expect(JSON.parse(String(options?.body)).messages.at(-1)).toEqual({
+      expect(requestBody.messages.at(-1)).toEqual({
         role: 'user',
         content: 'Reply: Ready',
       });
@@ -98,6 +102,8 @@ describe('geminiClient', () => {
         .toContain('rate-limited this request');
       expect(getOpenRouterErrorMessage(new Error('Failed to fetch')))
         .toContain('Check your connection');
+      expect(getOpenRouterErrorMessage(new Error('This model is unavailable for free')))
+        .toContain('available free model');
     });
 
     it('returns false when API returns error', async () => {
