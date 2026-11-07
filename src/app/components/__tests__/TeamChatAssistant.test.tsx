@@ -88,7 +88,7 @@ describe('TeamChatAssistant', () => {
       />
     );
 
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('Ask the team chat assistant'), {
       target: { value: 'create task: Add alerts' },
     });
@@ -102,6 +102,32 @@ describe('TeamChatAssistant', () => {
       p_project_id: 'project-1',
       p_title: 'Add alerts',
       p_description: null,
+      p_priority: 'medium',
+    }));
+  });
+
+  it('turns a team decision into a task draft with its source and waits for confirmation', async () => {
+    const decision = 'Decision: add a release checklist before Friday.';
+    render(
+      <TeamChatAssistant
+        isOpen
+        onClose={vi.fn()}
+        messages={[{ content: decision, user: { name: 'Rae' } }]}
+      />
+    );
+
+    await screen.findByText('1 accessible project · 0 recent tasks');
+    expect(screen.getByText('Add a release checklist before Friday')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Review as task' }));
+    await screen.findByText('Review task before creating');
+    expect(screen.getByLabelText('Description (optional)')).toHaveValue(`Rae: ${decision}`);
+    expect(mocks.rpc).not.toHaveBeenCalledWith('create_chat_task', expect.anything());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm & create task' }));
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledWith('create_chat_task', {
+      p_project_id: 'project-1',
+      p_title: 'Add a release checklist before Friday',
+      p_description: `Rae: ${decision}`,
       p_priority: 'medium',
     }));
   });
@@ -134,7 +160,7 @@ describe('TeamChatAssistant', () => {
       />
     );
 
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     expect(screen.getByText('Add audit logging to exports')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Review as task/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Ask the team chat assistant'), {
@@ -155,7 +181,7 @@ describe('TeamChatAssistant', () => {
       />
     );
 
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'user-owned-test-key' },
     });
@@ -202,7 +228,7 @@ describe('TeamChatAssistant', () => {
       />
     );
 
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'user-owned-test-key' },
     });
@@ -235,7 +261,7 @@ describe('TeamChatAssistant', () => {
       />
     );
 
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'user-owned-test-key' },
     });
@@ -254,7 +280,7 @@ describe('TeamChatAssistant', () => {
       messages: [] as { content: string }[],
     };
     const { rerender } = render(<TeamChatAssistant isOpen {...props} />);
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'personal-key' },
     });
@@ -276,7 +302,7 @@ describe('TeamChatAssistant', () => {
   it('shows actionable guidance when OpenRouter rejects a key', async () => {
     mocks.verifyKey.mockRejectedValue(new Error('HTTP 401 (Unauthorized)'));
     render(<TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />);
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'invalid-key' },
     });
@@ -286,9 +312,8 @@ describe('TeamChatAssistant', () => {
   });
 
   it('hands explicit code-edit requests to Code Studio without applying edits', async () => {
-    mocks.askAgent.mockResolvedValue(JSON.stringify({ reply: 'I can help prepare that edit for review.' }));
     render(<TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />);
-    await screen.findByText('1 accessible projects · 0 recent tasks');
+    await screen.findByText('1 accessible project · 0 recent tasks');
     fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
       target: { value: 'user-owned-test-key' },
     });
@@ -302,9 +327,42 @@ describe('TeamChatAssistant', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Continue in Code Studio' }));
     expect(mocks.navigate).toHaveBeenCalledWith('/code?assistantHandoff=1');
+    expect(mocks.askAgent).not.toHaveBeenCalled();
     expect(consumeTeamChatCodeHandoff('user-1')).toMatchObject({
       prompt: 'Please fix the bug in the login component',
       apiKey: 'user-owned-test-key',
     });
+  });
+
+  it('answers capability questions with supported features instead of a limitation list', async () => {
+    render(<TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />);
+    await screen.findByText('1 accessible project · 0 recent tasks');
+    fireEvent.change(screen.getByLabelText('Ask the team chat assistant'), {
+      target: { value: 'What can you do?' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send question to assistant' }));
+
+    expect(await screen.findByText(/answer questions using the project and task information/i)).toBeInTheDocument();
+    expect(screen.getByText(/prepare a task draft for you to review and confirm/i)).toBeInTheDocument();
+    expect(mocks.askAgent).not.toHaveBeenCalled();
+  });
+
+  it('immediately offers the Code Studio workflow for code-edit requests', async () => {
+    render(<TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />);
+    await screen.findByText('1 accessible project · 0 recent tasks');
+    fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
+      target: { value: 'user-owned-test-key' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow sending chat data to OpenRouter' }));
+    fireEvent.click(screen.getByRole('button', { name: /Test & connect/ }));
+    await screen.findByText('OpenRouter key verified');
+    fireEvent.change(screen.getByLabelText('Ask the team chat assistant'), {
+      target: { value: 'Please fix the bug in the login component' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send question to assistant' }));
+
+    expect(await screen.findByText(/I can help prepare that change in Code Studio/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue in Code Studio' })).toBeInTheDocument();
+    expect(mocks.askAgent).not.toHaveBeenCalled();
   });
 });
