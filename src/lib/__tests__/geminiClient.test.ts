@@ -67,6 +67,7 @@ describe('geminiClient', () => {
       expect((headers.Authorization || '').startsWith('Bearer ')).toBe(true);
       const requestBody = JSON.parse(String(options?.body));
       expect(requestBody.model).toBe('openrouter/free');
+      expect(requestBody.max_tokens).toBe(4096);
       expect(requestBody.messages).toEqual([
         { role: 'system', content: 'system prompt' },
         { role: 'user', content: 'Authorized project context' },
@@ -88,11 +89,41 @@ describe('geminiClient', () => {
       expect((options?.headers as Record<string, string>).Authorization?.startsWith('Bearer ')).toBe(true);
       const requestBody = JSON.parse(String(options?.body));
       expect(requestBody.model).toBe('openrouter/free');
+      expect(requestBody.max_tokens).toBe(512);
       expect(String(options?.body)).not.toContain('personal-key');
       expect(requestBody.messages.at(-1)).toEqual({
         role: 'user',
         content: 'Reply: Ready',
       });
+    });
+
+    it('reports when reasoning consumes the whole output budget and accepts text-part responses', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '', reasoning: 'thinking' }, finish_reason: 'length' }],
+          usage: { completion_tokens: 1800, completion_tokens_details: { reasoning_tokens: 1800 } },
+        }),
+      } as Response);
+
+      await expect(askProjectFlowChatAgent(
+        'system prompt',
+        [{ role: 'user', content: 'hi' }],
+        'explicit-user-key'
+      )).rejects.toThrow('output token budget for internal reasoning');
+
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: [{ type: 'text', text: 'Hello!' }] } }],
+        }),
+      } as Response);
+      await expect(askProjectFlowChatAgent(
+        'system prompt',
+        [{ role: 'user', content: 'hi' }],
+        'explicit-user-key'
+      )).resolves.toBe('Hello!');
     });
 
     it('converts common provider failures into actionable user guidance', () => {
@@ -104,6 +135,8 @@ describe('geminiClient', () => {
         .toContain('Check your connection');
       expect(getOpenRouterErrorMessage(new Error('This model is unavailable for free')))
         .toContain('available free model');
+      expect(getOpenRouterErrorMessage(new Error('The free model used its output token budget for internal reasoning')))
+        .toContain('spent its response limit thinking');
     });
 
     it('returns false when API returns error', async () => {
