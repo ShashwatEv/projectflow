@@ -17,8 +17,6 @@ begin
       select
         p.id,
         p.name,
-        p.key,
-        p.status,
         p.owner_id,
         (
           public.is_super_admin()
@@ -63,8 +61,8 @@ begin
             jsonb_build_object(
               'id', p.id,
               'name', p.name,
-              'key', p.key,
-              'status', p.status,
+              'key', null,
+              'status', null,
               'can_create_task', p.can_create_task
             ) order by p.name
           )

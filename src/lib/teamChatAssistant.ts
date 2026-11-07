@@ -8,6 +8,18 @@ export interface ChatTaskSuggestion {
   source: ChatAssistantMessage;
 }
 
+export interface AgentTaskProposal {
+  title: string;
+  description: string;
+  projectId: string;
+  priority: 'low' | 'medium' | 'high';
+}
+
+export interface AgentReply {
+  reply: string;
+  taskProposal?: AgentTaskProposal;
+}
+
 const ACTION_PHRASE =
   /\b(?:action item|todo|follow[\s-]?up|we should|we need to|let['’]s|lets|need to)\s*[:,-]?\s+(.+)/i;
 
@@ -15,6 +27,12 @@ export function extractExplicitTaskTitle(input: string) {
   const match = input.trim().match(/^(?:please\s+)?(?:create|add|make)\s+(?:a\s+)?task\s*[:-]\s*(.+)$/i);
   const title = match?.[1]?.trim().replace(/[.!?]+$/, '').trim();
   return title && title.length <= 180 ? title : null;
+}
+
+export function isCodeEditRequest(input: string) {
+  const asksForChange = /\b(?:edit|change|update|refactor|fix|implement|modify|create|delete|rename|remove|build)\b/i.test(input);
+  const mentionsCode = /\b(?:code|file|files|repository|repo|source|function|component|class|bug|codestudio)\b/i.test(input);
+  return asksForChange && mentionsCode;
 }
 
 export function findTaskSuggestions(messages: ChatAssistantMessage[]): ChatTaskSuggestion[] {
@@ -34,4 +52,70 @@ export function findTaskSuggestions(messages: ChatAssistantMessage[]): ChatTaskS
   }
 
   return suggestions;
+}
+
+export function parseAgentReply(rawResponse: string): AgentReply {
+  const trimmed = rawResponse.trim();
+  const jsonText = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  const start = jsonText.indexOf('{');
+  const end = jsonText.lastIndexOf('}');
+  if (start < 0 || end <= start) return { reply: trimmed.slice(0, 4000) };
+
+  let parsed: {
+    reply?: unknown;
+    taskProposal?: {
+      title?: unknown;
+      description?: unknown;
+      projectId?: unknown;
+      priority?: unknown;
+    } | null;
+  };
+  try {
+    parsed = JSON.parse(jsonText.slice(start, end + 1));
+  } catch {
+    return { reply: trimmed.slice(0, 4000) };
+  }
+
+  const reply = typeof parsed.reply === 'string' && parsed.reply.trim()
+    ? parsed.reply.trim().slice(0, 4000)
+    : 'I could not produce a response. Please try asking another way.';
+  const proposal = parsed.taskProposal;
+  if (
+    !proposal
+    || typeof proposal.title !== 'string'
+    || !proposal.title.trim()
+    || proposal.title.trim().length > 180
+    || typeof proposal.projectId !== 'string'
+  ) {
+    return { reply };
+  }
+
+  return {
+    reply,
+    taskProposal: {
+      title: proposal.title.trim(),
+      description: typeof proposal.description === 'string' ? proposal.description.slice(0, 2000) : '',
+      projectId: proposal.projectId,
+      priority: proposal.priority === 'low' || proposal.priority === 'high' ? proposal.priority : 'medium',
+    },
+  };
+}
+
+export function getAssistantContextErrorMessage(error: { code?: string; message?: string }) {
+  const message = (error.message || '').toLowerCase();
+  if (
+    error.code === '42703'
+    || (message.includes('column') && message.includes('does not exist'))
+  ) {
+    return 'The team-chat RPC expects columns that are not present in this Supabase project. Apply supabase/migrations/202611070002_team_chat_assistant_project_schema_compat.sql, then retry.';
+  }
+  if (
+    ['PGRST202', '42883'].includes(error.code || '')
+    || (message.includes('team_chat_assistant_context') && message.includes('not find'))
+  ) {
+    return 'The team-chat context function is not installed in this Supabase project. Apply supabase/migrations/202611070001_team_chat_assistant.sql to the linked project, then retry.';
+  }
+  return 'Project and task context could not be loaded. Confirm this app is configured for the intended Supabase project, check your connection and account access, then retry.';
 }

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseCodeEditResponse, verifyOpenRouterConnection } from '../../lib/geminiClient';
+import {
+  askProjectFlowChatAgent,
+  getOpenRouterErrorMessage,
+  parseCodeEditResponse,
+  verifyOpenRouterApiKey,
+  verifyOpenRouterConnection,
+} from '../../lib/geminiClient';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -37,6 +43,61 @@ describe('geminiClient', () => {
           }),
         })
       );
+    });
+
+    it('sends an explicit conversational thread to OpenRouter using the supplied key', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"reply":"hello","taskProposal":null}' } }] }),
+      } as Response);
+
+      await askProjectFlowChatAgent(
+        'system prompt',
+        [
+          { role: 'user', content: 'Authorized project context' },
+          { role: 'assistant', content: 'Previous answer' },
+          { role: 'user', content: 'What next?' },
+        ],
+        'explicit-user-key'
+      );
+
+      const options = mockedFetch.mock.calls[0]?.[1];
+      const headers = options?.headers as Record<string, string>;
+      expect((headers.Authorization || '').startsWith('Bearer ')).toBe(true);
+      expect(JSON.parse(String(options?.body)).messages).toEqual([
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'Authorized project context' },
+        { role: 'assistant', content: 'Previous answer' },
+        { role: 'user', content: 'What next?' },
+      ]);
+      expect(String(options?.body)).not.toContain('explicit-user-key');
+    });
+
+    it('checks a pasted OpenRouter key with a minimal request', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Ready' } }] }),
+      } as Response);
+
+      await verifyOpenRouterApiKey('personal-key');
+      const options = mockedFetch.mock.calls[0]?.[1];
+      expect((options?.headers as Record<string, string>).Authorization?.startsWith('Bearer ')).toBe(true);
+      expect(String(options?.body)).not.toContain('personal-key');
+      expect(JSON.parse(String(options?.body)).messages.at(-1)).toEqual({
+        role: 'user',
+        content: 'Reply: Ready',
+      });
+    });
+
+    it('converts common provider failures into actionable user guidance', () => {
+      expect(getOpenRouterErrorMessage(new Error('HTTP 401 (Unauthorized)')))
+        .toContain('OpenRouter rejected this key');
+      expect(getOpenRouterErrorMessage(new Error('HTTP 429')))
+        .toContain('rate-limited this request');
+      expect(getOpenRouterErrorMessage(new Error('Failed to fetch')))
+        .toContain('Check your connection');
     });
 
     it('returns false when API returns error', async () => {
