@@ -120,7 +120,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-300">
+    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
           Dashboard Overview
@@ -223,7 +223,7 @@ export default function Dashboard() {
       {/* Activity & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Real Activity Stream */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div className="dashboard-panel bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recently Created Tasks</h3>
 
@@ -273,7 +273,7 @@ export default function Dashboard() {
         </div>
 
         {/* Action Panel */}
-        <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl text-white shadow-lg flex flex-col justify-between">
+        <div className="dashboard-spotlight bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl text-white shadow-lg flex flex-col justify-between">
           <div>
             <h3 className="font-bold text-xl mb-2">Ready to ship?</h3>
             <p className="text-indigo-100 text-sm mb-6 leading-relaxed">
@@ -329,7 +329,7 @@ function StatCard({ title, value, icon, trend, trendUp, to }: StatCardProps) {
       aria-label={`${title}: ${value}. Open related page`}
       className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
     >
-    <div className="h-full bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+    <div className="dashboard-stat-card h-full bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex justify-between items-start mb-4">
         <div className="p-2.5 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
           {icon}
