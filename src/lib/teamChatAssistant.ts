@@ -21,7 +21,7 @@ export interface AgentReply {
 }
 
 const ACTION_PHRASE =
-  /\b(?:action item|todo|follow[\s-]?up|we should|we need to|let['’]s|lets|need to)\s*[:,-]?\s+(.+)/i;
+  /\b(?:action item|todo|follow[\s-]?up|decision|we decided to|we agreed to|agreed to|we should|we need to|let['’]s|lets|need to)\s*[:,-]?\s+(.+)/i;
 
 export function extractExplicitTaskTitle(input: string) {
   const match = input.trim().match(/^(?:please\s+)?(?:create|add|make)\s+(?:a\s+)?task\s*[:-]\s*(.+)$/i);
@@ -35,13 +35,22 @@ export function isCodeEditRequest(input: string) {
   return asksForChange && mentionsCode;
 }
 
+export function isCapabilitiesQuestion(input: string) {
+  return /\b(?:what|which)\b.{0,30}\b(?:can you do|are your capabilities|can you help with|do you support)\b/i.test(input)
+    || /\bwhat can you help me with\b/i.test(input);
+}
+
+export function getAssistantCapabilitiesReply() {
+  return 'I can answer questions using the project and task information available to your account, discuss recent team-chat context, prepare a task draft for you to review and confirm, and help with code changes through Code Studio. For code, I pass your request to Code Studio so you choose the files and review the diff before applying it. What would you like to work on?';
+}
+
 export function findTaskSuggestions(messages: ChatAssistantMessage[]): ChatTaskSuggestion[] {
   const seen = new Set<string>();
   const suggestions: ChatTaskSuggestion[] = [];
 
   for (const message of messages.slice(-30).reverse()) {
     const match = message.content.match(ACTION_PHRASE);
-    const title = match?.[1]?.trim().replace(/[.!?]+$/, '').trim();
+    const title = match?.[1]?.split(/[\r\n]|(?<=[.!?])\s/)[0]?.trim().replace(/[.!?]+$/, '').trim();
     if (!title || title.length < 5 || title.length > 180) continue;
 
     const normalized = title.toLowerCase();

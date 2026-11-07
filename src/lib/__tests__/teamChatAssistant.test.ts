@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   extractExplicitTaskTitle,
   findTaskSuggestions,
+  getAssistantCapabilitiesReply,
   getAssistantContextErrorMessage,
+  isCapabilitiesQuestion,
   isCodeEditRequest,
   parseAgentReply,
 } from '../teamChatAssistant';
@@ -20,10 +22,16 @@ describe('team chat assistant intent helpers', () => {
       { content: 'Action item: add audit logging to exports.' },
       { content: 'We should add audit logging to exports!' },
       { content: 'Need to update the onboarding guide.' },
+      { content: 'Decision: update the deployment checklist. We agreed this is needed before release.' },
+      { content: 'We agreed to add a release checklist for the web app before Friday.' },
+      { content: 'We decided to add retries to uploads.' },
       { content: 'Anyone free for lunch?' },
     ]);
 
     expect(suggestions.map((suggestion) => suggestion.title)).toEqual([
+      'Add retries to uploads',
+      'Add a release checklist for the web app before Friday',
+      'Update the deployment checklist',
       'Update the onboarding guide',
       'Add audit logging to exports',
     ]);
@@ -33,6 +41,15 @@ describe('team chat assistant intent helpers', () => {
     expect(isCodeEditRequest('Please fix the bug in the login component')).toBe(true);
     expect(isCodeEditRequest('Can you explain how tasks work?')).toBe(false);
     expect(isCodeEditRequest('hi')).toBe(false);
+  });
+
+  it('recognizes capability questions and describes supported actions positively', () => {
+    expect(isCapabilitiesQuestion('What can you do?')).toBe(true);
+    expect(isCapabilitiesQuestion('What can you help me with?')).toBe(true);
+    expect(isCapabilitiesQuestion('What are your capabilities?')).toBe(true);
+    expect(isCapabilitiesQuestion('Hi')).toBe(false);
+    expect(getAssistantCapabilitiesReply()).toContain('help with code changes through Code Studio');
+    expect(getAssistantCapabilitiesReply()).toContain('task draft');
   });
 
   it('parses a bounded task proposal without turning it into an automatic action', () => {
