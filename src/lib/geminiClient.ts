@@ -3,12 +3,7 @@
  * Powered by OpenRouter OpenAI-compatible API
  */
 
-const PRIMARY_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free';
-const FALLBACK_MODELS = [
-  'meta-llama/llama-3.1-8b-instruct:free',
-  'google/gemini-2.0-flash-exp:free',
-  'qwen/qwen-2.5-coder-32b-instruct:free',
-];
+const FREE_MODEL_ROUTER = 'openrouter/free';
 
 export interface CodeEditContextFile {
   path: string;
@@ -50,9 +45,7 @@ async function requestOpenRouter(
     );
   }
 
-  let lastErrorMessage = '';
-  for (const model of [PRIMARY_MODEL, ...FALLBACK_MODELS]) {
-    try {
+  try {
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -62,7 +55,7 @@ async function requestOpenRouter(
           'X-Title': 'ProjectFlow Code Studio',
         },
         body: JSON.stringify({
-          model,
+          model: FREE_MODEL_ROUTER,
           messages: conversation
             ? [{ role: 'system' as const, content: systemMessage }, ...conversation]
             : [
@@ -76,22 +69,18 @@ async function requestOpenRouter(
 
       if (!response.ok) {
         const errorJson = await response.json().catch(() => null);
-        lastErrorMessage = errorJson?.error?.message || `HTTP ${response.status} (${response.statusText})`;
-        console.warn(`Model ${model} returned error: ${lastErrorMessage}. Trying next candidate...`);
-        continue;
+        const detail = errorJson?.error?.message || `HTTP ${response.status} (${response.statusText})`;
+        throw new Error(detail);
       }
 
       const data = await response.json();
       const reply = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
       if (typeof reply === 'string' && reply.trim()) return reply.trim();
-      lastErrorMessage = `Model ${model} returned an empty response.`;
-    } catch (error) {
-      lastErrorMessage = error instanceof Error ? error.message : 'Network request failed';
-      console.warn(`Failed call to ${model}:`, error);
-    }
+      throw new Error('OpenRouter returned an empty response.');
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error('Network request failed');
   }
-
-  throw new Error(lastErrorMessage || 'All available AI models failed or are temporarily unavailable.');
 }
 
 export async function askProjectFlowChatAgent(
@@ -154,6 +143,14 @@ export function getOpenRouterErrorMessage(error: unknown): string {
     || normalized.includes('load failed')
   ) {
     return 'Could not reach OpenRouter. Check your connection, browser extensions, and network access, then try again.';
+  }
+  if (
+    normalized.includes('unavailable for free')
+    || normalized.includes('no free models')
+    || normalized.includes('no endpoints found')
+    || normalized.includes('no provider')
+  ) {
+    return 'OpenRouter could not find an available free model for this request right now. Wait and try again, or check OpenRouter’s free-model availability.';
   }
   if (message) return `OpenRouter could not complete the request: ${message}`;
   return 'OpenRouter could not complete the request. Check the key and network, then try again.';
