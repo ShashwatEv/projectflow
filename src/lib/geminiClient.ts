@@ -19,6 +19,11 @@ export interface ProposedCodeEdit extends CodeEditContextFile {
   originalContent: string;
 }
 
+export interface OpenRouterChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 class CodeEditResponseError extends Error {}
 
 function getOpenRouterApiKey(): string {
@@ -34,9 +39,11 @@ async function requestOpenRouter(
   systemMessage: string,
   userContent: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  apiKeyOverride?: string,
+  conversation?: OpenRouterChatMessage[]
 ): Promise<string> {
-  const apiKey = getOpenRouterApiKey();
+  const apiKey = apiKeyOverride?.trim() || getOpenRouterApiKey();
   if (!apiKey) {
     throw new Error(
       'Missing OpenRouter API Key. Please configure VITE_OPENROUTER_API_KEY in your .env or save an OpenRouter key in local storage.'
@@ -56,10 +63,12 @@ async function requestOpenRouter(
         },
         body: JSON.stringify({
           model,
-          messages: [
-            { role: 'system', content: systemMessage },
-            { role: 'user', content: userContent },
-          ],
+          messages: conversation
+            ? [{ role: 'system' as const, content: systemMessage }, ...conversation]
+            : [
+              { role: 'system', content: systemMessage },
+              { role: 'user', content: userContent },
+            ],
           temperature,
           max_tokens: maxTokens,
         }),
@@ -85,13 +94,79 @@ async function requestOpenRouter(
   throw new Error(lastErrorMessage || 'All available AI models failed or are temporarily unavailable.');
 }
 
+export async function askProjectFlowChatAgent(
+  systemMessage: string,
+  conversation: OpenRouterChatMessage[],
+  apiKey: string
+): Promise<string> {
+  if (!apiKey.trim()) throw new Error('Enter an OpenRouter API key to start a chat.');
+  if (!conversation.length || conversation.at(-1)?.role !== 'user') {
+    throw new Error('The chat requires a latest user message.');
+  }
+  return requestOpenRouter(
+    systemMessage,
+    '',
+    1800,
+    0.4,
+    apiKey,
+    conversation.slice(-16)
+  );
+}
+
+export async function verifyOpenRouterApiKey(apiKey: string): Promise<void> {
+  if (!apiKey.trim()) throw new Error('Paste your OpenRouter API key first.');
+  await requestOpenRouter(
+    'You are checking whether this OpenRouter API key works. Reply with one short word.',
+    'Reply: Ready',
+    16,
+    0,
+    apiKey
+  );
+}
+
+export function getOpenRouterErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  const normalized = message.toLowerCase();
+  if (normalized.includes('missing openrouter api key')) {
+    return 'Paste an OpenRouter API key to connect.';
+  }
+  if (
+    normalized.includes('invalid api key')
+    || normalized.includes('authentication')
+    || normalized.includes('unauthorized')
+    || normalized.includes('http 401')
+  ) {
+    return 'OpenRouter rejected this key. Check that it is active and try again.';
+  }
+  if (
+    normalized.includes('insufficient credits')
+    || normalized.includes('no credits')
+    || normalized.includes('payment required')
+  ) {
+    return 'OpenRouter reports that this account has no available credits. Check your OpenRouter account or try a model with available credits.';
+  }
+  if (normalized.includes('rate limit') || normalized.includes('http 429')) {
+    return 'OpenRouter rate-limited this request. Wait a little and try again.';
+  }
+  if (
+    normalized.includes('failed to fetch')
+    || normalized.includes('network')
+    || normalized.includes('load failed')
+  ) {
+    return 'Could not reach OpenRouter. Check your connection, browser extensions, and network access, then try again.';
+  }
+  if (message) return `OpenRouter could not complete the request: ${message}`;
+  return 'OpenRouter could not complete the request. Check the key and network, then try again.';
+}
+
 /**
  * Ask AI Code Assistant for review, suggestions, explanations, or code generation.
  */
 export async function askGeminiCodeAssistant(
   prompt: string,
   currentCode: string = '',
-  currentFilename: string = ''
+  currentFilename: string = '',
+  apiKeyOverride?: string
 ): Promise<string> {
   const systemMessage = `You are an expert full-stack engineer and coding assistant inside ProjectFlow Code Studio.
 Analyze code snippets, answer architectural questions, detect bugs, and write clean, robust, and production-ready code.
@@ -99,7 +174,7 @@ Current File: ${currentFilename || 'untitled'}`;
   const userContent = currentCode.trim()
     ? `Context file (${currentFilename || 'source'}):\n\`\`\`\n${currentCode}\n\`\`\`\n\nPrompt:\n${prompt}`
     : prompt;
-  return requestOpenRouter(systemMessage, userContent, 2500, 0.2);
+  return requestOpenRouter(systemMessage, userContent, 2500, 0.2, apiKeyOverride);
 }
 
 export function parseCodeEditResponse(
@@ -158,7 +233,8 @@ export function parseCodeEditResponse(
 
 export async function generateCodeEdits(
   prompt: string,
-  contextFiles: CodeEditContextFile[]
+  contextFiles: CodeEditContextFile[],
+  apiKeyOverride?: string
 ): Promise<{ summary: string; edits: ProposedCodeEdit[] }> {
   if (!contextFiles.length || contextFiles.length > 5) {
     throw new Error('Select between one and five repository files for the coding assistant.');
@@ -173,7 +249,8 @@ export async function generateCodeEdits(
     systemMessage,
     JSON.stringify({ request: prompt, files: contextFiles }),
     12000,
-    0.1
+    0.1,
+    apiKeyOverride
   );
   return parseCodeEditResponse(response, contextFiles);
 }

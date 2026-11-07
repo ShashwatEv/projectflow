@@ -54,7 +54,7 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
    VITE_SUPER_ADMIN_EMAIL=your_admin_email@example.com
    ```
 
-   Do not put AI provider keys in `VITE_*` variables for a public build: Vite embeds them in browser assets. AI requests use a browser-local key instead.
+   Do not put AI provider keys in `VITE_*` variables for a public build: Vite embeds them in browser assets. The team-chat agent asks for a personal OpenRouter key in the chat panel, keeps it in memory only, and sends prompts directly to OpenRouter.
 
 3. **Run the local development server:**
    ```bash
@@ -67,6 +67,14 @@ Apply `supabase/migrations/202611010001_workspace_collaboration.sql` to the Supa
 
 The migration assumes the existing `messages` table uses `room_id`, `user_id`, and `created_at`, `message_reactions` uses `message_id` and `user_id`, tasks use `id`, `project_id`, `title`, `status`, `priority`, and `due_date`, and projects use `id` and `owner_id`. Confirm those columns against the target database first. Existing browser-local custom public channels are promoted to shared channels when a signed-in user first opens chat after the migration.
 
+### Team chat AI assistant setup
+
+The assistant needs the app's `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to point at the intended Supabase project, and the project's existing auth, `projects`, `tasks`, and `project_members` schema must be present. Apply `supabase/migrations/202611070001_team_chat_assistant.sql` to that same project after its existing schema migrations. If you already applied that migration and get a `column p.key does not exist` error, apply `supabase/migrations/202611070002_team_chat_assistant_project_schema_compat.sql` in the same project; it replaces the context RPC without relying on optional project `key` or `status` columns. Both migrations can be run in the Supabase Dashboard SQL Editor. A Supabase CLI project link is optional; it is only needed if you choose a CLI-based migration workflow. Never use a service-role key in the app.
+
+To chat with the AI, provide your own OpenRouter API key in the assistant panel, test the connection, and accept its data-sharing notice. Each prompt sends up to 15 recent messages from the currently open chat, the assistant conversation, and up to 100 project/task records the signed-in user can access to OpenRouter. The key is sent to OpenRouter from the browser, never to ProjectFlow's server. It is not saved unless the user opts in to remember it in browser storage for that account; browser storage is accessible to anyone using that browser profile, so do not save a key on a shared or untrusted device. The model can propose a task, but cannot create or change records; the user reviews and confirms, and the database checks project permissions again.
+
+For code-edit requests, use the assistant's **Continue in Code Studio** handoff. It opens the existing Code Studio editor with the request prefilled; select the tracked repository files to provide context, generate an edit proposal, inspect its diff, and explicitly apply it to local editor buffers. The app does not give the chat agent direct access to the machine's filesystem or terminal, does not create/delete files on the user's behalf, and never pushes proposed edits automatically. Existing Code Studio repository permissions, excluded environment-file checks, and file-lock checks still apply.
+
 Digest frequency is stored as a preference only. Actual daily/weekly email delivery needs a scheduler and an email provider; neither is configured by this application.
 
 ### Code Studio AI file edits
@@ -74,6 +82,8 @@ Digest frequency is stored as a preference only. Actual daily/weekly email deliv
 In Code Studio, use the file explorer's **File**, **Folder**, and **Delete** actions to create paths or stage file/folder deletions. New files open in a local editor buffer; new folders use a `.gitkeep` placeholder because GitHub does not track empty folders. Push a new file with the normal verified Push flow. Folder deletion stages all tracked files beneath it and applies them in one GitHub commit using **Push staged deletions**; pending deletions can be individually undone before pushing.
 
 For AI edits, open **AI Assist → Edit files**, select up to five tracked files (search by filename or folder path), describe the requested change, and inspect the generated Monaco diff. The assistant panel can be resized by dragging its divider (or with the arrow keys) and its width is remembered on the current browser. Allow or deny each proposed file independently, or use the bulk actions. Allowed changes are staged only in Code Studio's in-memory editor buffers; they are not written to GitHub. Review the normal diff and use the existing verified Push flow to commit. Selected source code is sent to the configured OpenRouter model. The assistant cannot access unselected paths, create files, run shell commands, or push changes.
+
+When opening Code Studio from the team-chat code handoff, the current user's OpenRouter key is passed through same-page memory for that session (not through the URL, browser storage, or ProjectFlow's server). Any remembered key is account-scoped and used only when the matching signed-in user is active.
 
 ---
 

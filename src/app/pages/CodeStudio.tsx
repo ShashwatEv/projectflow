@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant, generateCodeEdits, type ProposedCodeEdit } from '../../lib/geminiClient';
+import { consumeTeamChatCodeHandoff, getPersonalOpenRouterKeyStorageKey } from '../../lib/teamChatCodeHandoff';
 import { fetchBranches } from '../../lib/githubService';
 import CodeStudioPRModal from '../components/CodeStudioPRModal';
 import MonacoDiffModal from '../components/MonacoDiffModal';
@@ -90,6 +91,7 @@ export default function CodeStudio() {
   const workflowQuery = new URLSearchParams(window.location.search);
   const requestedWorkflowProject = workflowQuery.get('workflowProject');
   const isWorkflowViewLink = workflowQuery.get('workflowView') === '1';
+  const hasTeamChatAssistantHandoff = workflowQuery.get('assistantHandoff') === '1';
 
   const isSuperAdmin = checkIsSuperAdmin(user?.email, user?.role);
   const isVerified = isUserVerified(user, session);
@@ -154,6 +156,7 @@ export default function CodeStudio() {
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [handoffCredentials, setHandoffCredentials] = useState<{ userId: string; apiKey: string } | null>(null);
   const [aiEditMode, setAiEditMode] = useState(false);
   const [contextPaths, setContextPaths] = useState<string[]>([]);
   const [contextSearch, setContextSearch] = useState('');
@@ -166,6 +169,23 @@ export default function CodeStudio() {
   } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasTeamChatAssistantHandoff || !user?.id) return;
+    const handoff = consumeTeamChatCodeHandoff(user.id);
+    if (handoff) {
+      setShowAiDrawer(true);
+      setAiEditMode(true);
+      setAiPrompt(handoff.prompt);
+      setHandoffCredentials({ userId: handoff.userId, apiKey: handoff.apiKey });
+    } else {
+      toast.error('The Code Studio assistant request expired. Please retry from team chat.');
+    }
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('assistantHandoff');
+    window.history.replaceState(window.history.state, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+  }, [hasTeamChatAssistantHandoff, user?.id]);
 
   useEffect(() => {
     if (!isResizingAssistant) return;
@@ -904,7 +924,10 @@ export default function CodeStudio() {
           return { path, content };
         }));
 
-        const proposal = await generateCodeEdits(query, contextFiles);
+        const apiKey = (handoffCredentials?.userId === user?.id ? handoffCredentials?.apiKey || '' : '') || (
+          user?.id ? localStorage.getItem(getPersonalOpenRouterKeyStorageKey(user.id)) || undefined : undefined
+        );
+        const proposal = await generateCodeEdits(query, contextFiles, apiKey);
         setEditProposal({ ...proposal, repo: repoInput, branch: selectedBranch });
         setMessages((prev) => [...prev, {
           id: crypto.randomUUID(),
@@ -919,7 +942,10 @@ export default function CodeStudio() {
       const assistantFile = isAssistantExcludedPath(activeFile) ? '' : activeFile;
       const selectedCode = assistantFile ? editorRef.current?.getModel()?.getValueInRange(editorRef.current.getSelection()) : '';
       const assistantCode = selectedCode?.trim() ? selectedCode : assistantFile ? activeFileContent : '';
-      const res = await askGeminiCodeAssistant(query, assistantCode, assistantFile);
+      const apiKey = (handoffCredentials?.userId === user?.id ? handoffCredentials?.apiKey || '' : '') || (
+        user?.id ? localStorage.getItem(getPersonalOpenRouterKeyStorageKey(user.id)) || undefined : undefined
+      );
+      const res = await askGeminiCodeAssistant(query, assistantCode, assistantFile, apiKey);
       const botMsg: ChatMessage = {
         id: crypto.randomUUID(),
         sender: 'assistant',
