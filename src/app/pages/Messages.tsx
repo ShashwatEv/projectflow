@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Hash, Search, Plus, Smile, MessageSquare,
-  Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff
+  Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff, Sparkles
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -14,6 +14,7 @@ import TypingIndicator from '../components/TypingIndicator';
 import ChatFileButton from '../components/ChatFileButton';
 import ChatVoiceRecorder from '../components/ChatVoiceRecorder';
 import MessageBubble from '../components/MessageBubble';
+import TeamChatAssistant from '../components/TeamChatAssistant';
 import { triggerHaptic } from '../../lib/haptics';
 import { toast } from 'sonner';
 
@@ -57,7 +58,7 @@ const DEFAULT_CHANNELS: Channel[] = [
 
 export default function Messages() {
   const { user } = useAuth();
-  const { theme, accentColor, chatWallpaper } = useTheme();
+  const { theme, accentColor, chatWallpaper, reduceMotion } = useTheme();
   const navigate = useNavigate();
   const { roomId } = useParams<{ roomId: string }>();
   const currentRoomId = roomId || 'room_1';
@@ -89,6 +90,7 @@ export default function Messages() {
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesListRef = useRef<HTMLDivElement>(null);
@@ -96,10 +98,15 @@ export default function Messages() {
   const previousMessageCountRef = useRef(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const assistantButtonRef = useRef<HTMLButtonElement>(null);
   const oldestMessageAtRef = useRef<string | null>(null);
   const fetchRequestIdRef = useRef(0);
   const isCurrentRoomMutedRef = useRef(false);
   const { typingUsers, broadcastTyping } = useTyping(currentRoomId);
+  const closeAssistant = useCallback(() => {
+    setIsAssistantOpen(false);
+    window.requestAnimationFrame(() => assistantButtonRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     isCurrentRoomMutedRef.current = isCurrentRoomMuted;
@@ -355,14 +362,14 @@ export default function Messages() {
     if (messages.length > previousMessageCountRef.current) {
       const addedCount = messages.length - previousMessageCountRef.current;
       if (isAtLatestRef.current) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
         setNewMessageCount(0);
       } else {
         setNewMessageCount((count) => count + addedCount);
       }
     }
     previousMessageCountRef.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, reduceMotion]);
 
   const handleMessageChange = async (payload: any) => {
     if (payload.eventType === 'INSERT') {
@@ -973,6 +980,21 @@ export default function Messages() {
           </div>
 
           <div className="flex items-center gap-2">
+            {user?.id && (
+              <button
+                type="button"
+                ref={assistantButtonRef}
+                onClick={() => setIsAssistantOpen(true)}
+                aria-label="Open team chat assistant"
+                aria-controls="team-chat-assistant-panel"
+                aria-expanded={isAssistantOpen}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950"
+                title="Ask about accessible projects and tasks"
+              >
+                <Sparkles size={15} aria-hidden="true" />
+                <span className="hidden sm:inline">Assistant</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1179,7 +1201,7 @@ export default function Messages() {
               onClick={() => {
                 isAtLatestRef.current = true;
                 setNewMessageCount(0);
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                messagesEndRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
               }}
               className="sticky bottom-2 left-1/2 z-10 mx-auto flex min-h-10 -translate-x-1/2 items-center gap-2 rounded-full border border-indigo-200 bg-white/95 px-4 py-2 text-xs font-semibold text-indigo-700 shadow-lg backdrop-blur-md transition-colors hover:bg-indigo-50 dark:border-indigo-800 dark:bg-gray-900/95 dark:text-indigo-300 dark:hover:bg-gray-800"
             >
@@ -1234,7 +1256,7 @@ export default function Messages() {
                 }}
                 onFocus={() => {
                   if (isAtLatestRef.current) {
-                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 120);
+                    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }), 120);
                   }
                 }}
                 onKeyDown={(e) => {
@@ -1399,6 +1421,15 @@ export default function Messages() {
           </div>
         </div>
       )}
+
+      <TeamChatAssistant
+        isOpen={isAssistantOpen && Boolean(user?.id)}
+        onClose={closeAssistant}
+        messages={messages.map((message) => ({
+          content: message.content,
+          user: message.user,
+        }))}
+      />
 
       {isThemeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
