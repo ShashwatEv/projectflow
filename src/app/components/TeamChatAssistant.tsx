@@ -43,6 +43,9 @@ interface TeamChatAssistantProps {
   isOpen: boolean;
   onClose: () => void;
   messages: ChatAssistantMessage[];
+  initialPrompt?: string | null;
+  publicReplyRoom?: string | null;
+  onPublicReply?: (reply: string, roomId: string) => Promise<void>;
 }
 
 interface TaskDraft {
@@ -61,7 +64,14 @@ function isExplicitTaskRequest(prompt: string) {
   return /\b(?:create|make|add|prepare|draft)\b.{0,60}\btask\b/i.test(prompt);
 }
 
-export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamChatAssistantProps) {
+export default function TeamChatAssistant({
+  isOpen,
+  onClose,
+  messages,
+  initialPrompt,
+  publicReplyRoom,
+  onPublicReply,
+}: TeamChatAssistantProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectContext[]>([]);
@@ -82,6 +92,7 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
   const [draft, setDraft] = useState<TaskDraft | null>(null);
   const [creating, setCreating] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [pendingPublicReply, setPendingPublicReply] = useState(false);
   const suggestions = useMemo(() => findTaskSuggestions(messages), [messages]);
   const [editableProjectIds, setEditableProjectIds] = useState<Set<string>>(new Set());
   const panelRef = useRef<HTMLElement>(null);
@@ -116,6 +127,15 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen && initialPrompt && publicReplyRoom) {
+      setQuestion(initialPrompt);
+      setPendingPublicReply(true);
+    } else if (!initialPrompt || !publicReplyRoom) {
+      setPendingPublicReply(false);
+    }
+  }, [initialPrompt, isOpen, publicReplyRoom]);
 
   useEffect(() => {
     if (!isOpen || !user?.id) return;
@@ -204,6 +224,18 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
     });
   };
 
+  const publishReply = async (reply: string, roomId: string) => {
+    setAgentError('');
+    try {
+      await onPublicReply?.(reply, roomId);
+      setPendingPublicReply(false);
+    } catch (error) {
+      console.error('Could not post the team chat AI reply:', error);
+      setAgentError('The AI reply was generated, but could not be posted in this chat. Check your connection and try again.');
+      setPendingPublicReply(false);
+    }
+  };
+
   const handleAsk = async (event: FormEvent) => {
     event.preventDefault();
     const prompt = question.trim();
@@ -217,24 +249,35 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
         { role: 'assistant', content: getAssistantCapabilitiesReply() },
       ]);
       setQuestion('');
+      if (pendingPublicReply && publicReplyRoom && onPublicReply) {
+        await publishReply(getAssistantCapabilitiesReply(), publicReplyRoom);
+      }
       return;
     }
     const explicitTitle = extractExplicitTaskTitle(prompt);
     if (explicitTitle) {
       if (createableProjects.length) {
         prepareTask(explicitTitle);
+        const reply = 'I prepared a task draft from your request. Review the project, title, and details before confirming; nothing has been created yet.';
         setAgentMessages((current) => [
           ...current,
           { role: 'user', content: prompt },
-          { role: 'assistant', content: 'I prepared a task draft from your request. Review the project, title, and details before confirming; nothing has been created yet.' },
+          { role: 'assistant', content: reply },
         ]);
+        if (pendingPublicReply && publicReplyRoom && onPublicReply) {
+          await publishReply(reply, publicReplyRoom);
+        }
       } else {
         setDraft(null);
+        const reply = 'You can review project context, but creating tasks requires owner, editor, or admin access to a project.';
         setAgentMessages((current) => [
           ...current,
           { role: 'user', content: prompt },
-          { role: 'assistant', content: 'You can review project context, but creating tasks requires owner, editor, or admin access to a project.' },
+          { role: 'assistant', content: reply },
         ]);
+        if (pendingPublicReply && publicReplyRoom && onPublicReply) {
+          await publishReply(reply, publicReplyRoom);
+        }
       }
       setQuestion('');
       return;
@@ -257,6 +300,12 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
         },
       ]);
       setQuestion('');
+      if (pendingPublicReply && publicReplyRoom && onPublicReply) {
+        await publishReply(
+          'I can help prepare that change in Code Studio. Continue there, select the files you want to share, then review the proposed diff before applying it.',
+          publicReplyRoom
+        );
+      }
       return;
     }
     setAgentThinking(true);
@@ -283,6 +332,9 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
       const rawReply = await askProjectFlowChatAgent(systemMessage, conversation, providerApiKey);
       const parsedReply = parseAgentReply(rawReply);
       setAgentMessages((current) => [...current, { role: 'assistant', content: parsedReply.reply }]);
+      if (pendingPublicReply && publicReplyRoom && onPublicReply) {
+        await publishReply(parsedReply.reply, publicReplyRoom);
+      }
       const fallbackProjectId = createableProjects[0]?.id;
       if (parsedReply.taskProposal && isExplicitTaskRequest(prompt) && fallbackProjectId) {
         const projectId = editableProjectIds.has(parsedReply.taskProposal.projectId)
@@ -371,6 +423,11 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
         </header>
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
+          {pendingPublicReply && (
+            <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200">
+              This request came from <strong>@AI</strong>. After you send it, the generated answer will be posted publicly in this team chat. Accept the data-sharing notice below before generating.
+            </div>
+          )}
           <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/80 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/35">
             <div className="flex items-start gap-2.5">
               <Sparkles size={16} className="mt-0.5 shrink-0 text-indigo-600 dark:text-indigo-300" aria-hidden="true" />
@@ -483,7 +540,10 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
                 onChange={(event) => setProviderDisclosureAccepted(event.target.checked)}
                 className="mt-0.5 accent-indigo-600"
               />
-              <span>I understand each prompt sends this room's recent messages and my authorized project/task context to OpenRouter.</span>
+              <span>
+                I understand each prompt sends this room's recent messages and my authorized project/task context to OpenRouter.
+                {pendingPublicReply && ' The generated answer will also be posted publicly in this team chat.'}
+              </span>
             </label>
             {!providerApiKey && (
               <label className="mt-2 flex items-start gap-2 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
@@ -750,13 +810,19 @@ export default function TeamChatAssistant({ isOpen, onClose, messages }: TeamCha
             <button
               type="submit"
               disabled={!question.trim() || loading || agentThinking}
-              aria-label="Send question to assistant"
+              aria-label={pendingPublicReply ? 'Generate AI reply in team chat' : 'Send question to assistant'}
               className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-gray-900"
             >
-              <Send size={16} aria-hidden="true" />
+              {agentThinking ? (
+                <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ) : (
+                <Send size={16} aria-hidden="true" />
+              )}
             </button>
           </div>
-          <p className="mt-2 text-[10px] text-gray-400">Team decisions → reviewable tasks · code changes → Code Studio review</p>
+          <p className="mt-2 text-[10px] text-gray-400">
+            {pendingPublicReply ? 'Generate & reply in channel' : 'Team decisions → reviewable tasks · code changes → Code Studio review'}
+          </p>
         </form>
       </section>
     </div>

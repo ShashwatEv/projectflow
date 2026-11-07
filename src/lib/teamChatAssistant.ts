@@ -20,6 +20,15 @@ export interface AgentReply {
   taskProposal?: AgentTaskProposal;
 }
 
+export function getTeamChatAssistantMentionPrompt(content: string) {
+  if (!/@ai\b/i.test(content)) return null;
+  const prompt = content
+    .replace(/@ai\b/gi, '')
+    .replace(/^[\s,:;-]+|[\s,:;-]+$/g, '')
+    .trim();
+  return prompt || 'Please respond to the recent team discussion.';
+}
+
 const ACTION_PHRASE =
   /\b(?:action item|todo|follow[\s-]?up|decision|we decided to|we agreed to|agreed to|we should|we need to|let['’]s|lets|need to)\s*[:,-]?\s+(.+)/i;
 

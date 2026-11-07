@@ -15,6 +15,7 @@ import ChatFileButton from '../components/ChatFileButton';
 import ChatVoiceRecorder from '../components/ChatVoiceRecorder';
 import MessageBubble from '../components/MessageBubble';
 import TeamChatAssistant from '../components/TeamChatAssistant';
+import { getTeamChatAssistantMentionPrompt } from '../../lib/teamChatAssistant';
 import { triggerHaptic } from '../../lib/haptics';
 import { toast } from 'sonner';
 
@@ -91,6 +92,8 @@ export default function Messages() {
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [assistantMentionPrompt, setAssistantMentionPrompt] = useState<string | null>(null);
+  const [assistantMentionRoom, setAssistantMentionRoom] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesListRef = useRef<HTMLDivElement>(null);
@@ -111,6 +114,11 @@ export default function Messages() {
   useEffect(() => {
     isCurrentRoomMutedRef.current = isCurrentRoomMuted;
   }, [isCurrentRoomMuted]);
+
+  useEffect(() => {
+    setAssistantMentionPrompt(null);
+    setAssistantMentionRoom(null);
+  }, [currentRoomId]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -532,6 +540,7 @@ export default function Messages() {
     e.preventDefault();
     if (!newMessage.trim() || !user) return;
     const content = newMessage.trim();
+    const assistantPrompt = getTeamChatAssistantMentionPrompt(content);
     setNewMessage('');
     setShowInputEmojiPicker(false);
     triggerHaptic('tap');
@@ -553,7 +562,26 @@ export default function Messages() {
     } else {
       isAtLatestRef.current = true;
       setNewMessageCount(0);
+      if (assistantPrompt) {
+        setAssistantMentionPrompt(assistantPrompt);
+        setAssistantMentionRoom(currentRoomId);
+        setIsAssistantOpen(true);
+      }
     }
+  };
+
+  const postAssistantReply = async (reply: string, roomId: string) => {
+    if (!user || roomId !== currentRoomId) {
+      throw new Error('The active chat changed before the assistant reply could be posted.');
+    }
+    const { error } = await supabase.from('messages').insert({
+      room_id: roomId,
+      user_id: user.id,
+      content: `AI response: ${reply}`,
+    });
+    if (error) throw error;
+    setAssistantMentionPrompt(null);
+    setAssistantMentionRoom(null);
   };
 
   const handleFileUpload = async (url: string, type: string) => {
@@ -989,7 +1017,7 @@ export default function Messages() {
                 aria-controls="team-chat-assistant-panel"
                 aria-expanded={isAssistantOpen}
                 className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-950"
-                title="Ask about accessible projects and tasks"
+                title="Ask about projects and tasks, or mention @AI in chat for a channel reply"
               >
                 <Sparkles size={15} aria-hidden="true" />
                 <span className="hidden sm:inline">Assistant</span>
@@ -1269,7 +1297,7 @@ export default function Messages() {
                 placeholder={
                   isDM
                     ? `Message ${dmRecipient?.name || 'user'}...`
-                    : `Message #${currentChannel?.name || currentRoomId}...`
+                    : `Message #${currentChannel?.name || currentRoomId}... (use @AI for a reply)`
                 }
                 className="w-full pl-4 pr-16 py-3 bg-transparent border-0 outline-none text-xs sm:text-sm text-gray-900 dark:text-white transition-all placeholder-gray-400 resize-none max-h-32 custom-scrollbar"
               />
@@ -1423,8 +1451,12 @@ export default function Messages() {
       )}
 
       <TeamChatAssistant
+        key={currentRoomId}
         isOpen={isAssistantOpen && Boolean(user?.id)}
         onClose={closeAssistant}
+        initialPrompt={assistantMentionPrompt}
+        publicReplyRoom={assistantMentionRoom}
+        onPublicReply={postAssistantReply}
         messages={messages.map((message) => ({
           content: message.content,
           user: message.user,
