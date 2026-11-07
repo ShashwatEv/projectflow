@@ -74,8 +74,22 @@ async function requestOpenRouter(
       }
 
       const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
-      if (typeof reply === 'string' && reply.trim()) return reply.trim();
+      const choice = data.choices?.[0];
+      const content = choice?.message?.content;
+      const reply = typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content
+            .filter((part: { type?: unknown; text?: unknown }) => part.type === 'text' && typeof part.text === 'string')
+            .map((part: { text: string }) => part.text)
+            .join('')
+          : typeof choice?.text === 'string' ? choice.text : '';
+      if (reply.trim()) return reply.trim();
+      if (choice?.finish_reason === 'length') {
+        throw new Error(
+          'The free model used its output token budget for internal reasoning and returned no visible answer (finish_reason: length).'
+        );
+      }
       throw new Error('OpenRouter returned an empty response.');
   } catch (error) {
     if (error instanceof Error) throw error;
@@ -95,7 +109,7 @@ export async function askProjectFlowChatAgent(
   return requestOpenRouter(
     systemMessage,
     '',
-    1800,
+    4096,
     0.4,
     apiKey,
     conversation.slice(-16)
@@ -107,7 +121,7 @@ export async function verifyOpenRouterApiKey(apiKey: string): Promise<void> {
   await requestOpenRouter(
     'You are checking whether this OpenRouter API key works. Reply with one short word.',
     'Reply: Ready',
-    16,
+    512,
     0,
     apiKey
   );
@@ -151,6 +165,12 @@ export function getOpenRouterErrorMessage(error: unknown): string {
     || normalized.includes('no provider')
   ) {
     return 'OpenRouter could not find an available free model for this request right now. Wait and try again, or check OpenRouter’s free-model availability.';
+  }
+  if (
+    normalized.includes('output token budget for internal reasoning')
+    || normalized.includes('finish_reason: length')
+  ) {
+    return 'The selected free model spent its response limit thinking and returned no answer. Try again; this request now allows more output, but some free reasoning models may still need a larger budget.';
   }
   if (message) return `OpenRouter could not complete the request: ${message}`;
   return 'OpenRouter could not complete the request. Check the key and network, then try again.';
