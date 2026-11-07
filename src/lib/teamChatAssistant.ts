@@ -20,6 +20,49 @@ export interface AgentReply {
   taskProposal?: AgentTaskProposal;
 }
 
+export interface TeamChatSlashCommand {
+  name: 'standup' | 'retro' | 'plan-sprint' | 'insights';
+  prompt: string;
+}
+
+export function getTeamChatSlashCommand(input: string): TeamChatSlashCommand | null {
+  const match = input.trim().match(/^\/(standup|retro|plan-sprint|insights)\b(?:\s+([\s\S]*))?$/i);
+  const commandName = match?.[1]?.toLowerCase();
+  if (
+    !match
+    || (commandName !== 'standup' && commandName !== 'retro' && commandName !== 'plan-sprint' && commandName !== 'insights')
+  ) return null;
+
+  const focus = match[2]?.trim();
+  const commandPrompts: Record<TeamChatSlashCommand['name'], string[]> = {
+    standup: [
+      'Create a concise team standup from only the supplied recent room discussion and authorized project/task context.',
+      'Use these sections: Yesterday / completed, Today / next, Blockers.',
+      'Do not infer personal assignments, dates, completed work, or blockers. If the context does not support a section, say it was not mentioned.',
+    ],
+    retro: [
+      'Create a concise retrospective from only the supplied recent room discussion and authorized project/task context.',
+      'Use these sections: Went well, Could improve, Action items to review.',
+      'Only include points supported by the supplied context. Do not invent outcomes or imply action items have been created.',
+    ],
+    'plan-sprint': [
+      'Draft a proposed sprint plan using only the supplied authorized project/task context, milestones, task comments, and current-room discussion.',
+      'Group existing open tasks by project and suggest a reasonable focus and risks. Do not assign tasks, change statuses, or create tasks. Clearly mark any recommendation as a proposal.',
+      'If there are no open tasks or relevant context, say so instead of inventing a plan.',
+    ],
+    insights: [
+      'Analyze the supplied authorized cross-project tasks, milestones, task comments, and current-room discussion for possible duplicate work, shared blockers, or dependencies.',
+      'Separate observed facts from hypotheses, name the projects/tasks supporting each insight, and state when there is not enough evidence. Do not mutate data.',
+    ],
+  };
+  const prompt = [
+    ...commandPrompts[commandName],
+    focus ? `Focus requested by the user: ${focus}` : '',
+  ].filter(Boolean).join('\n');
+
+  return { name: commandName, prompt };
+}
+
 const AI_CHAT_RESPONSE_PREFIX = 'AI response:';
 
 export function isAiChatResponse(content: string, fileType?: string) {
@@ -69,7 +112,7 @@ export function isCapabilitiesQuestion(input: string) {
 }
 
 export function getAssistantCapabilitiesReply() {
-  return 'I can answer questions using the project and task information available to your account, discuss recent team-chat context, prepare a task draft for you to review and confirm, and help with code changes through Code Studio. For code, I pass your request to Code Studio so you choose the files and review the diff before applying it. What would you like to work on?';
+  return 'I can answer questions using the project, task, milestone, and task-comment information available to your account; discuss recent team-chat context; create /standup and /retro summaries; draft a /plan-sprint proposal; and look for possible cross-project patterns with /insights. I can also prepare a task draft for you to review and confirm, or help with code changes through Code Studio. What would you like to work on?';
 }
 
 export function findTaskSuggestions(messages: ChatAssistantMessage[]): ChatTaskSuggestion[] {

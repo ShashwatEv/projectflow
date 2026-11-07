@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   askAgent: vi.fn(),
   verifyKey: vi.fn(),
   navigate: vi.fn(),
+  contextTasks: [] as Array<{ id: string; project_id: string; title: string; status: string; priority: string; due_date: string | null }>,
+  comments: [] as Array<{ task_id: string; content: string; created_at: string }>,
+  milestones: [] as Array<{ project_id: string; title: string; description: string; due_date: string | null; status: string }>,
   localStorageValues: new Map<string, string>(),
   sessionStorageValues: new Map<string, string>(),
 }));
@@ -43,6 +46,9 @@ describe('TeamChatAssistant', () => {
     vi.clearAllMocks();
     mocks.askAgent.mockResolvedValue(JSON.stringify({ reply: 'Platform is active. What would you like to work on?' }));
     mocks.verifyKey.mockResolvedValue(undefined);
+    mocks.contextTasks = [];
+    mocks.comments = [];
+    mocks.milestones = [];
     mocks.localStorageValues.clear();
     mocks.sessionStorageValues.clear();
     vi.mocked(localStorage.getItem).mockImplementation((key) => mocks.localStorageValues.get(key) ?? null);
@@ -70,7 +76,16 @@ describe('TeamChatAssistant', () => {
               status: 'active',
               can_create_task: true,
             }],
-            tasks: [],
+            tasks: mocks.contextTasks,
+          },
+          error: null,
+        });
+      }
+      if (name === 'team_chat_assistant_extended_context') {
+        return Promise.resolve({
+          data: {
+            task_comments: mocks.comments,
+            milestones: mocks.milestones,
           },
           error: null,
         });
@@ -239,6 +254,126 @@ describe('TeamChatAssistant', () => {
     ));
   });
 
+  it('runs /standup using the authorized context and recent room discussion', async () => {
+    render(
+      <TeamChatAssistant
+        isOpen
+        onClose={vi.fn()}
+        messages={[{ content: 'We finished the onboarding review.' }]}
+      />
+    );
+
+    await screen.findByText('1 accessible project · 0 recent tasks');
+    fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
+      target: { value: 'user-owned-test-key' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow sending chat data to OpenRouter' }));
+    fireEvent.click(screen.getByRole('button', { name: /Test & connect/ }));
+    await screen.findByText('OpenRouter key verified');
+    fireEvent.click(screen.getByRole('button', { name: '/standup' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send question to assistant' }));
+
+    expect(await screen.findByText('Platform is active. What would you like to work on?')).toBeInTheDocument();
+    expect(mocks.askAgent).toHaveBeenCalledWith(
+      expect.stringContaining('recent room discussion'),
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.stringContaining('Yesterday / completed, Today / next, Blockers'),
+        }),
+        expect.objectContaining({
+          content: expect.stringContaining('"text":"We finished the onboarding review."'),
+        }),
+      ]),
+      'user-owned-test-key'
+    );
+  });
+
+  it('uses only task-linked comments and project milestones for a sprint plan', async () => {
+    mocks.contextTasks = [{
+      id: 'task-1',
+      project_id: 'project-1',
+      title: 'Release checklist',
+      status: 'in_progress',
+      priority: 'high',
+      due_date: '2026-11-10',
+    }];
+    mocks.comments = [{
+      task_id: 'task-1',
+      content: 'Waiting on API review.',
+      created_at: '2026-11-07T10:00:00Z',
+    }];
+    mocks.milestones = [{
+      project_id: 'project-1',
+      title: 'Beta release',
+      description: 'Ship the beta.',
+      due_date: '2026-11-12',
+      status: 'in_progress',
+    }];
+    render(
+      <TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />
+    );
+
+    await screen.findByText('1 accessible project · 1 recent task');
+    fireEvent.change(screen.getByLabelText('OpenRouter API key'), {
+      target: { value: 'user-owned-test-key' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow sending chat data to OpenRouter' }));
+    fireEvent.click(screen.getByRole('button', { name: /Test & connect/ }));
+    await screen.findByText('OpenRouter key verified');
+    fireEvent.click(screen.getByRole('button', { name: '/plan-sprint' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send question to assistant' }));
+
+    await screen.findByText('Platform is active. What would you like to work on?');
+    expect(mocks.rpc).toHaveBeenCalledWith('team_chat_assistant_extended_context');
+    expect(mocks.askAgent).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: expect.stringContaining('"comment":"Waiting on API review."'),
+        }),
+        expect.objectContaining({
+          content: expect.stringContaining('"title":"Beta release"'),
+        }),
+        expect.objectContaining({
+          content: expect.stringContaining('Draft a proposed sprint plan'),
+        }),
+      ]),
+      'user-owned-test-key'
+    );
+  });
+
+  it('keeps base project context available and explains when extended context migration is missing', async () => {
+    mocks.rpc.mockImplementation((name: string) => {
+      if (name === 'team_chat_assistant_context') {
+        return Promise.resolve({
+          data: {
+            projects: [{
+              id: 'project-1',
+              name: 'Platform',
+              key: 'PLAT',
+              status: 'active',
+              can_create_task: true,
+            }],
+            tasks: [],
+          },
+          error: null,
+        });
+      }
+      if (name === 'team_chat_assistant_extended_context') {
+        return Promise.resolve({
+          data: null,
+          error: { code: 'PGRST202', message: 'function not found' },
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    render(<TeamChatAssistant isOpen onClose={vi.fn()} messages={[]} />);
+
+    await screen.findByText('1 accessible project · 0 recent tasks');
+    expect(await screen.findByText(/Apply supabase\/migrations\/202611070003_team_chat_assistant_extended_context.sql/)).toBeInTheDocument();
+  });
+
   it('turns an AI task proposal into a review draft and creates it only after confirmation', async () => {
     mocks.askAgent.mockResolvedValue(JSON.stringify({
       reply: 'I suggest adding an audit logging task to Platform. Please review the draft.',
@@ -371,7 +506,7 @@ describe('TeamChatAssistant', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send question to assistant' }));
 
-    expect(await screen.findByText(/answer questions using the project and task information/i)).toBeInTheDocument();
+    expect(await screen.findByText(/answer questions using the project, task, milestone, and task-comment information/i)).toBeInTheDocument();
     expect(screen.getByText(/prepare a task draft for you to review and confirm/i)).toBeInTheDocument();
     expect(mocks.askAgent).not.toHaveBeenCalled();
   });

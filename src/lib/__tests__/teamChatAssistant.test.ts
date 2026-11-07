@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractExplicitTaskTitle,
+  getTeamChatSlashCommand,
   containsCodeSnippet,
   getAiChatResponseText,
   getTeamChatCodeHandoffPrompt,
@@ -26,6 +27,31 @@ describe('team chat assistant intent helpers', () => {
     expect(getTeamChatAssistantMentionPrompt('hello @AI')).toBe('hello');
     expect(getTeamChatAssistantMentionPrompt('@AI, summarize the release decision')).toBe('summarize the release decision');
     expect(getTeamChatAssistantMentionPrompt('hello team')).toBeNull();
+  });
+
+  it('creates grounded standup and retrospective prompts for supported slash commands', () => {
+    expect(getTeamChatSlashCommand('/standup')).toMatchObject({
+      name: 'standup',
+      prompt: expect.stringContaining('Yesterday / completed, Today / next, Blockers'),
+    });
+    expect(getTeamChatSlashCommand('/standup focus on launch')).toMatchObject({
+      name: 'standup',
+      prompt: expect.stringContaining('Focus requested by the user: focus on launch'),
+    });
+    expect(getTeamChatSlashCommand('/retro')).toMatchObject({
+      name: 'retro',
+      prompt: expect.stringContaining('Went well, Could improve, Action items to review'),
+    });
+    expect(getTeamChatSlashCommand('/plan-sprint')).toMatchObject({
+      name: 'plan-sprint',
+      prompt: expect.stringContaining('Do not assign tasks, change statuses, or create tasks'),
+    });
+    expect(getTeamChatSlashCommand('/insights')).toMatchObject({
+      name: 'insights',
+      prompt: expect.stringContaining('Separate observed facts from hypotheses'),
+    });
+    expect(getTeamChatSlashCommand('/unknown')).toBeNull();
+    expect(getTeamChatSlashCommand('please run /standup')).toBeNull();
   });
 
   it('identifies marked AI chat replies and detects code worth handing off', () => {
