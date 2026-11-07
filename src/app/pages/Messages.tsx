@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Send, Hash, Search, Plus, Smile, MessageSquare,
+  Send, Hash, Search, Plus, Smile, MessageSquare, Bot, Code2,
   Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff, Sparkles
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
@@ -15,7 +15,14 @@ import ChatFileButton from '../components/ChatFileButton';
 import ChatVoiceRecorder from '../components/ChatVoiceRecorder';
 import MessageBubble from '../components/MessageBubble';
 import TeamChatAssistant from '../components/TeamChatAssistant';
-import { getTeamChatAssistantMentionPrompt } from '../../lib/teamChatAssistant';
+import {
+  containsCodeSnippet,
+  getAiChatResponseText,
+  getTeamChatAssistantMentionPrompt,
+  getTeamChatCodeHandoffPrompt,
+  isAiChatResponse,
+} from '../../lib/teamChatAssistant';
+import { getPersonalOpenRouterKeyStorageKey, setTeamChatCodeHandoff } from '../../lib/teamChatCodeHandoff';
 import { triggerHaptic } from '../../lib/haptics';
 import { toast } from 'sonner';
 
@@ -102,6 +109,7 @@ export default function Messages() {
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const assistantButtonRef = useRef<HTMLButtonElement>(null);
+  const assistantHandoffKeyRef = useRef<{ userId: string; apiKey: string; expiresAt: number } | null>(null);
   const oldestMessageAtRef = useRef<string | null>(null);
   const fetchRequestIdRef = useRef(0);
   const isCurrentRoomMutedRef = useRef(false);
@@ -119,6 +127,10 @@ export default function Messages() {
     setAssistantMentionPrompt(null);
     setAssistantMentionRoom(null);
   }, [currentRoomId]);
+
+  useEffect(() => {
+    assistantHandoffKeyRef.current = null;
+  }, [user?.id]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -342,14 +354,17 @@ export default function Messages() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         const message = payload.new as Message & { room_id: string };
         if (!message.room_id || message.user_id === user.id || message.room_id === currentRoomId) return;
-        setLastMessagePreviews((current) => ({ ...current, [message.room_id]: message.content || '' }));
+        const preview = isAiChatResponse(message.content, message.file_type)
+          ? `ProjectFlow AI: ${getAiChatResponseText(message.content)}`
+          : message.content || '';
+        setLastMessagePreviews((current) => ({ ...current, [message.room_id]: preview }));
         setUnreadCounts((current) => ({
           ...current,
           [message.room_id]: (current[message.room_id] || 0) + 1,
         }));
         if (!mutedRooms[message.room_id]) {
           const roomName = channels.find((item) => item.id === message.room_id)?.name;
-          toast(`${roomName ? `#${roomName}` : 'New direct message'}: ${message.content}`);
+          toast(`${roomName ? `#${roomName}` : 'New direct message'}: ${preview}`);
         }
       })
       .subscribe();
@@ -399,7 +414,10 @@ export default function Messages() {
           message_reactions: [],
         }];
       });
-      setLastMessagePreviews((current) => ({ ...current, [currentRoomId]: payload.new.content || '' }));
+      const preview = isAiChatResponse(payload.new.content, payload.new.file_type)
+        ? `ProjectFlow AI: ${getAiChatResponseText(payload.new.content)}`
+        : payload.new.content || '';
+      setLastMessagePreviews((current) => ({ ...current, [currentRoomId]: preview }));
       if (payload.new.user_id !== user?.id) {
         if (isAtLatestRef.current) {
           void markRoomRead();
@@ -570,7 +588,7 @@ export default function Messages() {
     }
   };
 
-  const postAssistantReply = async (reply: string, roomId: string) => {
+  const postAssistantReply = async (reply: string, roomId: string, apiKey: string) => {
     if (!user || roomId !== currentRoomId) {
       throw new Error('The active chat changed before the assistant reply could be posted.');
     }
@@ -578,8 +596,14 @@ export default function Messages() {
       room_id: roomId,
       user_id: user.id,
       content: `AI response: ${reply}`,
+      file_type: 'ai',
     });
     if (error) throw error;
+    assistantHandoffKeyRef.current = {
+      userId: user.id,
+      apiKey,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    };
     setAssistantMentionPrompt(null);
     setAssistantMentionRoom(null);
   };
@@ -1175,43 +1199,77 @@ export default function Messages() {
           )}
 
           {visibleMessages.map((msg, index) => {
-            const isMe = msg.user_id === user?.id;
+            const isAssistantMessage = isAiChatResponse(msg.content, msg.file_type);
+            const isMe = msg.user_id === user?.id && !isAssistantMessage;
+            const displayContent = isAssistantMessage ? getAiChatResponseText(msg.content) : msg.content;
             const prevMsg = messages[index - 1];
-            const showHeader = index === 0 || prevMsg?.user_id !== msg.user_id;
+            const previousWasAssistant = prevMsg ? isAiChatResponse(prevMsg.content, prevMsg.file_type) : false;
+            const showHeader = index === 0
+              || previousWasAssistant !== isAssistantMessage
+              || (!isAssistantMessage && prevMsg?.user_id !== msg.user_id);
 
             return (
               <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                 <div className="w-8 shrink-0 flex flex-col justify-end">
                   {showHeader && !isMe && (
-                    <img
-                      src={
-                        msg.user?.avatar ||
-                        `https://ui-avatars.com/api/?name=${msg.user?.name || 'User'}`
-                      }
-                      onError={(event) => {
-                        event.currentTarget.src = '/pfp.jpg';
-                      }}
-                      className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover"
-                      alt="avatar"
-                    />
+                    isAssistantMessage ? (
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-indigo-200 bg-indigo-50 text-indigo-600 shadow-sm dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300" aria-label="AI assistant">
+                        <Bot size={17} aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <img
+                        src={
+                          msg.user?.avatar ||
+                          `https://ui-avatars.com/api/?name=${msg.user?.name || 'User'}`
+                        }
+                        onError={(event) => {
+                          event.currentTarget.src = '/pfp.jpg';
+                        }}
+                        className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 shadow-sm object-cover"
+                        alt="avatar"
+                      />
+                    )
                   )}
                 </div>
 
                 <div className={`flex flex-col w-full ${isMe ? 'items-end' : 'items-start'}`}>
                   {showHeader && !isMe && (
                     <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 ml-1 mb-1">
-                      {msg.user?.name}
+                      {isAssistantMessage ? 'ProjectFlow AI' : msg.user?.name}
                     </span>
                   )}
 
                   <MessageBubble
-                    message={msg}
+                    message={{ ...msg, content: displayContent }}
                     isMe={isMe}
                     accentColor={accentColors[accentColor]}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onReact={handleReaction}
                   />
+
+                  {isAssistantMessage && containsCodeSnippet(displayContent) && user?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const handoffKey = assistantHandoffKeyRef.current;
+                        const apiKey = handoffKey?.userId === user.id && handoffKey.expiresAt > Date.now()
+                          ? handoffKey.apiKey
+                          : localStorage.getItem(getPersonalOpenRouterKeyStorageKey(user.id)) || '';
+                        assistantHandoffKeyRef.current = null;
+                        setTeamChatCodeHandoff({
+                          userId: user.id,
+                          prompt: getTeamChatCodeHandoffPrompt(displayContent),
+                          apiKey,
+                        });
+                        navigate('/code?assistantHandoff=1');
+                      }}
+                      className="mt-1 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-indigo-800 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-gray-800"
+                    >
+                      <Code2 size={14} aria-hidden="true" />
+                      Open code in Code Studio
+                    </button>
+                  )}
 
                   <span className={`text-[10px] text-gray-400 mt-1 ${isMe ? 'mr-1' : 'ml-1'}`}>
                     {new Date(msg.created_at).toLocaleTimeString([], {

@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractExplicitTaskTitle,
+  containsCodeSnippet,
+  getAiChatResponseText,
+  getTeamChatCodeHandoffPrompt,
   getTeamChatAssistantMentionPrompt,
   findTaskSuggestions,
   getAssistantCapabilitiesReply,
   getAssistantContextErrorMessage,
   isCapabilitiesQuestion,
+  isAiChatResponse,
   isCodeEditRequest,
   parseAgentReply,
 } from '../teamChatAssistant';
@@ -22,6 +26,19 @@ describe('team chat assistant intent helpers', () => {
     expect(getTeamChatAssistantMentionPrompt('hello @AI')).toBe('hello');
     expect(getTeamChatAssistantMentionPrompt('@AI, summarize the release decision')).toBe('summarize the release decision');
     expect(getTeamChatAssistantMentionPrompt('hello team')).toBeNull();
+  });
+
+  it('identifies marked AI chat replies and detects code worth handing off', () => {
+    const response = 'AI response: Here is a fix:\n```ts\nconst answer = 42;\n```';
+    expect(isAiChatResponse(response, 'ai')).toBe(true);
+    expect(isAiChatResponse(response, 'audio')).toBe(false);
+    expect(isAiChatResponse('AI response: hello', undefined)).toBe(false);
+    expect(getAiChatResponseText(response)).toContain('Here is a fix:');
+    expect(containsCodeSnippet(response)).toBe(true);
+    expect(containsCodeSnippet('Try this:\nconst answer = 42;')).toBe(true);
+    expect(containsCodeSnippet('A normal response without code.')).toBe(false);
+    expect(getTeamChatCodeHandoffPrompt(response)).toContain(response);
+    expect(getTeamChatCodeHandoffPrompt(response)).toContain('I will select the tracked files in the target folder in Code Studio');
   });
 
   it('extracts distinct actionable discussion items without treating ordinary chat as tasks', () => {

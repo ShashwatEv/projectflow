@@ -20,6 +20,25 @@ export interface AgentReply {
   taskProposal?: AgentTaskProposal;
 }
 
+const AI_CHAT_RESPONSE_PREFIX = 'AI response:';
+
+export function isAiChatResponse(content: string, fileType?: string) {
+  return fileType === 'ai' && content.startsWith(AI_CHAT_RESPONSE_PREFIX);
+}
+
+export function getAiChatResponseText(content: string) {
+  return content.replace(/^AI response:\s*/, '');
+}
+
+export function containsCodeSnippet(content: string) {
+  return /```[\s\S]*?```/.test(content)
+    || /(?:^|\n)\s*(?:import\s+.+\s+from\s+|export\s+(?:default\s+)?(?:function|class|const|interface|type)\b|function\s+\w+\s*\(|(?:const|let|var)\s+\w+\s*=|<\/?[A-Za-z][^>]*>)/m.test(content);
+}
+
+export function getTeamChatCodeHandoffPrompt(response: string) {
+  return `Use this AI-generated code suggestion as the starting point for an edit. I will select the tracked files in the target folder in Code Studio. Adapt it to those files, prepare a diff for review, and do not claim changes are applied until I approve them.\n\n${response}`;
+}
+
 export function getTeamChatAssistantMentionPrompt(content: string) {
   if (!/@ai\b/i.test(content)) return null;
   const prompt = content
