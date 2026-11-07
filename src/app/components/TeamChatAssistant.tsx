@@ -45,7 +45,7 @@ interface TeamChatAssistantProps {
   messages: ChatAssistantMessage[];
   initialPrompt?: string | null;
   publicReplyRoom?: string | null;
-  onPublicReply?: (reply: string, roomId: string) => Promise<void>;
+  onPublicReply?: (reply: string, roomId: string, apiKey: string) => Promise<void>;
 }
 
 interface TaskDraft {
@@ -227,7 +227,7 @@ export default function TeamChatAssistant({
   const publishReply = async (reply: string, roomId: string) => {
     setAgentError('');
     try {
-      await onPublicReply?.(reply, roomId);
+      await onPublicReply?.(reply, roomId, providerApiKey);
       setPendingPublicReply(false);
     } catch (error) {
       console.error('Could not post the team chat AI reply:', error);

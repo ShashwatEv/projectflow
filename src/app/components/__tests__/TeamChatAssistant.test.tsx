@@ -234,7 +234,8 @@ describe('TeamChatAssistant', () => {
 
     await waitFor(() => expect(onPublicReply).toHaveBeenCalledWith(
       'Platform is active. What would you like to work on?',
-      'room-1'
+      'room-1',
+      'user-owned-test-key'
     ));
   });
 
