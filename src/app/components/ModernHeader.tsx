@@ -135,7 +135,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   };
 
   return (
-    <header className="relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
+    <header className="app-header relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
       {/* Left Block: Hamburger button, breadcrumb, clickable mobile logo */}
       <div className="flex items-center gap-3">
         <button
@@ -238,6 +238,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         <button
           type="button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
           className="rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
           title="Toggle color theme"
         >
@@ -249,6 +250,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <button
             type="button"
             onClick={() => setIsNotifOpen((prev) => !prev)}
+            aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+            aria-expanded={isNotifOpen}
             className="relative rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
             title="Notifications"
           >
@@ -309,6 +312,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <button
             type="button"
             onClick={() => setIsProfileOpen((current) => !current)}
+            aria-label="Open account menu"
+            aria-expanded={isProfileOpen}
             className="flex items-center gap-2 rounded-xl p-1 transition-all hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <div className="hidden text-right md:block">

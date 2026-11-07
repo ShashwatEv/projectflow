@@ -89,7 +89,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
         />
       )}
 
-      <aside className={sidebarClasses}>
+      <aside className={`app-sidebar ${sidebarClasses}`}>
         {onClose && (
           <div className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-800 lg:hidden">
             <span className="font-bold text-xs text-gray-500 uppercase tracking-wider">Navigation</span>
@@ -175,7 +175,7 @@ function NavItem({ icon, label, to, isActive, badge, theme, onClick, desktopOnly
       to={to} 
       onClick={onClick}
       aria-current={isActive ? 'page' : undefined}
-      className={`items-center min-h-10 px-3 py-2 rounded-xl text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-900 ${
+      className={`app-nav-link items-center min-h-10 px-3 py-2 rounded-xl text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-gray-900 ${
         desktopOnly ? 'hidden lg:flex' : 'flex'
       } ${
         isActive 

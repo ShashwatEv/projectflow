@@ -179,7 +179,7 @@ function Layout() {
           }}
         />
 
-        <main className="min-h-0 w-full flex-1 overflow-y-auto bg-gray-50 text-gray-900 transition-all duration-300 ease-in-out dark:bg-gray-900 dark:text-gray-100">
+        <main className="app-main min-h-0 w-full flex-1 overflow-y-auto bg-gray-50 text-gray-900 transition-all duration-300 ease-in-out dark:bg-gray-900 dark:text-gray-100">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
           </Suspense>
