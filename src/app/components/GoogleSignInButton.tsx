@@ -29,7 +29,7 @@ export default function GoogleSignInButton() {
       type="button"
       onClick={() => void handleGoogleSignIn()}
       disabled={loading}
-      className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#0d1117] dark:text-gray-100 dark:hover:bg-gray-800"
+      className="flex w-full items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-[#0d1117] dark:text-gray-100 dark:hover:bg-gray-800"
     >
       {loading ? (
         <Loader2 size={18} className="animate-spin" />
