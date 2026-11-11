@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FolderKanban, Plus, ArrowRight, MoreVertical, 
   Trash2, Loader2, Search, Code2, Sparkles, Github, 
-  CheckCircle2, PauseCircle, PlayCircle, Lock 
+  CheckCircle2, PauseCircle, PlayCircle, Lock, LayoutGrid, List, Columns3, CalendarDays
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -20,12 +20,21 @@ interface Project {
   status: 'active' | 'completed' | 'on_hold';
   progress?: number;
   created_at: string;
+  due_date?: string | null;
   owner_id?: string;
   github_repo?: string;
   owner?: {
     name?: string;
     avatar?: string;
   };
+}
+
+function parseProjectDate(value: string) {
+  return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+}
+
+function formatProjectDate(value: string) {
+  return parseProjectDate(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export default function Projects() {
@@ -39,6 +48,13 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'on_hold'>('all');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [dueDateFilter, setDueDateFilter] = useState<'all' | 'overdue' | 'upcoming' | 'unscheduled'>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'board' | 'list'>(() => {
+    if (typeof window === 'undefined') return 'grid';
+    const savedView = localStorage.getItem('pf_projects_view');
+    return savedView === 'board' || savedView === 'list' ? savedView : 'grid';
+  });
   
   // Creation Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -98,6 +114,10 @@ export default function Projects() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('pf_projects_view', viewMode);
+  }, [viewMode]);
 
   const handleOpenCreateModal = () => {
     // Quota restriction: Unverified users can only own 1 project
@@ -214,9 +234,25 @@ export default function Projects() {
       (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.github_repo && p.github_repo.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesFilter = statusFilter === 'all' || p.status === statusFilter;
-    return matchesSearch && matchesFilter;
+    const matchesOwner = !ownerFilter || (ownerFilter === 'unassigned' ? !p.owner_id : p.owner_id === ownerFilter);
+    const dueDate = p.due_date ? parseProjectDate(p.due_date) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const matchesDueDate =
+      dueDateFilter === 'all' ||
+      (dueDateFilter === 'unscheduled' && !dueDate) ||
+      (dueDateFilter === 'overdue' && dueDate && dueDate < today && p.status !== 'completed') ||
+      (dueDateFilter === 'upcoming' && dueDate && dueDate >= today && dueDate.getTime() <= today.getTime() + 14 * 86_400_000);
+    return matchesSearch && matchesFilter && matchesOwner && matchesDueDate;
   });
 
+  const ownerOptions = Array.from(
+    projects.reduce((owners, project) => {
+      if (project.owner_id) owners.set(project.owner_id, project.owner?.name || 'Workspace');
+      return owners;
+    }, new Map<string, string>())
+  );
+  const projectStatuses: Project['status'][] = ['active', 'on_hold', 'completed'];
   const activeCount = projects.filter((p) => p.status === 'active').length;
   const completedCount = projects.filter((p) => p.status === 'completed').length;
   const avgProgress = projects.length > 0 
@@ -284,11 +320,12 @@ export default function Projects() {
       </div>
 
       {/* Search & Filter Controls */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col gap-3">
+        <div className="relative w-full max-w-md">
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
+            aria-label="Search projects"
             placeholder="Search projects by name, repo, or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -296,23 +333,76 @@ export default function Projects() {
           />
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl">
-          {(['all', 'active', 'completed', 'on_hold'] as const).map((filterKey) => {
-            const isActive = statusFilter === filterKey;
-            return (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl">
+            {(['all', 'active', 'completed', 'on_hold'] as const).map((filterKey) => {
+              const isActive = statusFilter === filterKey;
+              return (
+                <button
+                  key={filterKey}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => setStatusFilter(filterKey)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                    isActive
+                      ? `${theme.btnPrimary} shadow-sm`
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  {filterKey.replace('_', ' ')}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor="project-owner-filter">Filter by owner</label>
+          <select
+            id="project-owner-filter"
+            value={ownerFilter}
+            onChange={(event) => setOwnerFilter(event.target.value)}
+            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
+          >
+            <option value="">All owners</option>
+            {projects.some((project) => !project.owner_id) && <option value="unassigned">Unassigned</option>}
+            {ownerOptions.map(([ownerId, ownerName]) => (
+              <option key={ownerId} value={ownerId}>{ownerName}</option>
+            ))}
+          </select>
+          <label className="sr-only" htmlFor="project-due-filter">Filter by due date</label>
+          <select
+            id="project-due-filter"
+            value={dueDateFilter}
+            onChange={(event) => setDueDateFilter(event.target.value as typeof dueDateFilter)}
+            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
+          >
+            <option value="all">Any due date</option>
+            <option value="overdue">Overdue</option>
+            <option value="upcoming">Due in 14 days</option>
+            <option value="unscheduled">No due date</option>
+          </select>
+          <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-[#161b22]" role="group" aria-label="Project view">
+            {([
+              ['grid', 'Card grid', <LayoutGrid size={15} />],
+              ['board', 'Board view', <Columns3 size={15} />],
+              ['list', 'List view', <List size={15} />],
+            ] as const).map(([view, label, icon]) => (
               <button
-                key={filterKey}
-                onClick={() => setStatusFilter(filterKey)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                  isActive
-                    ? `${theme.btnPrimary} shadow-sm`
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                key={view}
+                type="button"
+                aria-label={label}
+                aria-pressed={viewMode === view}
+                onClick={() => setViewMode(view)}
+                className={`min-h-9 min-w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  viewMode === view
+                    ? `${theme.bgSubtle} ${theme.textAccent}`
+                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                 }`}
               >
-                {filterKey.replace('_', ' ')}
+                {icon}
               </button>
-            );
-          })}
+            ))}
+          </div>
+          </div>
         </div>
       </div>
 
@@ -329,6 +419,130 @@ export default function Projects() {
           <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
             {searchQuery ? 'No projects match your search keywords.' : 'Create your first project to start organizing tasks, code, and sprints.'}
           </p>
+        </div>
+      ) : viewMode === 'board' ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {projectStatuses.map((status) => {
+            const columnProjects = filteredProjects.filter((project) => project.status === status);
+            return (
+              <section
+                key={status}
+                aria-labelledby={`project-column-${status}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const projectId = event.dataTransfer.getData('text/plain');
+                  if (projectId) void handleStatusChange(projectId, status);
+                }}
+                className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/50"
+              >
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <h2 id={`project-column-${status}`} className="text-xs font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200">
+                    {status.replace('_', ' ')}
+                  </h2>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">{columnProjects.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {columnProjects.map((project) => (
+                    <article
+                      key={project.id}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData('text/plain', project.id);
+                        event.dataTransfer.effectAllowed = 'move';
+                      }}
+                      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-[#161b22]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="min-w-0 font-semibold text-sm text-gray-900 dark:text-white">{project.name}</h3>
+                        <FolderKanban className={theme.textAccent} size={16} aria-hidden="true" />
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                        {project.description || 'No description provided.'}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="inline-flex items-center gap-1">
+                          <img src={project.owner?.avatar || '/pfp.jpg'} alt="" className="h-5 w-5 rounded-full object-cover" />
+                          {project.owner?.name || 'Workspace'}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays size={12} aria-hidden="true" />
+                          {project.due_date ? formatProjectDate(project.due_date) : 'No due date'}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" role="progressbar" aria-label={`${project.name} progress`} aria-valuenow={project.progress || 0} aria-valuemin={0} aria-valuemax={100}>
+                          <div className={`h-full ${theme.progressBar}`} style={{ width: `${project.progress || 0}%` }} />
+                        </div>
+                        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">{project.progress || 0}%</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/projects/${project.id}`)}
+                        className={`mt-3 inline-flex min-h-9 items-center gap-1 text-xs font-semibold ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+                      >
+                        Open project <ArrowRight size={13} aria-hidden="true" />
+                      </button>
+                      <label className="sr-only" htmlFor={`board-status-${project.id}`}>Project status for {project.name}</label>
+                      <select
+                        id={`board-status-${project.id}`}
+                        value={project.status}
+                        onChange={(event) => void handleStatusChange(project.id, event.target.value as Project['status'])}
+                        className="ml-3 max-w-36 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] capitalize text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      >
+                        <option value="active">Active</option>
+                        <option value="on_hold">On hold</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </article>
+                  ))}
+                  {columnProjects.length === 0 && (
+                    <p className="rounded-xl border border-dashed border-gray-300 px-3 py-6 text-center text-xs text-gray-400 dark:border-gray-700">No projects in this group.</p>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
+          <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+            <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
+              <tr>
+                <th scope="col" className="px-4 py-3 font-semibold">Project</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Owner</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Status</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Due date</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Progress</th>
+                <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {filteredProjects.map((project) => (
+                <tr key={project.id} className="text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/50">
+                  <th scope="row" className="max-w-[260px] px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                    <span className="block truncate">{project.name}</span>
+                    <span className="mt-0.5 block truncate font-normal text-[11px] text-gray-500 dark:text-gray-400">{project.description || 'No description'}</span>
+                  </th>
+                  <td className="px-4 py-3">{project.owner?.name || 'Workspace'}</td>
+                  <td className="px-4 py-3 capitalize">{project.status.replace('_', ' ')}</td>
+                  <td className="px-4 py-3">{project.due_date ? formatProjectDate(project.due_date) : '—'}</td>
+                  <td className="px-4 py-3">{project.progress || 0}%</td>
+                  <td className="px-4 py-3 text-right">
+                    <button type="button" onClick={() => navigate(`/projects/${project.id}`)} className={`font-semibold ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}>
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {filteredProjects.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">No projects match these filters.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

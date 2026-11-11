@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react';
 import { 
   ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
-  X, Loader2 
+  X, Loader2, ListTodo, BriefcaseBusiness
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
+
+type CalendarPriority = 'low' | 'medium' | 'high';
 
 interface CalendarEvent {
   id: string;
   title: string;
   date: string;
   type: 'task' | 'project';
-  priority?: 'low' | 'medium' | 'high';
+  priority?: CalendarPriority;
   status?: string;
   projectName?: string;
+  projectId?: string | null;
 }
 
 interface ProjectOption {
@@ -24,16 +27,21 @@ interface ProjectOption {
 
 export default function Calendar() {
   const { user } = useAuth();
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 9, 1)); // Default Oct 2026
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'task' | 'project'>('all');
+  const [projectFilter, setProjectFilter] = useState('');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [eventTitle, setEventTitle] = useState('');
   const [eventDate, setEventDate] = useState('');
-  const [eventPriority, setEventPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [eventPriority, setEventPriority] = useState<CalendarPriority>('medium');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,7 +62,7 @@ export default function Calendar() {
       // 2. Fetch Tasks with due_dates
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
-        .select('id, title, due_date, priority, status, project:projects(name)')
+        .select('id, title, due_date, priority, status, project_id, project:projects(name)')
         .not('due_date', 'is', null);
 
       if (taskError) throw taskError;
@@ -72,6 +80,7 @@ export default function Calendar() {
             priority: t.priority,
             status: t.status,
             projectName: t.project?.name,
+            projectId: t.project_id,
           });
         }
       });
@@ -85,6 +94,7 @@ export default function Calendar() {
             date: p.due_date.split('T')[0],
             type: 'project',
             status: p.status,
+            projectId: p.id,
           });
         }
       });
@@ -123,17 +133,27 @@ export default function Calendar() {
   const handlePrevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const handleToday = () => setCurrentDate(new Date());
+  const visibleEvents = events.filter((event) =>
+    (typeFilter === 'all' || event.type === typeFilter) &&
+    (!projectFilter || event.projectId === projectFilter)
+  );
+  const eventsByDate = new Map<string, CalendarEvent[]>();
+  visibleEvents.forEach((event) => {
+    const dateEvents = eventsByDate.get(event.date) || [];
+    dateEvents.push(event);
+    eventsByDate.set(event.date, dateEvents);
+  });
 
   const openAddModal = (prefillDate?: string) => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${yyyy}-${mm}-${dd}`;
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
 
-  setEventDate(prefillDate ?? todayStr);
-  setIsModalOpen(true);
-};
+    setEventDate(prefillDate ?? todayStr);
+    setIsModalOpen(true);
+  };
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,12 +186,12 @@ export default function Calendar() {
 
   const getPriorityStyle = (priority?: string, type?: string) => {
     if (type === 'project') {
-      return 'bg-purple-950/60 text-purple-300 border-purple-800';
+      return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800';
     }
     switch (priority) {
-      case 'high': return 'bg-red-950/60 text-red-400 border-red-900/60';
-      case 'medium': return 'bg-amber-950/60 text-amber-300 border-amber-900/60';
-      default: return 'bg-blue-950/60 text-blue-300 border-blue-900/60';
+      case 'high': return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/60 dark:text-red-300 dark:border-red-900/60';
+      case 'medium': return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900/60';
+      default: return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-900/60';
     }
   };
 
@@ -181,36 +201,42 @@ export default function Calendar() {
   ];
 
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-indigo-400">
+          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
             <CalendarIcon size={24} />
-            <h1 className="text-3xl font-bold text-white tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
               {monthNames[month]} {year}
             </h1>
           </div>
-          <p className="text-xs text-gray-400 mt-1">View and manage your upcoming deadlines.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">View and manage your upcoming deadlines.</p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-[#151b28] border border-gray-800 rounded-xl p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-white dark:bg-[#151b28] border border-gray-200 dark:border-gray-800 rounded-xl p-1 shadow-sm">
             <button
+              type="button"
               onClick={handlePrevMonth}
-              className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              aria-label="Previous month"
+              className="min-h-9 min-w-9 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               <ChevronLeft size={18} />
             </button>
             <button
+              type="button"
               onClick={handleToday}
-              className="px-3 py-1 text-xs font-bold text-gray-200 hover:text-white transition-colors"
+              aria-label="Go to current month"
+              className="min-h-9 px-3 py-1 text-xs font-bold text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               Today
             </button>
             <button
+              type="button"
               onClick={handleNextMonth}
-              className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              aria-label="Next month"
+              className="min-h-9 min-w-9 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               <ChevronRight size={18} />
             </button>
@@ -225,10 +251,79 @@ export default function Calendar() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <label className="flex flex-1 items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+          Event type
+          <select
+            aria-label="Filter calendar by event type"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as typeof typeFilter)}
+            className="min-h-10 flex-1 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#151b28] dark:text-gray-100"
+          >
+            <option value="all">All events</option>
+            <option value="task">Tasks</option>
+            <option value="project">Project milestones</option>
+          </select>
+        </label>
+        <label className="flex flex-1 items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+          Project
+          <select
+            aria-label="Filter calendar by project"
+            value={projectFilter}
+            onChange={(event) => setProjectFilter(event.target.value)}
+            className="min-h-10 flex-1 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#151b28] dark:text-gray-100"
+          >
+            <option value="">All projects</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {/* Compact agenda for small screens */}
+      <section className="md:hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-[#0f1422]" aria-labelledby="calendar-agenda-heading">
+        <h2 id="calendar-agenda-heading" className="border-b border-gray-200 px-4 py-3 text-sm font-bold text-gray-900 dark:border-gray-800 dark:text-white">
+          {monthNames[month]} agenda
+        </h2>
+        {loading ? (
+          <div className="flex items-center justify-center p-10" aria-label="Loading calendar events"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
+        ) : visibleEvents.filter((event) => event.date.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)).length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">No events match these filters this month.</p>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {Array.from({ length: daysInMonth }, (_, index) => {
+              const date = new Date(year, month, index + 1);
+              const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
+              const dayEvents = eventsByDate.get(dateString) || [];
+              if (!dayEvents.length) return null;
+              return (
+                <div key={dateString} className="flex gap-3 p-3">
+                  <time dateTime={dateString} className="w-16 shrink-0 pt-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    {date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </time>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {dayEvents.map((event) => (
+                      <article key={event.id} className={`rounded-lg border px-3 py-2 text-xs ${getPriorityStyle(event.priority, event.type)}`}>
+                        <div className="flex items-start gap-2">
+                          {event.type === 'project' ? <BriefcaseBusiness size={14} aria-hidden="true" /> : <ListTodo size={14} aria-hidden="true" />}
+                          <div className="min-w-0">
+                            <h3 className="font-semibold">{event.title}</h3>
+                            {event.projectName && <p className="mt-0.5 truncate opacity-80">{event.projectName}</p>}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Calendar Grid Container */}
-      <div className="bg-[#0f1422] rounded-3xl border border-gray-800/80 shadow-2xl overflow-hidden">
+      <div className="hidden md:block overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl dark:border-gray-800/80 dark:bg-[#0f1422]">
         {/* Days Header */}
-        <div className="grid grid-cols-7 border-b border-gray-800 text-center py-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-[#131929]">
+        <div className="grid grid-cols-7 border-b border-gray-200 text-center py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:bg-[#131929]">
           {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
             <div key={day}>{day}</div>
           ))}
@@ -240,17 +335,17 @@ export default function Calendar() {
             <Loader2 className="animate-spin text-indigo-500" size={36} />
           </div>
         ) : (
-          <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-800/80 border-b border-gray-800">
+          <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-gray-200 border-b border-gray-200 dark:divide-gray-800/80 dark:border-gray-800">
             {/* Empty Offset Days */}
             {Array.from({ length: firstDayIndex }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[120px] bg-[#0c101c]/40" />
+              <div key={`empty-${i}`} className="min-h-[120px] bg-gray-50/70 dark:bg-[#0c101c]/40" />
             ))}
 
             {/* Days in Month */}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const dayEvents = events.filter(e => e.date === dateString);
+              const dayEvents = eventsByDate.get(dateString) || [];
 
               const today = new Date();
               const isToday = 
@@ -259,17 +354,19 @@ export default function Calendar() {
                 today.getFullYear() === year;
 
               return (
-                <div
+                <button
+                  type="button"
                   key={day}
+                  aria-label={`Add event on ${new Date(year, month, day).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}${dayEvents.length ? `, ${dayEvents.length} events` : ''}`}
                   onClick={() => openAddModal(dateString)}
-                  className="min-h-[120px] p-2 flex flex-col justify-between hover:bg-[#151c2e]/60 transition-colors group cursor-pointer"
+                  className="min-h-[120px] w-full p-2 flex flex-col justify-between text-left hover:bg-gray-50 dark:hover:bg-[#151c2e]/60 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
                 >
                   <div className="flex items-center justify-between">
                     <span
                       className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full transition-all ${
                         isToday
                           ? 'bg-indigo-600 text-white shadow-md'
-                          : 'text-gray-300 group-hover:text-white'
+                          : 'text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white'
                       }`}
                     >
                       {day}
@@ -277,7 +374,7 @@ export default function Calendar() {
 
                     {dayEvents.length > 0 && (
                       <span className="text-[10px] text-gray-500 font-medium">
-                        {dayEvents.length} {dayEvents.length === 1 ? 'task' : 'tasks'}
+                        {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
                       </span>
                     )}
                   </div>
@@ -287,7 +384,6 @@ export default function Calendar() {
                     {dayEvents.map(evt => (
                       <div
                         key={evt.id}
-                        onClick={(e) => e.stopPropagation()}
                         className={`px-2 py-1 rounded-lg text-[10px] font-semibold truncate border ${getPriorityStyle(evt.priority, evt.type)} shadow-xs`}
                         title={`${evt.title} (${evt.projectName || 'Task'})`}
                       >
@@ -299,7 +395,7 @@ export default function Calendar() {
                   <div className="text-[10px] text-transparent group-hover:text-indigo-400 font-medium transition-colors">
                     + Add
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -309,33 +405,33 @@ export default function Calendar() {
       {/* Add Deadline Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#121826] rounded-3xl p-6 max-w-md w-full border border-gray-800 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-              <h3 className="font-bold text-sm text-white">Schedule Task Deadline</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white">
+          <div className="bg-white dark:bg-[#121826] rounded-3xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-800 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center pb-2 border-b border-gray-200 dark:border-gray-800">
+              <h3 className="font-bold text-sm text-gray-900 dark:text-white">Schedule Task Deadline</h3>
+              <button type="button" aria-label="Close schedule task dialog" onClick={() => setIsModalOpen(false)} className="min-h-9 min-w-9 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white">
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleCreateEvent} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-gray-400 font-semibold mb-1">Task Title *</label>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Task Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Beta Release 1.4"
                   value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-800 bg-[#0c101c] text-white outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-[#0c101c] dark:text-white"
                 />
               </div>
 
               <div>
-                <label className="block text-gray-400 font-semibold mb-1">Assign to Project</label>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Assign to Project</label>
                 <select
                   value={selectedProjectId}
                   onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-800 bg-[#0c101c] text-white outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-[#0c101c] dark:text-white"
                 >
                   <option value="">No Project (General)</option>
                   {projects.map(p => (
@@ -346,21 +442,21 @@ export default function Calendar() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-gray-400 font-semibold mb-1">Target Date</label>
+                  <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Target Date</label>
                   <input
                     type="date"
                     required
                     value={eventDate}
                     onChange={(e) => setEventDate(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-800 bg-[#0c101c] text-white outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-[#0c101c] dark:text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-400 font-semibold mb-1">Priority</label>
+                  <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Priority</label>
                   <select
                     value={eventPriority}
-                    onChange={(e) => setEventPriority(e.target.value as any)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-800 bg-[#0c101c] text-white outline-none focus:border-indigo-500"
+                    onChange={(e) => setEventPriority(e.target.value as CalendarPriority)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-800 dark:bg-[#0c101c] dark:text-white"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -373,14 +469,14 @@ export default function Calendar() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-gray-400 hover:bg-gray-800"
+                  className="min-h-10 px-4 py-2 rounded-xl text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all disabled:opacity-50"
+                  className="min-h-10 px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all disabled:opacity-50"
                 >
                   {submitting ? 'Saving...' : 'Save Deadline'}
                 </button>
