@@ -250,10 +250,10 @@ export default function Timesheets() {
         </div>
 
         {/* Global Live Session Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
           <button
             onClick={handleToggleTimer}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl font-bold text-xs shadow-md transition-all active:scale-95 ${
+            className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-xs font-bold shadow-md transition-all active:scale-95 sm:flex-none sm:px-5 ${
               isTimerRunning 
                 ? 'bg-rose-600 hover:bg-rose-700 text-white animate-pulse shadow-rose-500/20' 
                 : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
@@ -274,7 +274,7 @@ export default function Timesheets() {
 
           <button
             onClick={() => setIsModalOpen(true)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95`}
+            className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl px-3 py-2.5 text-xs font-bold shadow-md transition-all active:scale-95 sm:flex-none sm:px-4 ${theme.btnPrimary}`}
           >
             <Plus size={15} />
             <span>Log Time</span>
@@ -352,7 +352,50 @@ export default function Timesheets() {
       </div>
 
       {/* Main Table Container */}
-      <div className="bg-white dark:bg-[#161b22] rounded-3xl border border-gray-200 dark:border-gray-800/80 shadow-xs overflow-hidden">
+      <div className="space-y-3 lg:hidden">
+        {loading ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-xs text-gray-400 dark:border-gray-800 dark:bg-[#161b22]">
+            <Loader2 className={`mx-auto animate-spin ${theme.textAccent}`} size={24} />
+            <span className="mt-2 block">Syncing logged timesheets...</span>
+          </div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center text-xs text-gray-400 dark:border-gray-800 dark:bg-[#161b22]">
+            No time entries found. Start the session timer or log a manual entry above.
+          </div>
+        ) : (
+          filteredEntries.map((entry) => (
+            <article key={entry.id} className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <time className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                    {new Date(entry.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </time>
+                  <h2 className="mt-1 break-words text-sm font-semibold text-gray-900 dark:text-white">{entry.description}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteEntry(entry.id)}
+                  aria-label={`Delete time entry: ${entry.description}`}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs dark:border-gray-800">
+                <span className="min-w-0 truncate text-gray-600 dark:text-gray-300">
+                  {entry.project?.name || 'Workspace General'}
+                </span>
+                <span className="font-mono font-bold text-gray-900 dark:text-white">{formatDuration(entry.duration_minutes)}</span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold capitalize text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  {entry.status}
+                </span>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xs dark:border-gray-800/80 dark:bg-[#161b22] lg:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>

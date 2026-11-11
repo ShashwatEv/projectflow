@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Users, FolderKanban, CheckSquare, Activity,
-  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, UserPlus
+  ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, UserPlus, Camera
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
@@ -235,9 +235,13 @@ export default function Dashboard() {
       )}
 
       {/* Activity & Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {/* Real Activity Stream */}
-        <div className="dashboard-panel bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+        <div
+          role="region"
+          aria-label="Recent task activity"
+          className="dashboard-panel max-h-[min(32rem,calc(100dvh-12rem))] min-h-0 w-full min-w-0 overflow-y-auto overscroll-contain bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm"
+        >
           <div>
             <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recently Created Tasks</h3>
 
@@ -292,7 +296,7 @@ export default function Dashboard() {
         </div>
 
         {/* Action Panel */}
-        <div className="dashboard-spotlight bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl text-white shadow-lg flex flex-col justify-between">
+        <div className="dashboard-spotlight h-fit w-full min-w-0 self-start bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-2xl text-white shadow-lg">
           <div>
             <h3 className="font-bold text-xl mb-2">Ready to ship?</h3>
             <p className="text-indigo-100 text-sm mb-6 leading-relaxed">
@@ -300,6 +304,13 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link
+              to="/capture"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white lg:hidden"
+            >
+              <Camera size={14} />
+              Quick Capture
+            </Link>
             <button
               onClick={() => setIsProjectModalOpen(true)}
               className="bg-white text-indigo-600 px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm hover:bg-gray-50 transition-colors"

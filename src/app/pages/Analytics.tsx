@@ -11,6 +11,7 @@ import {
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
+import { buildBurndownData, getAnalyticsRangeStart, type AnalyticsRange } from './analyticsUtils';
 
 interface Task {
   id: string;
@@ -28,17 +29,18 @@ interface TimesheetEntry {
   created_at?: string | null;
 }
 
-type AnalyticsRange = '7' | '30' | '90' | 'all';
-
 function isWithinRange(value: string | null | undefined, range: AnalyticsRange, now = new Date()) {
-  if (range === 'all') return true;
   if (!value) return false;
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const parsed = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
+    : new Date(value);
+  const date = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   if (Number.isNaN(date.getTime())) return false;
-  const start = new Date(now);
-  start.setDate(start.getDate() - Number(range));
-  start.setHours(0, 0, 0, 0);
-  return date >= start && date <= now;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (range === 'all') return date <= today;
+  const start = getAnalyticsRangeStart(range, [], now);
+  return date >= start && date <= today;
 }
 
 export default function Analytics() {
@@ -101,16 +103,7 @@ export default function Analytics() {
     };
   }, []);
 
-  // Compute 7-day Sprint Burn-down curve
-  const burndownData = [
-    { day: 'Day 1', ideal: totalEstimatedHours, actual: totalEstimatedHours },
-    { day: 'Day 2', ideal: Math.round(totalEstimatedHours * 0.83), actual: Math.max(0, Math.round(totalEstimatedHours - totalLoggedHours * 0.2)) },
-    { day: 'Day 3', ideal: Math.round(totalEstimatedHours * 0.66), actual: Math.max(0, Math.round(totalEstimatedHours - totalLoggedHours * 0.4)) },
-    { day: 'Day 4', ideal: Math.round(totalEstimatedHours * 0.50), actual: Math.max(0, Math.round(totalEstimatedHours - totalLoggedHours * 0.65)) },
-    { day: 'Day 5', ideal: Math.round(totalEstimatedHours * 0.33), actual: Math.max(0, Math.round(totalEstimatedHours - totalLoggedHours * 0.85)) },
-    { day: 'Day 6', ideal: Math.round(totalEstimatedHours * 0.16), actual: remainingHours },
-    { day: 'Day 7', ideal: 0, actual: remainingHours > 5 ? remainingHours - 3 : 0 },
-  ];
+  const burndownData = buildBurndownData(tasks, timesheets, dateRange);
 
   // Distribution Data
   const statusCounts = filteredTasks.reduce((acc: any, task) => {
@@ -347,12 +340,14 @@ Return pure JSON without markdown backticks:
 
       {/* Sprint Burn-down Chart */}
       <div className="bg-white dark:bg-[#161b22] p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <h3 className="font-bold text-sm text-gray-900 dark:text-white">Sprint Burn-down Curve</h3>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">Comparison of ideal burn rate against actual remaining developer scope</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Daily remaining-hour trend for {dateRange === 'all' ? 'all available history' : `the last ${dateRange} days`}.
+            </p>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono sm:text-xs">
             <span className="flex items-center gap-1.5 text-gray-400">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-500" /> Ideal Trajectory
             </span>
@@ -368,7 +363,7 @@ Return pure JSON without markdown backticks:
           aria-label={`Sprint burn-down chart for ${dateRange === 'all' ? 'all time' : `the last ${dateRange} days`}`}
         >
           <p className="sr-only">
-            Burn-down data by day: {burndownData.map((item) => `${item.day}, ideal ${item.ideal} hours, actual ${item.actual} hours`).join('; ')}.
+            Burn-down data by date: {burndownData.map((item) => `${item.date}, ideal ${item.ideal} hours, actual ${item.actual} hours`).join('; ')}.
           </p>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={burndownData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -379,9 +374,10 @@ Return pure JSON without markdown backticks:
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.15} />
-              <XAxis dataKey="day" stroke="#6b7280" fontSize={11} tickLine={false} />
+              <XAxis dataKey="day" stroke="#6b7280" fontSize={11} tickLine={false} minTickGap={24} />
               <YAxis stroke="#6b7280" fontSize={11} tickLine={false} unit="h" />
-              <Tooltip 
+              <Tooltip
+                labelFormatter={(_, payload) => payload?.[0]?.payload?.date || ''}
                 contentStyle={{ backgroundColor: '#161b22', border: '1px solid #374151', borderRadius: '12px', fontSize: '11px', color: '#fff' }}
               />
               <Area type="monotone" dataKey="actual" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#actualGrad)" name="Actual Remaining" />

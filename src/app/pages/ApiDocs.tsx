@@ -247,11 +247,11 @@ export default function ApiDocs() {
               className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all space-y-4 group"
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <span className={`px-2.5 py-1 rounded-xl text-[11px] font-mono font-extrabold border ${methodColors[ep.method] || methodColors.GET}`}>
                     {ep.method}
                   </span>
-                  <span className="font-mono text-xs font-bold text-gray-900 dark:text-white">
+                  <span className="break-all font-mono text-xs font-bold text-gray-900 dark:text-white">
                     {ep.path}
                   </span>
                   <span className="text-[10px] uppercase font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md">

@@ -272,27 +272,15 @@ export default function App() {
                       />
                       <Route
                         path="/docs"
-                        element={
-                          <DesktopOnlyGuard featureName="API Documentation">
-                            <ApiDocs />
-                          </DesktopOnlyGuard>
-                        }
+                        element={<ApiDocs />}
                       />
                       <Route
                         path="/timesheets"
-                        element={
-                          <DesktopOnlyGuard featureName="Timesheets">
-                            <Timesheets />
-                          </DesktopOnlyGuard>
-                        }
+                        element={<Timesheets />}
                       />
                       <Route
                         path="/automations"
-                        element={
-                          <DesktopOnlyGuard featureName="Automations">
-                            <Automations />
-                          </DesktopOnlyGuard>
-                        }
+                        element={<Automations />}
                       />
 
                       {/* Team and collaboration */}
@@ -316,11 +304,7 @@ export default function App() {
                       />
                       <Route
                         path="/calendar"
-                        element={
-                          <DesktopOnlyGuard featureName="Monthly Calendar">
-                            <Calendar />
-                          </DesktopOnlyGuard>
-                        }
+                        element={<Calendar />}
                       />
 
                       {/* Account and analytics */}
@@ -329,11 +313,7 @@ export default function App() {
                       <Route path="/profile/:id" element={<Profile />} />
                       <Route
                         path="/analytics"
-                        element={
-                          <DesktopOnlyGuard featureName="Telemetry Analytics">
-                            <Analytics />
-                          </DesktopOnlyGuard>
-                        }
+                        element={<Analytics />}
                       />
 
                       {/* Dedicated mobile experiences guarded against desktop screen widths */}

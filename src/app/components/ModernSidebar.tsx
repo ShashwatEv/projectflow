@@ -107,7 +107,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
         <nav aria-label="Main navigation" className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
           <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Overview</div>
           <NavItem to="/dashboard" icon={<LayoutGrid size={18} />} label="Overview" isActive={location.pathname === '/dashboard'} theme={theme} onClick={onClose} />
-          <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/analytics" icon={<BarChart2 size={18} />} label="Analytics" isActive={location.pathname === '/analytics'} theme={theme} onClick={onClose} />
 
           {/* Mobile Actions: visible strictly on mobile drawers and hidden on desktop */}
           <div className="lg:hidden">
@@ -134,15 +134,15 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
           <NavItem to="/sprint-planner" icon={<Sparkles size={18} />} label="Sprint Planner" isActive={location.pathname === '/sprint-planner'} theme={theme} onClick={onClose} desktopOnly />
           <NavItem to="/code" icon={<Code2 size={18} />} label="Code Studio" isActive={location.pathname === '/code'} theme={theme} onClick={onClose} desktopOnly />
           <NavItem to="/api-playground" icon={<Terminal size={18} />} label="API Console" isActive={location.pathname === '/api-playground'} theme={theme} onClick={onClose} desktopOnly />
-          <NavItem to="/docs" icon={<BookOpen size={18} />} label="API Docs" isActive={location.pathname === '/docs'} theme={theme} onClick={onClose} desktopOnly />
-          <NavItem to="/timesheets" icon={<Clock size={18} />} label="Timesheets" isActive={location.pathname === '/timesheets'} theme={theme} onClick={onClose} desktopOnly />
-          <NavItem to="/automations" icon={<Zap size={18} />} label="Automations" isActive={location.pathname === '/automations'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/docs" icon={<BookOpen size={18} />} label="API Docs" isActive={location.pathname === '/docs'} theme={theme} onClick={onClose} />
+          <NavItem to="/timesheets" icon={<Clock size={18} />} label="Timesheets" isActive={location.pathname === '/timesheets'} theme={theme} onClick={onClose} />
+          <NavItem to="/automations" icon={<Zap size={18} />} label="Automations" isActive={location.pathname === '/automations'} theme={theme} onClick={onClose} />
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Team</div>
           <NavItem to="/messages/room_1" icon={<MessageSquare size={18} />} label="Team Chat" isActive={location.pathname.startsWith('/messages')} theme={theme} onClick={onClose} />
           <NavItem to="/team" icon={<Users size={18} />} label="Team" isActive={location.pathname === '/team'} theme={theme} onClick={onClose} />
           <NavItem to="/retrospectives" icon={<MessageSquareCode size={18} />} label="Retrospectives" isActive={location.pathname === '/retrospectives'} theme={theme} onClick={onClose} desktopOnly />
-          <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} desktopOnly />
+          <NavItem to="/calendar" icon={<Calendar size={18} />} label="Calendar" isActive={location.pathname === '/calendar'} theme={theme} onClick={onClose} />
         </nav>
 
         {/* Sandbox widget only shown on desktop */}

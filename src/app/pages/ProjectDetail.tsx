@@ -651,8 +651,14 @@ export default function ProjectDetail() {
 
       {/* Board View */}
       {viewMode === 'board' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 items-start">
-          {COLUMNS.map(col => {
+        <div
+          role="region"
+          aria-label="Project task board by status"
+          tabIndex={0}
+          className="-mx-4 overflow-x-auto overscroll-x-contain px-4 pb-4 touch-pan-x sm:mx-0 sm:overflow-visible sm:px-0"
+        >
+          <div className="grid w-max grid-flow-col auto-cols-[minmax(16rem,85vw)] items-start gap-5 md:w-auto md:grid-flow-row md:auto-cols-auto md:grid-cols-2 xl:grid-cols-4">
+            {COLUMNS.map(col => {
             const colTasks = tasks.filter(t => t.status === col.id);
 
             return (
@@ -760,7 +766,8 @@ export default function ProjectDetail() {
                 </div>
               </div>
             );
-          })}
+            })}
+          </div>
         </div>
       )}
 

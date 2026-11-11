@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Search, UserPlus, Filter, MoreHorizontal, Mail, MessageSquare, 
-  Loader2, Briefcase, Clock, Zap, X, MapPin, Globe, Check, Copy, 
+  Loader2, Users, X, MapPin, Globe, Check, Copy,
   ExternalLink, BadgeCheck, Users as UsersIcon 
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -24,10 +24,6 @@ interface UserData {
   bio?: string;
   website?: string;
   is_verified?: boolean;
-  stats?: {
-    workingHours: string;
-    productivity: number;
-  };
 }
 
 export default function Team() {
@@ -66,10 +62,6 @@ export default function Team() {
           role: isSuperAdmin(u.email, u.role) ? 'Admin' : (u.role || 'Member'),
           avatar: u.avatar || '/pfp.jpg',
           is_verified: Boolean(u.is_verified || isSuperAdmin(u.email, u.role)),
-          stats: { 
-            workingHours: `${Math.floor(Math.random() * 25) + 20}h`, 
-            productivity: Math.floor(Math.random() * 20) + 80 
-          }
         }));
         setUsers(formattedUsers);
       }
@@ -168,7 +160,7 @@ export default function Team() {
             <span>Team Directory</span>
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Collaborate with verified members, view performance metrics, and manage permissions.
+            Find teammates, see who is online, and start conversations.
           </p>
         </div>
         <button 
@@ -356,34 +348,25 @@ export default function Team() {
                   </div>
                 </div>
 
-                {/* Performance Metric Tiles */}
-                <div className="grid grid-cols-2 gap-2.5 mb-5 text-xs">
-                  <div className="bg-gray-50 dark:bg-[#0d1117] rounded-2xl p-2.5 border border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center gap-1.5 text-gray-400 mb-0.5">
-                      <Clock size={12} />
-                      <span className="text-[10px] font-semibold uppercase">Weekly</span>
-                    </div>
-                    <span className="text-xs font-bold text-gray-900 dark:text-gray-200 font-mono">
-                      {user.stats?.workingHours}
-                    </span>
-                  </div>
-
-                  <div className="bg-gray-50 dark:bg-[#0d1117] rounded-2xl p-2.5 border border-gray-100 dark:border-gray-800">
-                    <div className="flex items-center gap-1.5 text-gray-400 mb-0.5">
-                      <Zap size={12} />
-                      <span className="text-[10px] font-semibold uppercase">Velocity</span>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-500 font-mono">
-                      {user.stats?.productivity}%
-                    </span>
-                  </div>
+                <div className="mb-5 min-h-14 space-y-2 text-xs">
+                  {user.bio ? (
+                    <p className="line-clamp-2 leading-relaxed text-gray-600 dark:text-gray-400">{user.bio}</p>
+                  ) : (
+                    <p className="text-gray-400 dark:text-gray-500">No bio added yet.</p>
+                  )}
+                  {user.location && (
+                    <p className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                      <MapPin size={13} className="shrink-0" />
+                      <span className="truncate">{user.location}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Footer Strip */}
                 <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
                   <div className="flex items-center gap-1.5">
-                    <Briefcase size={13} className="text-gray-400" />
-                    <span className="truncate max-w-[130px] font-medium">ProjectFlow Core</span>
+                    <Users size={13} className="text-gray-400" />
+                    <span className="truncate max-w-[130px] font-medium">Workspace member</span>
                   </div>
                   
                   <span className={`font-semibold ${theme.textAccent} group-hover:translate-x-0.5 transition-transform flex items-center gap-1`}>
