@@ -20,7 +20,7 @@ interface Task {
   description?: string;
   status: 'todo' | 'inProgress' | 'review' | 'done';
   priority: 'low' | 'medium' | 'high';
-  due_date?: string;
+  due_date?: string | null;
   created_at?: string;
   project_id?: string;
   project?: { name: string };
@@ -66,6 +66,13 @@ function parseDueDate(value: string) {
   return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
 }
 
+function getDateInputValue(value?: string | null) {
+  if (!value) return '';
+  const date = parseDueDate(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function getDueLabel(value: string, now = new Date()) {
   const dueDate = parseDueDate(value);
   if (Number.isNaN(dueDate.getTime())) return null;
@@ -74,10 +81,10 @@ function getDueLabel(value: string, now = new Date()) {
   const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
   const daysUntilDue = Math.round((dueDay.getTime() - today.getTime()) / 86_400_000);
 
-  if (daysUntilDue < 0) return { text: 'Overdue', className: 'text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-950/40' };
-  if (daysUntilDue === 0) return { text: 'Due today', className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
-  if (daysUntilDue === 1) return { text: 'Due tomorrow', className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
-  if (daysUntilDue <= 3) return { text: `Due in ${daysUntilDue} days`, className: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' };
+  if (daysUntilDue < 0) return { text: 'Overdue', className: 'border border-rose-200 text-rose-800 bg-rose-50 dark:border-rose-900 dark:text-rose-200 dark:bg-rose-950/40' };
+  if (daysUntilDue === 0) return { text: 'Due today', className: 'border border-amber-200 text-amber-800 bg-amber-50 dark:border-amber-900 dark:text-amber-200 dark:bg-amber-950/40' };
+  if (daysUntilDue === 1) return { text: 'Due tomorrow', className: 'border border-amber-200 text-amber-800 bg-amber-50 dark:border-amber-900 dark:text-amber-200 dark:bg-amber-950/40' };
+  if (daysUntilDue <= 3) return { text: `Due in ${daysUntilDue} days`, className: 'border border-amber-200 text-amber-800 bg-amber-50 dark:border-amber-900 dark:text-amber-200 dark:bg-amber-950/40' };
   return null;
 }
 
@@ -109,6 +116,14 @@ export default function MyTasks() {
 
     newTaskInputRef.current?.focus();
     navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+  }, [location.hash, location.pathname, location.search, location.state, navigate]);
+
+  useEffect(() => {
+    const taskId = new URLSearchParams(location.search).get('taskId');
+    if (!taskId) return;
+
+    setActiveModalTaskId(taskId);
+    navigate(`${location.pathname}${location.hash}`, { replace: true, state: location.state });
   }, [location.hash, location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
@@ -248,20 +263,28 @@ export default function MyTasks() {
     }
   };
 
-  const handleUpdateStatus = async (taskId: string, newStatus: Task['status']) => {
+  const handleUpdateTask = async (
+    taskId: string,
+    updates: Partial<Pick<Task, 'status' | 'priority' | 'due_date'>>
+  ) => {
     const previousTasks = [...tasks];
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
     triggerHaptic('tap');
 
     try {
-      const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+      const { error } = await supabase.from('tasks').update(updates).eq('id', taskId);
       if (error) throw error;
-      toast.success(`Moved to ${COLUMNS.find(c => c.id === newStatus)?.label}`);
+      if (updates.status) {
+        toast.success(`Moved to ${COLUMNS.find(c => c.id === updates.status)?.label}`);
+      }
     } catch {
       setTasks(previousTasks);
-      toast.error('Failed to update status');
+      toast.error('Failed to update task');
     }
   };
+
+  const handleUpdateStatus = (taskId: string, newStatus: Task['status']) =>
+    handleUpdateTask(taskId, { status: newStatus });
 
   const toggleTaskSelection = (id: string) => {
     triggerHaptic('tap');
@@ -557,24 +580,43 @@ export default function MyTasks() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-7 sm:pl-0" onClick={(e) => e.stopPropagation()}>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${getPriorityBadge(task.priority)}`}>
-                          {task.priority}
-                        </span>
+                      <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 shrink-0 pl-7 sm:pl-0" onClick={(e) => e.stopPropagation()}>
+                        <select
+                          aria-label={`Priority for ${task.title}`}
+                          value={task.priority}
+                          onChange={(event) => handleUpdateTask(task.id, { priority: event.target.value as Task['priority'] })}
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${getPriorityBadge(task.priority)}`}
+                        >
+                          <option value="low">Low priority</option>
+                          <option value="medium">Medium priority</option>
+                          <option value="high">High priority</option>
+                        </select>
 
-                        {task.due_date && (
-                          <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <label className="sr-only" htmlFor={`task-due-${task.id}`}>Due date for {task.title}</label>
+                          <input
+                            id={`task-due-${task.id}`}
+                            type="date"
+                            value={getDateInputValue(task.due_date)}
+                            onChange={(event) => handleUpdateTask(task.id, {
+                              due_date: event.target.value ? new Date(`${event.target.value}T12:00:00`).toISOString() : null,
+                            })}
+                            className="w-[8.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          />
+                          {task.due_date && (
+                            <>
                             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 font-medium">
                               <Clock size={12} />
                               <span>{parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                             </span>
                             {dueLabel && (
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${dueLabel.className}`}>
+                              <span aria-label={`${dueLabel.text}, due ${parseDueDate(task.due_date).toLocaleDateString()}`} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${dueLabel.className}`}>
                                 {dueLabel.text}
                               </span>
                             )}
-                          </div>
-                        )}
+                            </>
+                          )}
+                        </div>
 
                         <select
                           aria-label={`Status for ${task.title}`}
@@ -662,9 +704,17 @@ export default function MyTasks() {
                             className="bg-white dark:bg-gray-800 rounded-xl p-3.5 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing hover:-translate-y-0.5"
                           >
                             <div className="flex justify-between items-start gap-2 mb-2">
-                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${getPriorityBadge(task.priority)}`}>
-                                {task.priority}
-                              </span>
+                              <select
+                                aria-label={`Priority for ${task.title}`}
+                                value={task.priority}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => handleUpdateTask(task.id, { priority: event.target.value as Task['priority'] })}
+                                className={`max-w-28 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${getPriorityBadge(task.priority)}`}
+                              >
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                              </select>
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800">
                                 You
                               </span>
@@ -675,20 +725,32 @@ export default function MyTasks() {
                             </h4>
 
                             <div 
-                              className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/60 text-[11px]"
+                              className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-700/60 text-[11px]"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                                <label className="sr-only" htmlFor={`board-task-due-${task.id}`}>Due date for {task.title}</label>
+                                <input
+                                  id={`board-task-due-${task.id}`}
+                                  type="date"
+                                  value={getDateInputValue(task.due_date)}
+                                  onChange={(event) => handleUpdateTask(task.id, {
+                                    due_date: event.target.value ? new Date(`${event.target.value}T12:00:00`).toISOString() : null,
+                                  })}
+                                  className="w-[7.5rem] rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[10px] text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                />
                               {task.due_date ? (
                                 <span className="text-gray-400 flex items-center gap-1 text-[10px]">
                                   <Clock size={11} />
                                   {parseDueDate(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                   {dueLabel && (
-                                    <span className={`ml-1 rounded-full px-1.5 py-0.5 font-semibold ${dueLabel.className}`}>
+                                    <span aria-label={`${dueLabel.text}, due ${parseDueDate(task.due_date).toLocaleDateString()}`} className={`ml-1 rounded-full px-1.5 py-0.5 font-semibold ${dueLabel.className}`}>
                                       {dueLabel.text}
                                     </span>
                                   )}
                                 </span>
-                              ) : <span className="text-gray-400 text-[10px]">—</span>}
+                              ) : null}
+                              </div>
 
                               {next && (
                                 <button

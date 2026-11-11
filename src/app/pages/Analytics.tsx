@@ -5,7 +5,7 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import {
-  Loader2, Circle, AlertTriangle, ListTodo,
+  Loader2, Circle, AlertTriangle, ListTodo, Download,
   TrendingUp, TrendingDown, Sparkles, Clock, Check, RefreshCw
 } from 'lucide-react';
 import { askGeminiCodeAssistant } from '../../lib/geminiClient';
@@ -18,12 +18,27 @@ interface Task {
   status: string;
   priority: string;
   estimate_hours?: number;
+  created_at?: string | null;
 }
 
 interface TimesheetEntry {
   id: string;
   hours: number;
   date: string;
+  created_at?: string | null;
+}
+
+type AnalyticsRange = '7' | '30' | '90' | 'all';
+
+function isWithinRange(value: string | null | undefined, range: AnalyticsRange, now = new Date()) {
+  if (range === 'all') return true;
+  if (!value) return false;
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  if (Number.isNaN(date.getTime())) return false;
+  const start = new Date(now);
+  start.setDate(start.getDate() - Number(range));
+  start.setHours(0, 0, 0, 0);
+  return date >= start && date <= now;
 }
 
 export default function Analytics() {
@@ -31,6 +46,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [timesheets, setTimesheets] = useState<TimesheetEntry[]>([]);
+  const [dateRange, setDateRange] = useState<AnalyticsRange>('30');
 
   // AI Sprint Feasibility Predictor State
   const [analyzingAi, setAnalyzingAi] = useState(false);
@@ -42,14 +58,16 @@ export default function Analytics() {
   } | null>(null);
 
   // Derived Metrics
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === 'done').length;
-  const pendingTasks = tasks.filter(t => t.status !== 'done').length;
-  const highPriorityTasks = tasks.filter(t => t.priority === 'high' || t.priority === 'urgent').length;
+  const filteredTasks = tasks.filter((task) => isWithinRange(task.created_at, dateRange));
+  const filteredTimesheets = timesheets.filter((entry) => isWithinRange(entry.date || entry.created_at, dateRange));
+  const totalTasks = filteredTasks.length;
+  const completedTasks = filteredTasks.filter(t => t.status === 'done').length;
+  const pendingTasks = filteredTasks.filter(t => t.status !== 'done').length;
+  const highPriorityTasks = filteredTasks.filter(t => t.priority === 'high' || t.priority === 'urgent').length;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  const totalEstimatedHours = tasks.reduce((sum, t) => sum + (Number(t.estimate_hours) || 3), 0);
-  const totalLoggedHours = timesheets.reduce((sum, ts) => sum + (Number(ts.hours) || 0), 0);
+  const totalEstimatedHours = filteredTasks.reduce((sum, t) => sum + (Number(t.estimate_hours) || 3), 0);
+  const totalLoggedHours = filteredTimesheets.reduce((sum, ts) => sum + (Number(ts.hours) || 0), 0);
   const remainingHours = Math.max(0, Math.round((totalEstimatedHours - totalLoggedHours) * 10) / 10);
 
   const fetchData = async () => {
@@ -95,7 +113,7 @@ export default function Analytics() {
   ];
 
   // Distribution Data
-  const statusCounts = tasks.reduce((acc: any, task) => {
+  const statusCounts = filteredTasks.reduce((acc: any, task) => {
     const status = task.status || 'todo';
     acc[status] = (acc[status] || 0) + 1;
     return acc;
@@ -108,7 +126,7 @@ export default function Analytics() {
     { name: 'Done', value: statusCounts.done || 0, color: '#10b981' },
   ].filter(item => item.value > 0);
 
-  const priorityCounts = tasks.reduce((acc: any, task) => {
+  const priorityCounts = filteredTasks.reduce((acc: any, task) => {
     const priority = task.priority || 'medium';
     acc[priority] = (acc[priority] || 0) + 1;
     return acc;
@@ -119,6 +137,29 @@ export default function Analytics() {
     { name: 'Medium', count: priorityCounts.medium || 0 },
     { name: 'High', count: (priorityCounts.high || 0) + (priorityCounts.urgent || 0) },
   ];
+
+  const downloadChartData = () => {
+    const rows: (string | number)[][] = [
+      ['Chart', 'Category', 'Series', 'Value'],
+      ...burndownData.flatMap((item) => [
+        ['Sprint burn-down', item.day, 'Ideal remaining hours', item.ideal],
+        ['Sprint burn-down', item.day, 'Actual remaining hours', item.actual],
+      ]),
+      ...statusData.map((item) => ['Task status', item.name, 'Tasks', item.value]),
+      ...priorityData.map((item) => ['Task priority', item.name, 'Tasks', item.count]),
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `projectflow-analytics-${dateRange === 'all' ? 'all-time' : `last-${dateRange}-days`}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
 
   // AI Sprint Feasibility Analysis
   const handlePredictSprintFeasibility = async () => {
@@ -194,7 +235,29 @@ Return pure JSON without markdown backticks:
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+            Range
+            <select
+              aria-label="Analytics date range"
+              value={dateRange}
+              onChange={(event) => setDateRange(event.target.value as AnalyticsRange)}
+              className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={downloadChartData}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          >
+            <Download size={14} aria-hidden="true" />
+            Export chart data
+          </button>
           <div className="text-right">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sprint Completion</span>
             <div className={`flex items-center gap-1.5 text-2xl md:text-3xl font-extrabold ${theme.textAccent}`}>
@@ -299,7 +362,14 @@ Return pure JSON without markdown backticks:
           </div>
         </div>
 
-        <div className="h-72 w-full pt-4">
+        <div
+          className="h-72 w-full pt-4"
+          role="img"
+          aria-label={`Sprint burn-down chart for ${dateRange === 'all' ? 'all time' : `the last ${dateRange} days`}`}
+        >
+          <p className="sr-only">
+            Burn-down data by day: {burndownData.map((item) => `${item.day}, ideal ${item.ideal} hours, actual ${item.actual} hours`).join('; ')}.
+          </p>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={burndownData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
@@ -326,7 +396,14 @@ Return pure JSON without markdown backticks:
         {/* Donut Status */}
         <div className="bg-white dark:bg-[#161b22] p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col">
           <h3 className="font-bold text-sm text-gray-900 dark:text-white mb-6">Task Status Distribution</h3>
-          <div className="flex-1 min-h-[260px] relative">
+          <div
+            className="flex-1 min-h-[260px] relative"
+            role="img"
+            aria-label={`Task status distribution: ${statusData.length ? statusData.map((item) => `${item.name}, ${item.value} tasks`).join('; ') : 'no tasks in this date range'}`}
+          >
+            <p className="sr-only">
+              Task status counts: {statusData.length ? statusData.map((item) => `${item.name}: ${item.value}`).join('; ') : 'No tasks in this date range'}.
+            </p>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -369,7 +446,14 @@ Return pure JSON without markdown backticks:
         {/* Priority Bar Breakdown */}
         <div className="bg-white dark:bg-[#161b22] p-6 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col">
           <h3 className="font-bold text-sm text-gray-900 dark:text-white mb-6">Workload Allocation by Priority</h3>
-          <div className="flex-1 min-h-[260px]">
+          <div
+            className="flex-1 min-h-[260px]"
+            role="img"
+            aria-label={`Task priority distribution: ${priorityData.map((item) => `${item.name}, ${item.count} tasks`).join('; ')}`}
+          >
+            <p className="sr-only">
+              Task priority counts: {priorityData.map((item) => `${item.name}: ${item.count}`).join('; ')}.
+            </p>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={priorityData} layout="vertical" margin={{ left: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#374151" opacity={0.15} />

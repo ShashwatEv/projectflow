@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Users, FolderKanban, CheckSquare, Activity,
   ArrowUpRight, ArrowDownRight, PlusCircle, CheckCircle2, UserPlus
@@ -19,11 +19,10 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     totalProjects: 0,
     activeProjects: 0,
-    newProjectsThisWeek: 0,
+    newProjectsInWindow: 0,
     totalUsers: 0,
     onlineUsers: 0,
     totalTasks: 0,
-    newTasksThisWeek: 0,
     completedTasks: 0,
     completionRate: 0,
   });
@@ -33,12 +32,12 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
+  const [activityWindowDays, setActivityWindowDays] = useState(7);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (windowDays: number) => {
     try {
-      // Date baseline for week-over-week trends (last 7 days)
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      const windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() - windowDays);
 
       const { data: projects, error: projectsError } = await supabase
         .from('projects')
@@ -46,7 +45,7 @@ export default function Dashboard() {
       if (projectsError) throw projectsError;
 
       const activeProjects = projects?.filter(p => p.status === 'active').length || 0;
-      const newProjectsThisWeek = projects?.filter(p => new Date(p.created_at) >= oneWeekAgo).length || 0;
+      const newProjectsInWindow = projects?.filter(p => new Date(p.created_at) >= windowStart).length || 0;
 
       const { data: users, error: usersError } = await supabase
         .from('user_profiles')
@@ -61,19 +60,18 @@ export default function Dashboard() {
         .select('id, status, created_at');
       if (tasksError) throw tasksError;
 
-      const totalTasks = tasks?.length || 0;
-      const completedTasks = tasks?.filter(t => t.status === 'done').length || 0;
-      const newTasksThisWeek = tasks?.filter(t => new Date(t.created_at) >= oneWeekAgo).length || 0;
+      const tasksInWindow = tasks?.filter(t => new Date(t.created_at) >= windowStart) || [];
+      const totalTasks = tasksInWindow.length;
+      const completedTasks = tasksInWindow.filter(t => t.status === 'done').length;
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
       setStats({
         totalProjects: projects?.length || 0,
         activeProjects,
-        newProjectsThisWeek,
+        newProjectsInWindow,
         totalUsers,
         onlineUsers,
         totalTasks,
-        newTasksThisWeek,
         completedTasks,
         completionRate,
       });
@@ -81,6 +79,7 @@ export default function Dashboard() {
       const { data: recentTasks, error: recentTasksError } = await supabase
         .from('tasks')
         .select('id, title, status, created_at')
+        .gte('created_at', windowStart.toISOString())
         .order('created_at', { ascending: false })
         .limit(5);
       if (recentTasksError) throw recentTasksError;
@@ -102,32 +101,47 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchData();
+    fetchData(activityWindowDays);
 
     // Listen to real-time changes on tasks and projects to keep counts live
     const channel = supabase
       .channel('dashboard_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchData(activityWindowDays))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => fetchData(activityWindowDays))
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [activityWindowDays, fetchData]);
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-          Dashboard Overview
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Welcome back! Here's what's happening across your workspace.
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Dashboard Overview
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Welcome back! Here's what's happening across your workspace.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+          Activity window
+          <select
+            aria-label="Activity date range"
+            value={activityWindowDays}
+            onChange={(event) => setActivityWindowDays(Number(event.target.value))}
+            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+        </label>
       </div>
 
       {loadError && (
@@ -138,7 +152,7 @@ export default function Dashboard() {
           <span>{loadError}</span>
           <button
             type="button"
-            onClick={fetchData}
+            onClick={() => fetchData(activityWindowDays)}
             className="rounded-lg px-3 py-1.5 font-semibold hover:bg-rose-100 dark:hover:bg-rose-900/40"
           >
             Retry
@@ -153,8 +167,8 @@ export default function Dashboard() {
           value={loading ? '...' : stats.activeProjects}
           to="/projects"
           icon={<FolderKanban className="text-indigo-600 dark:text-indigo-400" size={22} />}
-          trend={stats.newProjectsThisWeek > 0 ? `+${stats.newProjectsThisWeek} this wk` : 'No new this wk'}
-          trendUp={stats.newProjectsThisWeek > 0}
+          trend={stats.newProjectsInWindow > 0 ? `+${stats.newProjectsInWindow} / ${activityWindowDays}d` : `No new / ${activityWindowDays}d`}
+          trendUp={stats.newProjectsInWindow > 0}
         />
 
         <StatCard
@@ -167,12 +181,12 @@ export default function Dashboard() {
         />
 
         <StatCard
-          title="Total Tasks"
+          title={`Tasks · ${activityWindowDays}d`}
           value={loading ? '...' : stats.totalTasks}
           to="/tasks"
           icon={<CheckSquare className="text-blue-600 dark:text-blue-400" size={22} />}
-          trend={stats.newTasksThisWeek > 0 ? `+${stats.newTasksThisWeek} this wk` : '0 new'}
-          trendUp={stats.newTasksThisWeek > 0}
+          trend={`Created in ${activityWindowDays}d`}
+          trendUp={stats.totalTasks > 0}
         />
 
         <StatCard
@@ -246,7 +260,12 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-3.5">
                 {recentActivity.map(item => (
-                  <div key={item.id} className="flex items-center gap-3.5 text-sm group cursor-default">
+                  <Link
+                    key={item.id}
+                    to={`/tasks?taskId=${encodeURIComponent(item.id)}`}
+                    aria-label={`Open task: ${item.title}`}
+                    className="flex items-center gap-3.5 rounded-xl text-sm group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+                  >
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
                         item.status === 'done'
@@ -265,7 +284,7 @@ export default function Dashboard() {
                         Current status: {item.status} • Created {new Date(item.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -301,13 +320,13 @@ export default function Dashboard() {
       <CreateProjectModal
         isOpen={isProjectModalOpen}
         onClose={() => setIsProjectModalOpen(false)}
-        onProjectCreated={fetchData}
+        onProjectCreated={() => fetchData(activityWindowDays)}
       />
 
       <ProjectInviteModal
         isOpen={isAddMemberModalOpen}
         onClose={() => setIsAddMemberModalOpen(false)}
-        onAccessGranted={fetchData}
+        onAccessGranted={() => fetchData(activityWindowDays)}
       />
     </div>
   );
