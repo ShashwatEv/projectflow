@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FolderKanban, Plus, ArrowRight, MoreVertical, 
   Trash2, Loader2, Search, Code2, Sparkles, Github, 
-  CheckCircle2, PauseCircle, PlayCircle, Lock, LayoutGrid, List, Columns3, CalendarDays
+  CheckCircle2, PauseCircle, PlayCircle, Lock, LayoutGrid, List, Columns3, CalendarDays,
+  Milestone, Target
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -29,6 +30,22 @@ interface Project {
   };
 }
 
+interface ProjectMilestone {
+  id: string;
+  project_id: string;
+  title: string;
+  due_date: string | null;
+  status: 'planned' | 'in_progress' | 'complete';
+}
+
+interface SprintGoal {
+  id: string;
+  project_id: string;
+  title: string;
+  goal: string | null;
+  target_date: string | null;
+}
+
 function parseProjectDate(value: string) {
   return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
 }
@@ -45,15 +62,18 @@ export default function Projects() {
   const isVerified = isUserVerified(currentUser, session);
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [milestones, setMilestones] = useState<ProjectMilestone[]>([]);
+  const [sprintGoals, setSprintGoals] = useState<SprintGoal[]>([]);
+  const [roadmapError, setRoadmapError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'on_hold'>('all');
   const [ownerFilter, setOwnerFilter] = useState('');
   const [dueDateFilter, setDueDateFilter] = useState<'all' | 'overdue' | 'upcoming' | 'unscheduled'>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'board' | 'list'>(() => {
+  const [viewMode, setViewMode] = useState<'grid' | 'board' | 'list' | 'roadmap'>(() => {
     if (typeof window === 'undefined') return 'grid';
     const savedView = localStorage.getItem('pf_projects_view');
-    return savedView === 'board' || savedView === 'list' ? savedView : 'grid';
+    return savedView === 'board' || savedView === 'list' || savedView === 'roadmap' ? savedView : 'grid';
   });
   
   // Creation Modal State
@@ -98,10 +118,39 @@ export default function Projects() {
     }
   };
 
+  const fetchRoadmap = async () => {
+    const [milestonesResult, sprintsResult] = await Promise.all([
+      supabase
+        .from('project_milestones')
+        .select('id, project_id, title, due_date, status')
+        .order('due_date', { ascending: true }),
+      supabase
+        .from('sprints')
+        .select('id, project_id, title, goal, target_date')
+        .order('target_date', { ascending: true }),
+    ]);
+    setRoadmapError(Boolean(milestonesResult.error || sprintsResult.error));
+
+    if (milestonesResult.error) {
+      console.error('Could not load roadmap milestones:', milestonesResult.error);
+      setMilestones([]);
+    } else {
+      setMilestones((milestonesResult.data || []) as ProjectMilestone[]);
+    }
+
+    if (sprintsResult.error) {
+      console.error('Could not load sprint goals for roadmap:', sprintsResult.error);
+      setSprintGoals([]);
+    } else {
+      setSprintGoals((sprintsResult.data || []) as SprintGoal[]);
+    }
+  };
+
   useEffect(() => {
     fetchProjects();
+    void fetchRoadmap();
 
-    const channel = supabase
+    const projectsChannel = supabase
       .channel('projects_live')
       .on(
         'postgres_changes',
@@ -110,8 +159,15 @@ export default function Projects() {
       )
       .subscribe();
 
+    const roadmapChannel = supabase
+      .channel('project_roadmap_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_milestones' }, () => void fetchRoadmap())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sprints' }, () => void fetchRoadmap())
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(projectsChannel);
+      supabase.removeChannel(roadmapChannel);
     };
   }, []);
 
@@ -255,6 +311,49 @@ export default function Projects() {
   const projectStatuses: Project['status'][] = ['active', 'on_hold', 'completed'];
   const activeCount = projects.filter((p) => p.status === 'active').length;
   const completedCount = projects.filter((p) => p.status === 'completed').length;
+  const filteredProjectIds = new Set(filteredProjects.map((project) => project.id));
+  const roadmapItems = [
+    ...filteredProjects
+      .filter((project) => project.due_date)
+      .map((project) => ({
+        id: `project-${project.id}`,
+        projectId: project.id,
+        projectName: project.name,
+        title: 'Project deadline',
+        details: project.description || '',
+        date: project.due_date || null,
+        status: project.status === 'completed' ? 'complete' : 'planned',
+        kind: 'deadline' as const,
+      })),
+    ...milestones
+      .filter((milestone) => filteredProjectIds.has(milestone.project_id))
+      .map((milestone) => ({
+        id: `milestone-${milestone.id}`,
+        projectId: milestone.project_id,
+        projectName: projects.find((project) => project.id === milestone.project_id)?.name || 'Project',
+        title: milestone.title,
+        details: '',
+        date: milestone.due_date,
+        status: milestone.status,
+        kind: 'milestone' as const,
+      })),
+    ...sprintGoals
+      .filter((sprint) => filteredProjectIds.has(sprint.project_id) && sprint.goal?.trim())
+      .map((sprint) => ({
+        id: `sprint-${sprint.id}`,
+        projectId: sprint.project_id,
+        projectName: projects.find((project) => project.id === sprint.project_id)?.name || 'Project',
+        title: sprint.title,
+        details: sprint.goal || '',
+        date: sprint.target_date,
+        status: 'planned',
+        kind: 'goal' as const,
+      })),
+  ].sort((a, b) => {
+    if (!a.date) return b.date ? 1 : 0;
+    if (!b.date) return -1;
+    return parseProjectDate(a.date).getTime() - parseProjectDate(b.date).getTime();
+  });
   const avgProgress = projects.length > 0 
     ? Math.round(projects.reduce((acc, curr) => acc + (curr.progress || 0), 0) / projects.length) 
     : 0;
@@ -385,6 +484,7 @@ export default function Projects() {
               ['grid', 'Card grid', <LayoutGrid size={15} />],
               ['board', 'Board view', <Columns3 size={15} />],
               ['list', 'List view', <List size={15} />],
+              ['roadmap', 'Roadmap and goals', <Milestone size={15} />],
             ] as const).map(([view, label, icon]) => (
               <button
                 key={view}
@@ -420,6 +520,56 @@ export default function Projects() {
             {searchQuery ? 'No projects match your search keywords.' : 'Create your first project to start organizing tasks, code, and sprints.'}
           </p>
         </div>
+      ) : viewMode === 'roadmap' ? (
+        <section aria-label="Project roadmap" className="space-y-3">
+          {roadmapError && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+              <span>Some roadmap data could not be loaded.</span>
+              <button type="button" onClick={() => void fetchRoadmap()} className="font-semibold underline underline-offset-2">Try again</button>
+            </div>
+          )}
+          {roadmapItems.length ? roadmapItems.map((item) => (
+            <article
+              key={item.id}
+              className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22] sm:items-center"
+            >
+              <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                item.kind === 'goal'
+                  ? 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300'
+                  : item.kind === 'milestone'
+                  ? `${theme.bgSubtle} ${theme.textAccent}`
+                  : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300'
+              }`}>
+                {item.kind === 'goal' ? <Target size={18} /> : item.kind === 'milestone' ? <Milestone size={18} /> : <CalendarDays size={18} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{item.title}</h2>
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                    {item.kind === 'goal' ? 'Sprint goal' : item.kind === 'milestone' ? item.status.replace('_', ' ') : item.status === 'complete' ? 'Complete' : 'Project deadline'}
+                  </span>
+                </div>
+                {item.details && <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{item.details}</p>}
+                <button
+                  type="button"
+                  onClick={() => navigate(`/projects/${item.projectId}`)}
+                  className={`mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+                >
+                  {item.projectName} <ArrowRight size={12} aria-hidden="true" />
+                </button>
+              </div>
+              <time className="ml-auto shrink-0 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                {item.date ? formatProjectDate(item.date) : 'No date'}
+              </time>
+            </article>
+          )) : roadmapError ? null : (
+            <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-12 text-center dark:border-gray-700 dark:bg-[#161b22]">
+              <Milestone size={28} className="mx-auto text-gray-400" />
+              <h2 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">No roadmap items yet</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Add milestones or sprint goals to a project to plan the next checkpoints.</p>
+            </div>
+          )}
+        </section>
       ) : viewMode === 'board' ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {projectStatuses.map((status) => {

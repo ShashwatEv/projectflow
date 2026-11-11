@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Bell, Check, Code2, AlertCircle, MessageSquare, 
-  FolderKanban, Clock, ArrowRight, Loader2 
+  FolderKanban, Clock, ArrowRight, Loader2, Inbox
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -230,7 +230,15 @@ export default function Notifications() {
         </div>
 
         {/* Filter Pills & Mark All Action */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate('/mobile/inbox')}
+            className="flex min-h-9 items-center gap-1.5 rounded-xl border border-gray-800 bg-[#161b22] px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <Inbox size={14} />
+            <span>Unified inbox</span>
+          </button>
           <button
             onClick={handleMarkAllAsRead}
             disabled={unreadCount === 0}

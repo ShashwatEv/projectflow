@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Send, Hash, Search, Plus, Smile, MessageSquare, Bot, Code2,
-  Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff, Sparkles
+  Menu, X, Palette, ExternalLink, Check, Lock, Bell, BellOff, Sparkles, FileText, Target
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -91,6 +91,8 @@ export default function Messages() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
+  const [messageView, setMessageView] = useState<'all' | 'files' | 'decisions'>('all');
+  const [isDecisionDraft, setIsDecisionDraft] = useState(false);
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [showInputEmojiPicker, setShowInputEmojiPicker] = useState(false);
@@ -307,6 +309,8 @@ export default function Messages() {
     isAtLatestRef.current = true;
     setNewMessageCount(0);
     setMessageSearchQuery('');
+    setMessageView('all');
+    setIsDecisionDraft(false);
     setIsMessageSearchOpen(false);
     setHasOlderMessages(false);
     oldestMessageAtRef.current = null;
@@ -557,8 +561,9 @@ export default function Messages() {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user) return;
-    const content = newMessage.trim();
-    const assistantPrompt = getTeamChatAssistantMentionPrompt(content);
+    const messageBody = newMessage.trim();
+    const content = isDecisionDraft ? `[Decision] ${messageBody}` : messageBody;
+    const assistantPrompt = getTeamChatAssistantMentionPrompt(messageBody);
     setNewMessage('');
     setShowInputEmojiPicker(false);
     triggerHaptic('tap');
@@ -576,10 +581,11 @@ export default function Messages() {
 
     if (error) {
       toast.error('Failed to send message');
-      setNewMessage(content);
+      setNewMessage(messageBody);
     } else {
       isAtLatestRef.current = true;
       setNewMessageCount(0);
+      setIsDecisionDraft(false);
       if (assistantPrompt) {
         setAssistantMentionPrompt(assistantPrompt);
         setAssistantMentionRoom(currentRoomId);
@@ -776,6 +782,9 @@ export default function Messages() {
         u.role?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
   const visibleMessages = messages.filter((message) => {
+    const isDecision = message.content.trimStart().startsWith('[Decision]');
+    if (messageView === 'files' && (!message.file_url || message.file_type === 'audio')) return false;
+    if (messageView === 'decisions' && !isDecision) return false;
     const query = messageSearchQuery.trim().toLowerCase();
     if (!query) return true;
     return (
@@ -783,6 +792,8 @@ export default function Messages() {
       message.user?.name?.toLowerCase().includes(query)
     );
   });
+  const sharedFileCount = messages.filter((message) => Boolean(message.file_url) && message.file_type !== 'audio').length;
+  const decisionCount = messages.filter((message) => message.content.trimStart().startsWith('[Decision]')).length;
   const accentColors: Record<typeof accentColor, string> = {
     indigo: '#4f46e5',
     emerald: '#059669',
@@ -1121,6 +1132,35 @@ export default function Messages() {
           </div>
         )}
 
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-800" role="group" aria-label="Conversation content">
+          {([
+            ['all', 'Messages', messages.length, MessageSquare],
+            ['files', 'Shared files', sharedFileCount, FileText],
+            ['decisions', 'Decisions', decisionCount, Target],
+          ] as const).map(([view, label, count, Icon]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={messageView === view}
+              onClick={() => setMessageView(view)}
+              className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                messageView === view
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300'
+                  : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800'
+              }`}
+            >
+              <Icon size={14} />
+              {label}
+              <span className="text-[10px] opacity-70">{count}</span>
+            </button>
+          ))}
+          {messageView === 'decisions' && (
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              Mark a message as a decision while composing.
+            </span>
+          )}
+        </div>
+
         <div
           ref={messagesListRef}
           onScroll={(event) => {
@@ -1193,8 +1233,8 @@ export default function Messages() {
 
           {messages.length > 0 && visibleMessages.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-gray-500 dark:text-gray-400">
-              <Search size={22} className="text-gray-400" />
-              <p>No messages match “{messageSearchQuery}”.</p>
+              {messageView === 'files' ? <FileText size={22} className="text-gray-400" /> : messageView === 'decisions' ? <Target size={22} className="text-gray-400" /> : <Search size={22} className="text-gray-400" />}
+              <p>{messageView === 'files' ? 'No shared files in this conversation yet.' : messageView === 'decisions' ? 'No recorded decisions in this conversation yet.' : `No messages match “${messageSearchQuery}”.`}</p>
             </div>
           )}
 
@@ -1300,6 +1340,21 @@ export default function Messages() {
         <div className="p-3 md:p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 relative">
           <div className="h-5 mb-1">
             <TypingIndicator users={typingUsers} />
+          </div>
+          <div className="mx-auto mb-2 flex max-w-5xl justify-end">
+            <button
+              type="button"
+              aria-pressed={isDecisionDraft}
+              onClick={() => setIsDecisionDraft((current) => !current)}
+              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                isDecisionDraft
+                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
+                  : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Target size={13} />
+              {isDecisionDraft ? 'Recording a decision' : 'Mark as decision'}
+            </button>
           </div>
 
           {showInputEmojiPicker && (
