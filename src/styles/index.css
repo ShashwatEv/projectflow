@@ -42,6 +42,25 @@ body {
   animation: app-page-enter 280ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
 }
 
+.auth-card {
+  animation: app-page-enter 360ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  transition:
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.auth-card:hover {
+  border-color: rgb(99 102 241 / 20%);
+  box-shadow: 0 24px 70px -32px rgb(79 70 229 / 28%);
+}
+
+.auth-motion {
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease,
+    box-shadow 180ms ease;
+}
+
 .app-header {
   background-color: color-mix(in srgb, white 92%, transparent);
   box-shadow: 0 1px 0 rgb(15 23 42 / 2%);
@@ -134,6 +153,16 @@ body {
     animation: none;
   }
 
+  .auth-card,
+  .auth-motion {
+    animation: none;
+    transition: none;
+  }
+
+  .auth-card:hover {
+    box-shadow: none;
+  }
+
   .app-nav-link,
   .dashboard-panel,
   .dashboard-stat-card {
@@ -148,6 +177,16 @@ body {
 
 html.reduce-motion .app-main > * {
   animation: none;
+}
+
+html.reduce-motion .auth-card,
+html.reduce-motion .auth-motion {
+  animation: none;
+  transition: none;
+}
+
+html.reduce-motion .auth-card:hover {
+  box-shadow: none;
 }
 
 html.reduce-motion .app-nav-link,

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
+import AuthPageFrame from '../components/AuthPageFrame';
 
 export default function ForgotPassword() {
   const theme = useAccentTheme();
@@ -48,8 +49,7 @@ export default function ForgotPassword() {
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#0d1117] p-4 transition-colors">
-        <div className="w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-xl text-center space-y-6 animate-in zoom-in-95 duration-300">
+      <AuthPageFrame className="text-center">
           <div className="h-16 w-16 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500 rounded-2xl border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center mx-auto shadow-sm">
             <CheckCircle size={32} />
           </div>
@@ -57,7 +57,7 @@ export default function ForgotPassword() {
           <div className="space-y-1">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Check your email</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              We sent a password reset link to <br/>
+              We sent a password reset link to{' '}
               <span className="font-semibold text-gray-900 dark:text-white">{email}</span>
             </p>
           </div>
@@ -66,9 +66,10 @@ export default function ForgotPassword() {
             <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               <span>Didn't receive it?</span>
               <button 
+                type="button"
                 onClick={handleResend}
                 disabled={countdown > 0}
-                className={`font-semibold transition-colors ${
+                className={`auth-motion rounded-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   countdown > 0 
                     ? 'text-gray-400 cursor-not-allowed' 
                     : `${theme.textAccent}${theme.textHover} hover:underline`
@@ -82,26 +83,24 @@ export default function ForgotPassword() {
           <div className="pt-4 border-t border-gray-100 dark:border-gray-800/80">
             <Link 
               to="/login" 
-              className={`text-xs font-semibold text-gray-600 dark:text-gray-400 ${theme.textHover} flex items-center justify-center gap-2 transition-colors`}
+              className={`auth-motion inline-flex items-center justify-center gap-2 rounded-sm text-xs font-semibold text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-gray-400 ${theme.textHover}`}
             >
               <ArrowLeft size={15} /> Back to Sign In
             </Link>
           </div>
-        </div>
-      </div>
+      </AuthPageFrame>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-[#0d1117] p-4 transition-colors">
-      <div className="w-full max-w-md bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
+    <AuthPageFrame>
         
         {/* Top Back Nav */}
         <Link 
           to="/login" 
-          className={`inline-flex items-center text-xs font-semibold text-gray-500 dark:text-gray-400 ${theme.textHover} transition-colors group`}
+          className={`auth-motion inline-flex items-center rounded-sm text-xs font-semibold text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-gray-400 ${theme.textHover} group`}
         >
-          <ArrowLeft size={14} className="mr-1.5 group-hover:-translate-x-1 transition-transform" /> Back to Sign In
+          <ArrowLeft size={14} className="mr-1.5" /> Back to Sign In
         </Link>
         
         {/* Header Logo & Title */}
@@ -122,7 +121,7 @@ export default function ForgotPassword() {
         </div>
 
         {error && (
-          <div className="p-3 text-xs text-red-600 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200 dark:border-red-900/30 flex items-start gap-2.5">
+          <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-600 dark:border-red-900/30 dark:bg-red-950/30">
             <Mail size={15} className="mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -130,7 +129,7 @@ export default function ForgotPassword() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            <label htmlFor="recovery-email" className="text-xs font-semibold text-gray-700 dark:text-gray-300">
               Email Address
             </label>
             <div className="relative">
@@ -138,9 +137,11 @@ export default function ForgotPassword() {
                 <Mail size={16} />
               </div>
               <input 
+                id="recovery-email"
                 type="email" 
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
+                autoComplete="email"
                 className={`w-full pl-10 pr-4 py-3 bg-gray-50/70 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl text-sm text-gray-900 dark:text-white outline-none ${theme.ringAccent} transition-colors`} 
                 placeholder="name@company.com" 
                 required 
@@ -151,7 +152,7 @@ export default function ForgotPassword() {
           <button 
             type="submit" 
             disabled={status === 'loading'} 
-            className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-50 font-bold text-sm rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center gap-2`}
+            className={`auth-motion flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold shadow-md transition-all disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#161b22] ${theme.btnPrimary}`}
           >
             {status === 'loading' ? (
               <>
@@ -176,7 +177,6 @@ export default function ForgotPassword() {
           </p>
         </div>
 
-      </div>
-    </div>
+    </AuthPageFrame>
   );
 }
