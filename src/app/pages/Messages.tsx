@@ -813,6 +813,7 @@ export default function Messages() {
       )}
 
       <aside
+        id="conversation-navigation"
         className={`fixed lg:static inset-y-0 left-0 z-40 w-72 md:w-80 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-transform duration-200 ease-in-out ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
@@ -848,6 +849,50 @@ export default function Messages() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-1 focus:ring-indigo-500"
             />
+          </div>
+        </div>
+
+        <div className="border-b border-gray-200 px-3 pb-3 dark:border-gray-800" role="group" aria-label="Conversation views">
+          <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Browse conversation</p>
+          <div className="space-y-1">
+            {([
+              ['all', 'Messages', messages.length, MessageSquare],
+              ['files', 'Shared files', sharedFileCount, FileText],
+              ['decisions', 'Decisions', decisionCount, Target],
+            ] as const).map(([view, label, count, Icon]) => (
+              <button
+                key={view}
+                type="button"
+                aria-pressed={messageView === view}
+                onClick={() => {
+                  setMessageView(view);
+                  setIsSidebarOpen(false);
+                }}
+                className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  messageView === view
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                    : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800'
+                }`}
+              >
+                <Icon size={15} aria-hidden="true" />
+                <span className="flex-1">{label}</span>
+                <span className="text-[10px] opacity-70">{count}</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              aria-pressed={isDecisionDraft}
+              onClick={() => setIsDecisionDraft((current) => !current)}
+              className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                isDecisionDraft
+                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
+                  : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800'
+              }`}
+            >
+              <Target size={15} aria-hidden="true" />
+              <span className="flex-1">Mark next message as a decision</span>
+              <span className="text-[10px] opacity-70">{isDecisionDraft ? 'On' : 'Off'}</span>
+            </button>
           </div>
         </div>
 
@@ -986,8 +1031,12 @@ export default function Messages() {
                 triggerHaptic('tap');
                 setIsSidebarOpen(true);
               }}
+              type="button"
+              aria-label="Open conversation menu"
+              aria-controls="conversation-navigation"
+              aria-expanded={isSidebarOpen}
               className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              title="Open conversations drawer"
+              title="Open conversation menu"
             >
               <Menu size={18} />
             </button>
@@ -1088,19 +1137,6 @@ export default function Messages() {
             >
               {isMessageSearchOpen ? <X size={17} /> : <Search size={17} />}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('tap');
-                setIsThemeModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border border-indigo-500/40 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition-all shadow-xs active:scale-95 cursor-pointer"
-              title="Change chat theme wallpaper"
-            >
-              <Palette size={15} className="text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden sm:inline">Theme</span>
-            </button>
-
             {isDM && dmRecipient && (
               <Link
                 to={`/profile/${dmRecipient.id}`}
@@ -1132,34 +1168,11 @@ export default function Messages() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-800" role="group" aria-label="Conversation content">
-          {([
-            ['all', 'Messages', messages.length, MessageSquare],
-            ['files', 'Shared files', sharedFileCount, FileText],
-            ['decisions', 'Decisions', decisionCount, Target],
-          ] as const).map(([view, label, count, Icon]) => (
-            <button
-              key={view}
-              type="button"
-              aria-pressed={messageView === view}
-              onClick={() => setMessageView(view)}
-              className={`inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                messageView === view
-                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300'
-                  : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800'
-              }`}
-            >
-              <Icon size={14} />
-              {label}
-              <span className="text-[10px] opacity-70">{count}</span>
-            </button>
-          ))}
-          {messageView === 'decisions' && (
-            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              Mark a message as a decision while composing.
-            </span>
-          )}
-        </div>
+        {messageView !== 'all' && (
+          <div className="border-b border-gray-200 bg-white px-4 py-2 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400">
+            Showing {messageView === 'files' ? 'shared files' : 'recorded decisions'} in this conversation
+          </div>
+        )}
 
         <div
           ref={messagesListRef}
@@ -1341,22 +1354,6 @@ export default function Messages() {
           <div className="h-5 mb-1">
             <TypingIndicator users={typingUsers} />
           </div>
-          <div className="mx-auto mb-2 flex max-w-5xl justify-end">
-            <button
-              type="button"
-              aria-pressed={isDecisionDraft}
-              onClick={() => setIsDecisionDraft((current) => !current)}
-              className={`inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                isDecisionDraft
-                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
-                  : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Target size={13} />
-              {isDecisionDraft ? 'Recording a decision' : 'Mark as decision'}
-            </button>
-          </div>
-
           {showInputEmojiPicker && (
             <div
               ref={emojiPickerRef}
