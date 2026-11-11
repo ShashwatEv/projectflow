@@ -89,6 +89,7 @@ export default function Messages() {
   const [isChannelLoading, setIsChannelLoading] = useState(false);
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageSearchQuery, setMessageSearchQuery] = useState('');
   const [messageView, setMessageView] = useState<'all' | 'files' | 'decisions'>('all');
@@ -110,6 +111,8 @@ export default function Messages() {
   const previousMessageCountRef = useRef(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+  const chatMenuButtonRef = useRef<HTMLButtonElement>(null);
   const assistantButtonRef = useRef<HTMLButtonElement>(null);
   const assistantHandoffKeyRef = useRef<{ userId: string; apiKey: string; expiresAt: number } | null>(null);
   const oldestMessageAtRef = useRef<string | null>(null);
@@ -143,6 +146,31 @@ export default function Messages() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isChatMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target as Node)) {
+        setIsChatMenuOpen(false);
+        setIsMessageSearchOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsChatMenuOpen(false);
+        setIsMessageSearchOpen(false);
+        chatMenuButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isChatMenuOpen]);
 
   useEffect(() => {
     let active = true;
@@ -311,6 +339,7 @@ export default function Messages() {
     setMessageSearchQuery('');
     setMessageView('all');
     setIsDecisionDraft(false);
+    setIsChatMenuOpen(false);
     setIsMessageSearchOpen(false);
     setHasOlderMessages(false);
     oldestMessageAtRef.current = null;
@@ -852,50 +881,6 @@ export default function Messages() {
           </div>
         </div>
 
-        <div className="border-b border-gray-200 px-3 pb-3 dark:border-gray-800" role="group" aria-label="Conversation views">
-          <p className="px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Browse conversation</p>
-          <div className="space-y-1">
-            {([
-              ['all', 'Messages', messages.length, MessageSquare],
-              ['files', 'Shared files', sharedFileCount, FileText],
-              ['decisions', 'Decisions', decisionCount, Target],
-            ] as const).map(([view, label, count, Icon]) => (
-              <button
-                key={view}
-                type="button"
-                aria-pressed={messageView === view}
-                onClick={() => {
-                  setMessageView(view);
-                  setIsSidebarOpen(false);
-                }}
-                className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                  messageView === view
-                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
-                    : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Icon size={15} aria-hidden="true" />
-                <span className="flex-1">{label}</span>
-                <span className="text-[10px] opacity-70">{count}</span>
-              </button>
-            ))}
-            <button
-              type="button"
-              aria-pressed={isDecisionDraft}
-              onClick={() => setIsDecisionDraft((current) => !current)}
-              className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                isDecisionDraft
-                  ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
-                  : 'text-gray-600 hover:bg-gray-200/70 dark:text-gray-300 dark:hover:bg-gray-800'
-              }`}
-            >
-              <Target size={15} aria-hidden="true" />
-              <span className="flex-1">Mark next message as a decision</span>
-              <span className="text-[10px] opacity-70">{isDecisionDraft ? 'On' : 'Off'}</span>
-            </button>
-          </div>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6 touch-scroll-smooth">
           <div>
             <div className="flex items-center justify-between px-2 mb-1.5">
@@ -1032,13 +1017,13 @@ export default function Messages() {
                 setIsSidebarOpen(true);
               }}
               type="button"
-              aria-label="Open conversation menu"
+              aria-label="Open conversations list"
               aria-controls="conversation-navigation"
               aria-expanded={isSidebarOpen}
               className="lg:hidden p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              title="Open conversation menu"
+              title="Open conversations list"
             >
-              <Menu size={18} />
+              <MessageSquare size={18} />
             </button>
 
             {isDM && dmRecipient ? (
@@ -1107,36 +1092,125 @@ export default function Messages() {
                 <span className="hidden sm:inline">Assistant</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                const nextMuted = !isCurrentRoomMuted;
-                setIsCurrentRoomMuted(nextMuted);
-                void saveRoomPreference({ is_muted: nextMuted });
-                toast.success(nextMuted ? 'Conversation muted' : 'Conversation unmuted');
-              }}
-              aria-label={isCurrentRoomMuted ? 'Unmute this conversation' : 'Mute this conversation'}
-              aria-pressed={isCurrentRoomMuted}
-              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
-              title={isCurrentRoomMuted ? 'Unmute conversation' : 'Mute conversation'}
-            >
-              {isCurrentRoomMuted ? <BellOff size={16} /> : <Bell size={16} />}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const closingSearch = isMessageSearchOpen;
-                setIsMessageSearchOpen((open) => !open);
-                setMessageSearchQuery('');
-                if (closingSearch) fetchMessages(true, '');
-              }}
-              aria-label={isMessageSearchOpen ? 'Close message search' : 'Search this conversation'}
-              aria-expanded={isMessageSearchOpen}
-              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
-              title="Search this conversation"
-            >
-              {isMessageSearchOpen ? <X size={17} /> : <Search size={17} />}
-            </button>
+            <div className="relative" ref={chatMenuRef}>
+              <button
+                type="button"
+                ref={chatMenuButtonRef}
+                onClick={() => {
+                  const opening = !isChatMenuOpen;
+                  setIsChatMenuOpen(opening);
+                  setIsMessageSearchOpen(opening);
+                }}
+                aria-label={isChatMenuOpen ? 'Close chat menu' : 'Open chat menu'}
+                aria-haspopup="dialog"
+                aria-expanded={isChatMenuOpen}
+                aria-controls={isChatMenuOpen ? 'chat-actions-menu' : undefined}
+                className={`inline-flex min-h-9 min-w-9 items-center justify-center rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  isChatMenuOpen
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-indigo-400'
+                }`}
+                title="Chat options"
+              >
+                <Menu size={18} aria-hidden="true" />
+              </button>
+
+              {isChatMenuOpen && (
+                <div
+                  id="chat-actions-menu"
+                  role="dialog"
+                  aria-label="Chat options"
+                  className="absolute right-0 top-full z-50 mt-2 max-h-[80dvh] w-[min(22rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <div className="border-b border-gray-200 p-3 dark:border-gray-700">
+                    <label htmlFor="conversation-search" className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Search this conversation
+                    </label>
+                    <div className="relative">
+                      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                      <input
+                        id="conversation-search"
+                        type="search"
+                        value={messageSearchQuery}
+                        onChange={(event) => setMessageSearchQuery(event.target.value)}
+                        placeholder="Search messages..."
+                        className="min-h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                      />
+                    </div>
+                    {messageSearchQuery && (
+                      <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400" aria-live="polite">
+                        {visibleMessages.length} {visibleMessages.length === 1 ? 'match' : 'matches'}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="border-b border-gray-200 p-2 dark:border-gray-700" role="group" aria-label="Conversation views">
+                    <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Browse conversation</p>
+                    {([
+                      ['all', 'Messages', messages.length, MessageSquare],
+                      ['files', 'Shared files', sharedFileCount, FileText],
+                      ['decisions', 'Decisions', decisionCount, Target],
+                    ] as const).map(([view, label, count, Icon]) => (
+                      <button
+                        key={view}
+                        type="button"
+                        aria-pressed={messageView === view}
+                        onClick={() => {
+                          setMessageView(view);
+                          setIsChatMenuOpen(false);
+                          setIsMessageSearchOpen(false);
+                          chatMenuButtonRef.current?.focus();
+                        }}
+                        className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                          messageView === view
+                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'
+                            : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <Icon size={15} aria-hidden="true" />
+                        <span className="flex-1">{label}</span>
+                        <span className="text-[10px] opacity-70">{count}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-b border-gray-200 p-2 dark:border-gray-700">
+                    <button
+                      type="button"
+                      aria-pressed={isDecisionDraft}
+                      onClick={() => setIsDecisionDraft((current) => !current)}
+                      className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        isDecisionDraft
+                          ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
+                          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <Target size={15} aria-hidden="true" />
+                      <span className="flex-1">Mark next message as a decision</span>
+                      <span className="text-[10px] opacity-70">{isDecisionDraft ? 'On' : 'Off'}</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextMuted = !isCurrentRoomMuted;
+                        setIsCurrentRoomMuted(nextMuted);
+                        void saveRoomPreference({ is_muted: nextMuted });
+                        toast.success(nextMuted ? 'Conversation muted' : 'Conversation unmuted');
+                      }}
+                      aria-label={isCurrentRoomMuted ? 'Unmute this conversation' : 'Mute this conversation'}
+                      aria-pressed={isCurrentRoomMuted}
+                      className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {isCurrentRoomMuted ? <BellOff size={15} aria-hidden="true" /> : <Bell size={15} aria-hidden="true" />}
+                      {isCurrentRoomMuted ? 'Unmute conversation' : 'Mute conversation'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             {isDM && dmRecipient && (
               <Link
                 to={`/profile/${dmRecipient.id}`}
@@ -1147,26 +1221,6 @@ export default function Messages() {
             )}
           </div>
         </div>
-
-        {isMessageSearchOpen && (
-          <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-800">
-            <Search size={15} className="shrink-0 text-gray-400" />
-            <input
-              type="search"
-              autoFocus
-              value={messageSearchQuery}
-              onChange={(event) => setMessageSearchQuery(event.target.value)}
-              placeholder="Search messages in this conversation..."
-              aria-label="Search messages in this conversation"
-              className="min-w-0 flex-1 bg-transparent py-1 text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100"
-            />
-            {messageSearchQuery && (
-              <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-                {visibleMessages.length} {visibleMessages.length === 1 ? 'match' : 'matches'}
-              </span>
-            )}
-          </div>
-        )}
 
         {messageView !== 'all' && (
           <div className="border-b border-gray-200 bg-white px-4 py-2 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400">
