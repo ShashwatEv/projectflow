@@ -99,7 +99,7 @@ export default function MyTasks() {
   const [hasRole, setHasRole] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string>('');
 
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'today' | 'overdue'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'today' | 'overdue' | 'review'>('all');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [newTaskInput, setNewTaskInput] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'priority'>('date');
@@ -354,6 +354,7 @@ export default function MyTasks() {
       }
       if (filter === 'pending') return t.status !== 'done';
       if (filter === 'completed') return t.status === 'done';
+      if (filter === 'review') return t.status === 'review';
       return true;
     })
     .sort((a, b) => {
@@ -378,6 +379,7 @@ export default function MyTasks() {
 
   const pendingCount = tasks.filter(t => t.status !== 'done').length;
   const completedCount = tasks.filter(t => t.status === 'done').length;
+  const reviewCount = tasks.filter(t => t.status === 'review').length;
 
   return (
     <PullToRefresh onRefresh={fetchTasks}>
@@ -468,6 +470,14 @@ export default function MyTasks() {
 
               <FilterBtn label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
               <FilterBtn label="Pending" active={filter === 'pending'} onClick={() => setFilter('pending')} />
+              <FilterBtn
+                label={`Needs review (${reviewCount})`}
+                active={filter === 'review'}
+                onClick={() => {
+                  setSelectedDate(null);
+                  setFilter('review');
+                }}
+              />
               <FilterBtn label="Today" active={filter === 'today'} onClick={() => {
                 setSelectedDate(null);
                 setFilter('today');
