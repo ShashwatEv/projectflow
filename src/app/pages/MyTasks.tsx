@@ -654,8 +654,14 @@ export default function MyTasks() {
             </div>
           ) : (
             /* BOARD VIEW WITH HTML5 DRAG AND DROP */
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1 mb-16 items-start">
-              {COLUMNS.map(col => {
+            <div
+              role="region"
+              aria-label="Task board by status"
+              tabIndex={0}
+              className="-mx-4 mb-16 overflow-x-auto overscroll-x-contain px-4 pb-4 touch-pan-x sm:mx-0 sm:overflow-visible sm:px-0"
+            >
+              <div className="grid w-max grid-flow-col auto-cols-[minmax(16rem,85vw)] items-start gap-4 md:w-auto md:grid-flow-row md:auto-cols-auto md:grid-cols-2 xl:grid-cols-4">
+                {COLUMNS.map(col => {
                 const colTasks = processedTasks.filter(t => t.status === col.id);
                 return (
                   <div
@@ -773,7 +779,8 @@ export default function MyTasks() {
                     </div>
                   </div>
                 );
-              })}
+                })}
+              </div>
             </div>
           )}
 

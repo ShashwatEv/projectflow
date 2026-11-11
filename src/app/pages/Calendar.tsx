@@ -246,7 +246,7 @@ export default function Calendar() {
             onClick={() => openAddModal()}
             className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md transition-all active:scale-95"
           >
-            <Plus size={16} /> Add Event
+            <Plus size={16} /> Add Task Deadline
           </button>
         </div>
       </div>
@@ -280,7 +280,7 @@ export default function Calendar() {
       </div>
 
       {/* Compact agenda for small screens */}
-      <section className="md:hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-[#0f1422]" aria-labelledby="calendar-agenda-heading">
+      <section className="lg:hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-[#0f1422]" aria-labelledby="calendar-agenda-heading">
         <h2 id="calendar-agenda-heading" className="border-b border-gray-200 px-4 py-3 text-sm font-bold text-gray-900 dark:border-gray-800 dark:text-white">
           {monthNames[month]} agenda
         </h2>
@@ -321,7 +321,7 @@ export default function Calendar() {
       </section>
 
       {/* Calendar Grid Container */}
-      <div className="hidden md:block overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl dark:border-gray-800/80 dark:bg-[#0f1422]">
+      <div className="hidden lg:block overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-xl dark:border-gray-800/80 dark:bg-[#0f1422]">
         {/* Days Header */}
         <div className="grid grid-cols-7 border-b border-gray-200 text-center py-3 text-[11px] font-bold text-gray-500 uppercase tracking-wider bg-gray-50 dark:border-gray-800 dark:text-gray-400 dark:bg-[#131929]">
           {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (

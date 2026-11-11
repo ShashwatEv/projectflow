@@ -33,7 +33,7 @@ export default function DailyStandupStories() {
   const navigate = useNavigate();
 
   const [activeStory, setActiveStory] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const [deliveredTasks, setDeliveredTasks] = useState<StandupTask[]>([]);
@@ -164,13 +164,11 @@ export default function DailyStandupStories() {
           >
             <div
               className={`h-full ${theme.progressBar} rounded-full transition-all ${
-                idx < activeStory
+                idx < activeStory || (idx === activeStory && activeStory === totalStories - 1)
                   ? 'w-full'
-                  : idx === activeStory && !isPaused && activeStory !== 3
-                  ? 'w-full transition-[width] duration-[6000ms] ease-linear'
-                  : idx === activeStory
-                  ? 'w-full'
-                  : 'w-0'
+                  : idx === activeStory && !isPaused
+                    ? 'w-full transition-[width] duration-[6000ms] ease-linear'
+                    : 'w-0'
               }`}
             />
           </div>
@@ -197,6 +195,8 @@ export default function DailyStandupStories() {
           <button
             type="button"
             onClick={() => setIsPaused(!isPaused)}
+            aria-label={isPaused ? 'Resume automatic story progression' : 'Pause automatic story progression'}
+            title={isPaused ? 'Resume automatic story progression' : 'Pause automatic story progression'}
             className="p-2 rounded-xl bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white shadow-xs transition-colors"
           >
             {isPaused ? <Play size={13} /> : <Pause size={13} />}
