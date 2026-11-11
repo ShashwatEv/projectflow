@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseCodeEditResponse, verifyOpenRouterConnection } from '../../lib/geminiClient';
+import {
+  askProjectFlowChatAgent,
+  getOpenRouterErrorMessage,
+  parseCodeEditResponse,
+  verifyOpenRouterApiKey,
+  verifyOpenRouterConnection,
+} from '../../lib/geminiClient';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -37,6 +43,100 @@ describe('geminiClient', () => {
           }),
         })
       );
+    });
+
+    it('sends an explicit conversational thread to OpenRouter using the supplied key', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"reply":"hello","taskProposal":null}' } }] }),
+      } as Response);
+
+      await askProjectFlowChatAgent(
+        'system prompt',
+        [
+          { role: 'user', content: 'Authorized project context' },
+          { role: 'assistant', content: 'Previous answer' },
+          { role: 'user', content: 'What next?' },
+        ],
+        'explicit-user-key'
+      );
+
+      const options = mockedFetch.mock.calls[0]?.[1];
+      const headers = options?.headers as Record<string, string>;
+      expect((headers.Authorization || '').startsWith('Bearer ')).toBe(true);
+      const requestBody = JSON.parse(String(options?.body));
+      expect(requestBody.model).toBe('openrouter/free');
+      expect(requestBody.max_tokens).toBe(4096);
+      expect(requestBody.messages).toEqual([
+        { role: 'system', content: 'system prompt' },
+        { role: 'user', content: 'Authorized project context' },
+        { role: 'assistant', content: 'Previous answer' },
+        { role: 'user', content: 'What next?' },
+      ]);
+      expect(String(options?.body)).not.toContain('explicit-user-key');
+    });
+
+    it('checks a pasted OpenRouter key with a minimal request', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Ready' } }] }),
+      } as Response);
+
+      await verifyOpenRouterApiKey('personal-key');
+      const options = mockedFetch.mock.calls[0]?.[1];
+      expect((options?.headers as Record<string, string>).Authorization?.startsWith('Bearer ')).toBe(true);
+      const requestBody = JSON.parse(String(options?.body));
+      expect(requestBody.model).toBe('openrouter/free');
+      expect(requestBody.max_tokens).toBe(512);
+      expect(String(options?.body)).not.toContain('personal-key');
+      expect(requestBody.messages.at(-1)).toEqual({
+        role: 'user',
+        content: 'Reply: Ready',
+      });
+    });
+
+    it('reports when reasoning consumes the whole output budget and accepts text-part responses', async () => {
+      const mockedFetch = vi.mocked(fetch);
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '', reasoning: 'thinking' }, finish_reason: 'length' }],
+          usage: { completion_tokens: 1800, completion_tokens_details: { reasoning_tokens: 1800 } },
+        }),
+      } as Response);
+
+      await expect(askProjectFlowChatAgent(
+        'system prompt',
+        [{ role: 'user', content: 'hi' }],
+        'explicit-user-key'
+      )).rejects.toThrow('output token budget for internal reasoning');
+
+      mockedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: [{ type: 'text', text: 'Hello!' }] } }],
+        }),
+      } as Response);
+      await expect(askProjectFlowChatAgent(
+        'system prompt',
+        [{ role: 'user', content: 'hi' }],
+        'explicit-user-key'
+      )).resolves.toBe('Hello!');
+    });
+
+    it('converts common provider failures into actionable user guidance', () => {
+      expect(getOpenRouterErrorMessage(new Error('HTTP 401 (Unauthorized)')))
+        .toContain('OpenRouter rejected this key');
+      expect(getOpenRouterErrorMessage(new Error('HTTP 429')))
+        .toContain('rate-limited this request');
+      expect(getOpenRouterErrorMessage(new Error('Failed to fetch')))
+        .toContain('Check your connection');
+      expect(getOpenRouterErrorMessage(new Error('This model is unavailable for free')))
+        .toContain('available free model');
+      expect(getOpenRouterErrorMessage(new Error('The free model used its output token budget for internal reasoning')))
+        .toContain('spent its response limit thinking');
     });
 
     it('returns false when API returns error', async () => {
