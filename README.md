@@ -76,15 +76,16 @@ The current Windows x64 installer is available as `ProjectFlow-Desktop-Setup.exe
 
 ### Project meetings and screen sharing
 
-Meetings are scoped to a project and use the signed-in Supabase session. Project owners and members can create and join; database policies gate meeting rows, presence, and directed WebRTC signaling on project membership. The join screen requests explicit consent before microphone/camera access, and devices start muted/off. Screen sharing is a separate user action; Electron displays a native screen/window chooser and captures nothing until the user picks a source. Media is peer-to-peer (mesh), not recorded or relayed by ProjectFlow.
+Meetings are scoped to a project and use the signed-in Supabase session. The **Meetings** sidebar page lists open project rooms, starts meetings, and accepts a meeting code or invite link; the meeting room also lets participants copy and send the code/link. Project owners and members can create and join; database policies gate meeting rows, presence, chat, and directed WebRTC signaling on project membership. Codes identify rooms but never grant access. The join screen requests explicit consent before microphone/camera access, and devices start muted/off. Screen sharing is a separate user action; Electron displays a native screen/window chooser and captures nothing until the user picks a source. Media is peer-to-peer (mesh), not recorded or relayed by ProjectFlow.
 
 Apply `supabase/migrations/202611140001_project_meetings.sql` after the existing ProjectFlow project and membership schema is present:
 
 1. Open the **Supabase Dashboard** for the same project used by the app and open **SQL Editor**.
 2. Choose **New query**, paste the complete contents of `supabase/migrations/202611140001_project_meetings.sql`, and run it.
 3. Confirm the query completes successfully before launching the desktop or web app. The migration creates the meeting tables/RPCs and private Realtime authorization policies; it does not need a service-role key or a separate table-publication step.
+4. In a separate SQL Editor query, paste and run the complete contents of `supabase/migrations/202611140002_meeting_codes_and_chat.sql`. This adds invite codes, a project-access-checked code lookup, and participant-only chat reads/sends. Realtime chat broadcasts contain only the saved message ID; clients fetch the message through the signed-in, RLS-protected Supabase client.
 
-Alternatively, with the Supabase CLI linked to the intended project, run `supabase db push` from the repository root; this applies all pending repository migrations, not only the meeting migration. Do not run that command against a production project until you have reviewed the pending migrations and confirmed the target.
+Alternatively, with the Supabase CLI linked to the intended project, run `supabase db push` from the repository root; this applies all pending repository migrations, not only the meeting migrations. Do not run that command against a production project until you have reviewed the pending migrations and confirmed the target. Set `VITE_APP_URL` to the public web-app origin when building the desktop app so invite links open the web Meetings page; the default is `https://projectflow-d9dk.onrender.com`.
 
 The built-in ICE configuration uses Google's free public STUN endpoint as a no-credential default. Teams can override it with `VITE_MEETING_ICE_SERVERS`, a JSON array of standard `RTCIceServer` objects, for example:
 

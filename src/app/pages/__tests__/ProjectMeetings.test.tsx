@@ -82,4 +82,17 @@ describe('ProjectMeetings', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /I consent to accessing my microphone and camera/i }));
     expect(joinButton).toBeEnabled();
   });
+
+  it('opens the consent flow for a meeting selected from an invite link', async () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/project-id/meetings?join=meeting-id']}>
+        <Routes>
+          <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Join with devices' })).toBeDisabled();
+  });
 });

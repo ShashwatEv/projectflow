@@ -61,6 +61,30 @@ export function getMeetingSignalTopic(
   return `projectflow-meeting-signal:${meetingId}:${senderId}:${recipientId}`;
 }
 
+export function normalizeMeetingCode(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
+
+export function formatMeetingCode(value: string): string {
+  return normalizeMeetingCode(value).match(/.{1,4}/g)?.join('-') || '';
+}
+
+export function createMeetingInviteUrl(code: string, origin: string): string {
+  const url = new URL('/meetings', origin);
+  url.searchParams.set('code', formatMeetingCode(code));
+  return url.toString();
+}
+
+export function getMeetingInviteOrigin(
+  configuredOrigin: string | undefined,
+  isDesktop: boolean,
+  currentOrigin: string
+): string {
+  if (configuredOrigin?.trim()) return configuredOrigin.trim();
+  if (isDesktop) return 'https://projectflow-d9dk.onrender.com';
+  return currentOrigin;
+}
+
 export function isMeetingSignal(value: unknown): value is MeetingSignal {
   if (!value || typeof value !== 'object') return false;
   const signal = value as Record<string, unknown>;
