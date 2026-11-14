@@ -2,6 +2,7 @@
 node_modules
 dist
 build
+release
 .env
 .env.local
 .DS_Store

@@ -14,7 +14,8 @@
     <script>
       (function() {
         const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        if ('serviceWorker' in navigator) {
+        const isDesktop = location.protocol === 'file:' || location.protocol === 'projectflow-app:';
+        if ('serviceWorker' in navigator && !isDesktop) {
           if (isDev) {
             // In local development, unregister service workers and purge caches
             // to prevent stale Vite modules and broken HMR transforms.

@@ -9,14 +9,22 @@ export default function GoogleSignInButton() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const isDesktop = window.projectFlowDesktop?.isDesktop ?? false;
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: isDesktop
+            ? import.meta.env.VITE_DESKTOP_AUTH_REDIRECT_URL || 'projectflow://auth/callback'
+            : `${window.location.origin}/dashboard`,
+          skipBrowserRedirect: isDesktop,
         },
       });
 
       if (error) throw error;
+      if (isDesktop) {
+        if (!data.url || !window.projectFlowDesktop) throw new Error('Could not start desktop sign-in.');
+        await window.projectFlowDesktop.openExternal(data.url);
+      }
     } catch (error) {
       console.error('Google sign-in failed:', error);
       toast.error(error instanceof Error ? error.message : 'Could not start Google sign-in.');

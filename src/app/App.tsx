@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
 import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
@@ -54,6 +54,7 @@ import MobilePeopleDirectory from './pages/MobilePeopleDirectory';
 import MobileTriageDeck from './pages/MobileTriageDeck';
 import DailyStandupStories from './pages/DailyStandupStories';
 import QuickCaptureSheet from './pages/QuickCaptureSheet';
+import ProjectMeetings from './pages/ProjectMeetings';
 
 const ApiPlayground = lazy(() =>
   import('./pages/ApiPlayground').catch(() => ({
@@ -191,6 +192,7 @@ function Layout() {
 }
 
 export default function App() {
+  const AppRouter = window.projectFlowDesktop?.isDesktop ? HashRouter : BrowserRouter;
   const [showSplash, setShowSplash] = useState(() => {
     const isMobileViewport =
       typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
@@ -223,7 +225,7 @@ export default function App() {
         <ThemeProvider>
           <OnboardingSandboxProvider>
             <Toaster richColors position="top-right" />
-            <BrowserRouter>
+            <AppRouter>
               <ErrorBoundary>
                 <Routes>
                   {/* Public authentication routes */}
@@ -246,6 +248,7 @@ export default function App() {
                       <Route path="/tasks" element={<MyTasks />} />
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/projects/:id" element={<ProjectDetail />} />
+                      <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
                       <Route
                         path="/sprint-planner"
                         element={
@@ -351,7 +354,7 @@ export default function App() {
                   <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
               </ErrorBoundary>
-            </BrowserRouter>
+            </AppRouter>
           </OnboardingSandboxProvider>
         </ThemeProvider>
       </AuthProvider>

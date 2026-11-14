@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, FolderKanban, Calendar, Plus,
   Loader2, Clock, Trash2, Edit3, ChevronRight, LayoutGrid, List,
-  ArrowRight, Flag, Activity
+  ArrowRight, Flag, Activity, Video
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -429,6 +429,12 @@ export default function ProjectDetail() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            to={`/projects/${project.id}/meetings`}
+            className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300 dark:hover:bg-indigo-950/50"
+          >
+            <Video size={15} /> Meetings
+          </Link>
           <button
             onClick={() => setIsEditProjectOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/60 border border-gray-200 dark:border-gray-700 rounded-xl transition-colors shadow-sm"
