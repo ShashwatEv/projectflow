@@ -170,8 +170,8 @@ set search_path = public, pg_temp
 as $function$
 declare
   normalized_code text := regexp_replace(upper(coalesce(p_code, '')), '[^A-Z0-9]', '', 'g');
-  meeting_id uuid;
-  meeting_project_id uuid;
+  found_meeting_id uuid;
+  found_project_id uuid;
 begin
   if auth.uid() is null then
     raise exception 'Sign in to join a meeting';
@@ -181,7 +181,7 @@ begin
   end if;
 
   select m.id, m.project_id
-  into meeting_id, meeting_project_id
+  into found_meeting_id, found_project_id
   from public.project_meetings m
   where m.invite_code = normalized_code
     and m.ended_at is null
@@ -195,18 +195,18 @@ begin
     meeting_id, user_id, joined_at, left_at, is_invited_guest
   )
   values (
-    meeting_id,
+    found_meeting_id,
     auth.uid(),
     now(),
     null,
-    not public.projectflow_can_access_project(meeting_project_id)
+    not public.projectflow_can_access_project(found_project_id)
   )
   on conflict (meeting_id, user_id) do update
     set joined_at = excluded.joined_at,
         left_at = null,
         is_invited_guest = excluded.is_invited_guest;
 
-  return meeting_id;
+  return found_meeting_id;
 end;
 $function$;
 

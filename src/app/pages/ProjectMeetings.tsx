@@ -3,17 +3,27 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Camera,
+  Clock,
   Copy,
+  Hand,
+  Info,
+  LayoutGrid,
   Loader2,
+  MessageSquare,
   Mic,
   MicOff,
   MonitorUp,
   PhoneOff,
+  Pin,
+  PinOff,
   Plus,
   Send,
+  Smile,
+  Square,
   Users,
   Video,
   VideoOff,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -56,6 +66,7 @@ interface ParticipantPresence {
   audioEnabled: boolean;
   videoEnabled: boolean;
   screenSharing: boolean;
+  handRaised: boolean;
 }
 
 interface PeerState {
@@ -67,6 +78,15 @@ interface PeerState {
   remoteStream: MediaStream;
   pendingCandidates: RTCIceCandidateInit[];
 }
+
+interface FloatingReaction {
+  id: string;
+  emoji: string;
+  senderName: string;
+  x: number;
+}
+
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🎉', '👏'] as const;
 
 function waitForSubscription(channel: RealtimeChannel): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -96,6 +116,12 @@ function VideoTile({
   cameraEnabled = true,
   screenSharing = false,
   local = false,
+  handRaised = false,
+  audioMuted = false,
+  pinned = false,
+  onPin,
+  onUnpin,
+  large = false,
 }: {
   name: string;
   avatar: string;
@@ -104,6 +130,12 @@ function VideoTile({
   cameraEnabled?: boolean;
   screenSharing?: boolean;
   local?: boolean;
+  handRaised?: boolean;
+  audioMuted?: boolean;
+  pinned?: boolean;
+  onPin?: () => void;
+  onUnpin?: () => void;
+  large?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasVideo = Boolean(stream?.getVideoTracks().length && (cameraEnabled || screenSharing));
@@ -115,7 +147,12 @@ function VideoTile({
   }, [stream]);
 
   return (
-    <div className="relative aspect-video overflow-hidden rounded-2xl border border-gray-200 bg-gray-950 dark:border-gray-700">
+    <div
+      className={`group relative overflow-hidden rounded-2xl border bg-gray-950 ${
+        pinned ? 'border-indigo-500 ring-2 ring-indigo-500/30' : 'border-gray-700/50'
+      } ${large ? 'col-span-2 row-span-2' : ''}`}
+      style={{ aspectRatio: large ? '16/9' : '16/10' }}
+    >
       {stream && (
         <video
           ref={videoRef}
@@ -127,20 +164,56 @@ function VideoTile({
         />
       )}
       {!hasVideo && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-300">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
           {avatar ? (
-            <img src={avatar} alt="" className="h-16 w-16 rounded-full object-cover" />
+            <img src={avatar} alt="" className={`rounded-full object-cover ${large ? 'h-24 w-24' : 'h-16 w-16'}`} />
           ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-600 text-xl font-bold text-white">
+            <div className={`flex items-center justify-center rounded-full bg-indigo-600 font-bold text-white ${
+              large ? 'h-24 w-24 text-3xl' : 'h-16 w-16 text-xl'
+            }`}>
               {name.slice(0, 1).toUpperCase()}
             </div>
           )}
-          <span className="text-sm">{screenSharing ? 'Sharing screen' : 'Camera off'}</span>
+          <span className="text-sm text-gray-400">
+            {screenSharing ? 'Sharing screen' : 'Camera off'}
+          </span>
         </div>
       )}
+
+      {/* Hand raised indicator */}
+      {handRaised && (
+        <div className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-xs font-semibold text-white shadow-lg backdrop-blur-sm">
+          <Hand size={13} /> Raised
+        </div>
+      )}
+
+      {/* Audio muted indicator (for remote participants) */}
+      {audioMuted && !local && (
+        <div className="absolute right-3 top-3 rounded-full bg-red-600/80 p-1.5 backdrop-blur-sm">
+          <MicOff size={12} className="text-white" />
+        </div>
+      )}
+
+      {/* Pin/Unpin button (visible on hover) */}
+      {!local && (onPin || onUnpin) && (
+        <button
+          type="button"
+          onClick={pinned ? onUnpin : onPin}
+          className="absolute right-3 bottom-12 rounded-lg bg-black/60 p-1.5 text-white opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+          title={pinned ? 'Unpin' : 'Pin'}
+        >
+          {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+        </button>
+      )}
+
+      {/* Bottom name bar */}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-8 text-sm font-medium text-white">
         <span className="truncate">{name}{local ? ' (you)' : ''}</span>
-        {screenSharing && <span className="rounded-full bg-indigo-500/90 px-2 py-1 text-[10px]">Screen</span>}
+        <div className="flex items-center gap-1.5">
+          {screenSharing && (
+            <span className="rounded-full bg-indigo-500/90 px-2 py-0.5 text-[10px]">Screen</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -179,6 +252,18 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
   const [chatMessages, setChatMessages] = useState<MeetingChatMessage[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
+
+  // Google Meet-style features
+  const [viewMode, setViewMode] = useState<'grid' | 'speaker'>('grid');
+  const [pinnedUserId, setPinnedUserId] = useState<string | null>(null);
+  const [handRaised, setHandRaised] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showMeetingInfo, setShowMeetingInfo] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+  const [joinedAt, setJoinedAt] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState('00:00');
 
   const roomRef = useRef<RealtimeChannel | null>(null);
   const peerConnections = useRef(new Map<string, PeerState>());
@@ -477,6 +562,15 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     setActiveMeeting(null);
     setPendingMeeting(null);
     setConsentGiven(false);
+    setHandRaised(false);
+    setShowParticipants(false);
+    setShowChat(false);
+    setShowMeetingInfo(false);
+    setShowReactionPicker(false);
+    setFloatingReactions([]);
+    setJoinedAt(null);
+    setPinnedUserId(null);
+    setViewMode('grid');
   }, [removePeer]);
 
   useEffect(() => {
@@ -498,6 +592,54 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  // Meeting elapsed timer
+  useEffect(() => {
+    if (!joinedAt) { setElapsedTime('00:00'); return; }
+    const tick = () => {
+      const diff = Math.floor((Date.now() - joinedAt.getTime()) / 1000);
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      setElapsedTime(
+        h > 0
+          ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+          : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      );
+    };
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [joinedAt]);
+
+  const addFloatingReaction = useCallback((emoji: string, senderName: string) => {
+    const id = crypto.randomUUID();
+    const x = Math.random() * 70 + 15;
+    setFloatingReactions((prev) => [...prev, { id, emoji, senderName, x }]);
+    window.setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 3500);
+  }, []);
+
+  const sendReaction = useCallback(async (emoji: string) => {
+    const room = roomRef.current;
+    const localUser = userRef.current;
+    if (!room || !localUser) return;
+    addFloatingReaction(emoji, 'You');
+    await room.send({
+      type: 'broadcast',
+      event: 'reaction',
+      payload: { emoji, senderName: localUser.name || 'ProjectFlow member' },
+    });
+    setShowReactionPicker(false);
+  }, [addFloatingReaction]);
+
+  const toggleHandRaise = useCallback(async () => {
+    const raised = !handRaised;
+    setHandRaised(raised);
+    await updatePresence({ handRaised: raised });
+    if (raised) toast.info('Hand raised');
+  }, [handRaised, updatePresence]);
 
   const createMeeting = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -659,6 +801,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
         audioEnabled: false,
         videoEnabled: false,
         screenSharing: false,
+        handRaised: false,
       };
       await room.track(presence);
       const announce = await room.send({
