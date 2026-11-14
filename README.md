@@ -61,6 +61,37 @@ Live Demo = (https://projectflow-d9dk.onrender.com)
    npm run dev
    ```
 
+### Desktop app
+
+The desktop shell uses Electron around the existing React/Vite app so the current Supabase authentication and project UI remain the same. Electron isolates Node APIs from the renderer, uses HashRouter for installed builds, opens Google OAuth in the system browser, and returns through the `projectflow://auth/callback` protocol. Capacitor Android configuration is unchanged.
+
+```bash
+npm run desktop:dev
+npm run desktop:package
+```
+
+`desktop:dev` starts Vite and Electron together. `desktop:package` builds the renderer with relative asset paths and packages for the current host platform (Windows: NSIS installer). Configure the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as the web app before packaging. In Supabase **Authentication → URL Configuration → Redirect URLs**, add `projectflow://auth/callback`; set `VITE_DESKTOP_AUTH_REDIRECT_URL` to that value if using a different registered callback. Google OAuth must already be configured in Supabase; the provider's callback remains the Supabase Auth callback shown in its provider settings. Email/password authentication continues to use the existing Supabase auth. The installer is unsigned unless you configure a platform signing certificate; installer auto-updates are not configured, so distribute new builds through your normal release channel.
+
+### Project meetings and screen sharing
+
+Meetings are scoped to a project and use the signed-in Supabase session. Project owners and members can create and join; database policies gate meeting rows, presence, and directed WebRTC signaling on project membership. The join screen requests explicit consent before microphone/camera access, and devices start muted/off. Screen sharing is a separate user action; Electron displays a native screen/window chooser and captures nothing until the user picks a source. Media is peer-to-peer (mesh), not recorded or relayed by ProjectFlow.
+
+Apply `supabase/migrations/202611140001_project_meetings.sql` after the existing ProjectFlow project and membership schema is present:
+
+1. Open the **Supabase Dashboard** for the same project used by the app and open **SQL Editor**.
+2. Choose **New query**, paste the complete contents of `supabase/migrations/202611140001_project_meetings.sql`, and run it.
+3. Confirm the query completes successfully before launching the desktop or web app. The migration creates the meeting tables/RPCs and private Realtime authorization policies; it does not need a service-role key or a separate table-publication step.
+
+Alternatively, with the Supabase CLI linked to the intended project, run `supabase db push` from the repository root; this applies all pending repository migrations, not only the meeting migration. Do not run that command against a production project until you have reviewed the pending migrations and confirmed the target.
+
+The built-in ICE configuration uses Google's free public STUN endpoint as a no-credential default. Teams can override it with `VITE_MEETING_ICE_SERVERS`, a JSON array of standard `RTCIceServer` objects, for example:
+
+```env
+VITE_MEETING_ICE_SERVERS=[{"urls":"stun:stun.example.net:3478"},{"urls":"turn:turn.example.net:3478","username":"short-lived-user","credential":"short-lived-password"}]
+```
+
+STUN may not connect peers behind restrictive NAT/firewalls; a TURN relay may be needed for those networks and must be provided/configured by the operator. No paid provider, credentials, or TURN service is bundled. `VITE_*` values are shipped in renderer assets, so never put long-lived TURN credentials there; use only public STUN values or short-lived TURN credentials issued by infrastructure you operate. Meetings use a full peer mesh, so each participant sends media to every other participant; a managed SFU would be needed for larger calls. Android keeps its existing Capacitor build path; media and screen-capture support depends on the device WebView and its OS permissions.
+
 ### Collaboration database migration
 
 Apply `supabase/migrations/202611010001_workspace_collaboration.sql` to the Supabase project before using shared/private channels, chat read markers and per-channel preferences, task comments and mentions, project milestones/activity, or shared onboarding progress. Use the Supabase SQL Editor or the Supabase CLI linked to the intended project. Back up the database and review existing `messages`/`message_reactions` RLS policies before applying; this migration adds restrictive channel/member checks so private conversations remain private even when older permissive policies exist.

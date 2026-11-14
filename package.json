@@ -2,10 +2,18 @@
   "name": "@figma/my-make-file",
   "private": true,
   "version": "0.0.1",
+  "description": "ProjectFlow collaborative workspace",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShashwatEv/projectflow.git"
+  },
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "desktop:dev": "electron .",
+    "desktop:package": "vite build --base=./ && electron-builder",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test": "vitest",
@@ -99,11 +107,47 @@
     "tailwindcss": "4.1.12",
     "typescript": "~5.6.0",
     "vite": "6.3.5",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "publish": null,
+    "appId": "com.projectflow.desktop",
+    "productName": "ProjectFlow",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   },
   "pnpm": {
     "overrides": {
       "vite": "6.3.5"
     }
+  },
+  "allowScripts": {
+    "@tailwindcss/oxide@4.1.12": true,
+    "electron@39.8.10": true,
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.21.5": true,
+    "protobufjs@7.6.6": true
   }
 }
