@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { recordAuditLog } from '../../lib/auditLogger';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
+import { getSafeReturnPath } from '../../lib/authRedirect';
 import AuthPageFrame from '../components/AuthPageFrame';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useAccentTheme();
+  const returnTo = getSafeReturnPath(location.state?.from);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,6 +22,8 @@ export default function Login() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    sessionStorage.removeItem('pf_web_auth_return_to');
+    sessionStorage.removeItem('pf_desktop_auth_return_to');
     setLoading(true);
 
     try {
@@ -80,6 +85,7 @@ export default function Login() {
               channel,
               maskedTarget: masked,
               otpDispatched: true,
+              returnTo,
             },
             replace: true,
           });
@@ -89,7 +95,7 @@ export default function Login() {
         // Standard login without 2FA
         await recordAuditLog('User signed in', 'security');
         toast.success('Welcome back!');
-        navigate('/dashboard');
+        navigate(returnTo, { replace: true });
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to sign in. Please verify your credentials.');
@@ -198,6 +204,7 @@ export default function Login() {
             Don't have an account?{' '}
             <Link
               to="/signup"
+              state={{ returnTo }}
               className={`font-bold ${theme.textAccent} ${theme.textHover} transition-colors`}
             >
               Create one

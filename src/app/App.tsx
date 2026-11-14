@@ -251,8 +251,9 @@ export default function App() {
                       <Route path="/tasks" element={<MyTasks />} />
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/projects/:id" element={<ProjectDetail />} />
-                      <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+                      <Route path="/projects/:id/meetings" element={<Navigate to="/meetings" replace />} />
                       <Route path="/meetings" element={<MeetingsHub />} />
+                      <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
                       <Route
                         path="/sprint-planner"
                         element={

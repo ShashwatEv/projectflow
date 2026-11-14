@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getSafeReturnPath } from './authRedirect';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
@@ -38,7 +39,9 @@ window.projectFlowDesktop?.onAuthCallback((callbackUrl) => {
         if (error) throw error;
       }
 
-      window.location.hash = '/dashboard';
+      const returnTo = getSafeReturnPath(sessionStorage.getItem('pf_desktop_auth_return_to'));
+      sessionStorage.removeItem('pf_desktop_auth_return_to');
+      window.location.hash = returnTo;
     } catch (error) {
       console.error('Desktop authentication callback failed:', error);
     }

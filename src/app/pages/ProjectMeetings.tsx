@@ -27,6 +27,7 @@ import {
   getMeetingRoomTopic,
   getMeetingSignalTopic,
   isMeetingSignal,
+  normalizeMeetingCode,
   type MeetingSignal,
 } from '../../lib/meetingConfig';
 
@@ -145,9 +146,17 @@ function VideoTile({
   );
 }
 
-export default function ProjectMeetings() {
-  const { id: projectId } = useParams<{ id: string }>();
+interface ProjectMeetingsProps {
+  guestMode?: boolean;
+}
+
+type MeetingCodeResult = Pick<Meeting, 'id' | 'title' | 'created_at' | 'ended_at'>;
+
+export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsProps) {
+  const { id: routeId } = useParams<{ id: string }>();
+  const projectId = guestMode ? undefined : routeId;
   const [searchParams, setSearchParams] = useSearchParams();
+  const inviteCode = normalizeMeetingCode(searchParams.get('code') || '');
   const requestedMeetingId = searchParams.get('join');
   const { user } = useAuth();
   const [projectName, setProjectName] = useState('');
@@ -181,10 +190,54 @@ export default function ProjectMeetings() {
   const mountedRef = useRef(true);
   const accessCheckTimer = useRef<number | null>(null);
   const accessCheckRunning = useRef(false);
+  const guestPromptedFor = useRef('');
   userRef.current = user;
   activeMeetingRef.current = activeMeeting;
 
   const loadProjectAndMeetings = useCallback(async () => {
+    if (guestMode) {
+      setLoading(true);
+      try {
+        if (!routeId || inviteCode.length !== 16) {
+          setProjectName('');
+          setMeetings([]);
+          return;
+        }
+        const { data, error } = await supabase.rpc('find_project_meeting_by_code', {
+          p_code: inviteCode,
+        });
+        if (error) throw error;
+        const foundMeeting = (Array.isArray(data) ? data[0] : data) as MeetingCodeResult | null;
+        if (!foundMeeting || foundMeeting.id !== routeId || foundMeeting.ended_at) {
+          setProjectName('');
+          setMeetings([]);
+          return;
+        }
+
+        const meeting: Meeting = {
+          ...foundMeeting,
+          project_id: '',
+          created_by: '',
+          invite_code: inviteCode,
+        };
+        setProjectName('Invited meeting');
+        setMeetings([meeting]);
+        const promptKey = `${routeId}:${inviteCode}`;
+        if (guestPromptedFor.current !== promptKey) {
+          guestPromptedFor.current = promptKey;
+          setPendingMeeting(meeting);
+        }
+      } catch (error) {
+        console.error('Could not load invited meeting:', error);
+        toast.error(error instanceof Error ? error.message : 'Could not load this meeting invite.');
+        setProjectName('');
+        setMeetings([]);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!projectId) return;
     setLoading(true);
     try {
@@ -217,14 +270,14 @@ export default function ProjectMeetings() {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [guestMode, inviteCode, projectId, routeId]);
 
   useEffect(() => {
     void loadProjectAndMeetings();
   }, [loadProjectAndMeetings]);
 
   useEffect(() => {
-    if (loading || !requestedMeetingId) return;
+    if (guestMode || loading || !requestedMeetingId) return;
     const meeting = meetings.find((candidate) => candidate.id === requestedMeetingId);
     if (meeting && !meeting.ended_at) {
       setPendingMeeting(meeting);
@@ -234,7 +287,7 @@ export default function ProjectMeetings() {
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete('join');
     setSearchParams(nextSearchParams, { replace: true });
-  }, [loading, meetings, requestedMeetingId, searchParams, setSearchParams]);
+  }, [guestMode, loading, meetings, requestedMeetingId, searchParams, setSearchParams]);
 
   const loadChatMessage = useCallback(async (meetingId: string, messageId: string) => {
     const { data, error } = await supabase
@@ -516,10 +569,13 @@ export default function ProjectMeetings() {
     let participantRecorded = false;
     try {
       iceServersRef.current = getMeetingIceServers();
-      const { error: joinError } = await supabase.rpc('join_project_meeting', {
-        p_meeting_id: pendingMeeting.id,
-      });
+      const { data: joinedMeetingId, error: joinError } = guestMode
+        ? await supabase.rpc('join_project_meeting_by_code', { p_code: inviteCode })
+        : await supabase.rpc('join_project_meeting', { p_meeting_id: pendingMeeting.id });
       if (joinError) throw joinError;
+      if (guestMode && joinedMeetingId !== pendingMeeting.id) {
+        throw new Error('The invite code does not match this meeting.');
+      }
       participantRecorded = true;
 
       const stream = await captureLocalMedia();
@@ -827,9 +883,13 @@ export default function ProjectMeetings() {
   if (!projectName) {
     return (
       <div className="p-8 text-center">
-        <p className="mb-4 text-gray-500">Project not found or you do not have access.</p>
-        <Link to="/projects" className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
-          <ArrowLeft size={16} /> Back to Projects
+        <p className="mb-4 text-gray-500">
+          {guestMode
+            ? 'This meeting invite is invalid or has ended. If it should be active, ask the host to apply the guest-invite Supabase migration.'
+            : 'Project not found or you do not have access.'}
+        </p>
+        <Link to={guestMode ? '/meetings' : '/projects'} className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
+          <ArrowLeft size={16} /> {guestMode ? 'Back to Meetings' : 'Back to Projects'}
         </Link>
       </div>
     );
@@ -839,10 +899,12 @@ export default function ProjectMeetings() {
     <div className="mx-auto max-w-6xl space-y-6 p-6 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link to={`/projects/${projectId}`} className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600">
-            <ArrowLeft size={15} /> {projectName}
+          <Link to={guestMode ? '/meetings' : `/projects/${projectId}`} className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-indigo-600">
+            <ArrowLeft size={15} /> {guestMode ? 'Meetings' : projectName}
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Project meetings</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {guestMode ? 'Meeting room' : 'Project meetings'}
+          </h1>
         </div>
       </header>
 
@@ -925,7 +987,7 @@ export default function ProjectMeetings() {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h3 id="meeting-chat-heading" className="font-semibold text-gray-900 dark:text-white">Meeting chat</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Messages are visible to active project meeting participants.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Messages are visible only to active participants in this meeting.</p>
               </div>
             </div>
             <div
@@ -974,6 +1036,26 @@ export default function ProjectMeetings() {
             </form>
           </section>
         </section>
+      ) : guestMode ? (
+        <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Invite-only access</p>
+          <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{meetings[0]?.title || 'Meeting'}</h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            This invite gives you access to this meeting only. It does not grant access to the project workspace.
+          </p>
+          {meetings[0] && (
+            <button
+              type="button"
+              onClick={() => {
+                const meeting = meetings[0];
+                if (meeting) setPendingMeeting(meeting);
+              }}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <Video size={16} /> Join meeting
+            </button>
+          )}
+        </section>
       ) : (
         <form onSubmit={(event) => void createMeeting(event)} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row">
           <input
@@ -990,7 +1072,7 @@ export default function ProjectMeetings() {
         </form>
       )}
 
-      {!activeMeeting && (
+      {!activeMeeting && !guestMode && (
         <section className="space-y-3">
           <h2 className="font-semibold text-gray-900 dark:text-white">Recent meetings</h2>
           {meetings.length === 0 ? (
@@ -1026,7 +1108,7 @@ export default function ProjectMeetings() {
               <div className="mb-2 inline-flex rounded-xl bg-indigo-100 p-2 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"><Camera size={20} /></div>
               <h2 id="meeting-consent-title" className="text-xl font-bold text-gray-900 dark:text-white">Join {pendingMeeting.title}</h2>
               <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                Joining will ask your device for microphone and camera access. Both start muted/off. Your media is sent directly to other project meeting participants; screen sharing requires a separate selection and confirmation.
+                Joining will ask your device for microphone and camera access. Both start muted/off. Your media is sent directly to other meeting participants; screen sharing requires a separate selection and confirmation.
               </p>
             </div>
             <label className="flex items-start gap-3 rounded-xl border border-gray-200 p-3 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200">

@@ -2,14 +2,22 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabaseClient';
+import { useLocation } from 'react-router-dom';
+import { getSafeReturnPath } from '../../lib/authRedirect';
 
 export default function GoogleSignInButton() {
+  const location = useLocation();
   const [loading, setLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
       const isDesktop = window.projectFlowDesktop?.isDesktop ?? false;
+      const returnTo = getSafeReturnPath(location.state?.from ?? location.state?.returnTo);
+      sessionStorage.setItem(
+        isDesktop ? 'pf_desktop_auth_return_to' : 'pf_web_auth_return_to',
+        returnTo
+      );
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -27,6 +35,8 @@ export default function GoogleSignInButton() {
       }
     } catch (error) {
       console.error('Google sign-in failed:', error);
+      sessionStorage.removeItem('pf_web_auth_return_to');
+      sessionStorage.removeItem('pf_desktop_auth_return_to');
       toast.error(error instanceof Error ? error.message : 'Could not start Google sign-in.');
       setLoading(false);
     }

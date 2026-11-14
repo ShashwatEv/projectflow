@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ProjectMeetings from '../ProjectMeetings';
 
-const { mockFrom } = vi.hoisted(() => ({ mockFrom: vi.fn() }));
+const { mockFrom, mockRpc } = vi.hoisted(() => ({ mockFrom: vi.fn(), mockRpc: vi.fn() }));
 
 interface MockResult {
   data: unknown;
@@ -23,7 +23,7 @@ interface MockQuery {
 }
 
 vi.mock('../../../lib/supabaseClient', () => ({
-  supabase: { from: mockFrom },
+  supabase: { from: mockFrom, rpc: mockRpc },
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -38,6 +38,8 @@ vi.mock('../../../context/AuthContext', () => ({
 
 describe('ProjectMeetings', () => {
   beforeEach(() => {
+    mockFrom.mockClear();
+    mockRpc.mockReset();
     mockFrom.mockImplementation((table: string) => {
       const result: MockResult =
         table === 'projects'
@@ -94,5 +96,31 @@ describe('ProjectMeetings', () => {
 
     expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Join with devices' })).toBeDisabled();
+  });
+
+  it('lets a signed-in non-member open a code-backed guest invite without loading project data', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{
+        id: 'meeting-id',
+        title: 'Planning',
+        created_at: '2026-11-14T06:00:00.000Z',
+        ended_at: null,
+      }],
+      error: null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678']}>
+        <Routes>
+          <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
+    expect(mockRpc).toHaveBeenCalledWith('find_project_meeting_by_code', {
+      p_code: 'ABCD1234EFGH5678',
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 });

@@ -37,7 +37,6 @@ interface MeetingSummary {
 
 interface FoundMeeting {
   id: string;
-  project_id: string;
   title: string;
   ended_at: string | null;
 }
@@ -109,12 +108,12 @@ export default function MeetingsHub() {
       });
       if (error) throw error;
       const meeting = (Array.isArray(data) ? data[0] : data) as FoundMeeting | null;
-      if (!meeting?.id || !meeting.project_id || meeting.ended_at) {
-        toast.error('Meeting not found, ended, or unavailable to your account.');
+      if (!meeting?.id || meeting.ended_at) {
+        toast.error('Meeting code is invalid or the room has ended. Guest invites require the latest Supabase migration.');
         return;
       }
 
-      navigate(`/projects/${meeting.project_id}/meetings?join=${meeting.id}`);
+      navigate(`/meetings/guest/${meeting.id}?code=${formatMeetingCode(normalizedCode)}`);
     } catch (error) {
       console.error('Could not join meeting by code:', error);
       toast.error(error instanceof Error ? error.message : 'Could not find that meeting.');
@@ -140,7 +139,14 @@ export default function MeetingsHub() {
       });
       if (error) throw error;
       if (typeof meetingId !== 'string') throw new Error('The meeting could not be created.');
-      navigate(`/projects/${selectedProjectId}/meetings?join=${meetingId}`);
+      const { data: meeting, error: meetingError } = await supabase
+        .from('project_meetings')
+        .select('invite_code')
+        .eq('id', meetingId)
+        .single();
+      if (meetingError) throw meetingError;
+      if (!meeting?.invite_code) throw new Error('The meeting was created, but its invite code could not be loaded.');
+      navigate(`/meetings/guest/${meetingId}?code=${formatMeetingCode(meeting.invite_code)}`);
     } catch (error) {
       console.error('Could not create meeting from the hub:', error);
       toast.error(error instanceof Error ? error.message : 'Could not create meeting.');
@@ -177,7 +183,7 @@ export default function MeetingsHub() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Meetings</h1>
           <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-            Start a project call, join with a meeting code, or share an invite link. Only people who can access the project can join.
+            Start a project call or share a meeting code. Invitees can join the room without gaining access to the project workspace.
           </p>
         </div>
         <button
@@ -279,7 +285,7 @@ export default function MeetingsHub() {
             Find meeting
           </button>
           <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-            A code only identifies a room; it never grants project access. You must still be a member of that project.
+            Anyone signed in with the code can join this meeting only. The invite does not grant access to project tasks, files, or other project data.
           </p>
         </form>
       </section>
@@ -354,7 +360,7 @@ export default function MeetingsHub() {
                     </div>
                   </div>
                   <Link
-                    to={`/projects/${meeting.project_id}/meetings?join=${meeting.id}`}
+                    to={`/meetings/guest/${meeting.id}?code=${code}`}
                     className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     Open meeting <ArrowRight size={15} aria-hidden="true" />
