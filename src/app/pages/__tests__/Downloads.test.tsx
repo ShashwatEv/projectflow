@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import Downloads from '../Downloads';
 
 describe('Downloads', () => {
-  it('links to the published Android APK and clearly marks desktop as not yet available', () => {
+  it('links to the published Android APK and Windows installer', () => {
     render(
       <MemoryRouter>
         <Downloads />
@@ -14,9 +14,9 @@ describe('Downloads', () => {
     expect(
       screen.getByRole('link', { name: 'Download Android APK' }).getAttribute('href')
     ).toBe('https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow.apk');
-    expect(
-      screen.getByRole('button', { name: 'Windows installer coming soon' })
-    ).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Download for Windows' }).getAttribute('href')).toBe(
+      'https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow-Desktop-Setup.exe'
+    );
     expect(screen.getByRole('link', { name: /browse releases/i })).toHaveAttribute(
       'href',
       'https://github.com/ShashwatEv/projectflow/releases'

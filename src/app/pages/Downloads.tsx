@@ -13,6 +13,8 @@ const ANDROID_APK_URL =
   'https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow.apk';
 const ANDROID_RELEASE_URL = 'https://github.com/ShashwatEv/projectflow/releases/tag/Projectflow';
 const ALL_RELEASES_URL = 'https://github.com/ShashwatEv/projectflow/releases';
+const WINDOWS_INSTALLER_URL =
+  'https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow-Desktop-Setup.exe';
 
 export default function Downloads() {
   return (
@@ -82,7 +84,7 @@ export default function Downloads() {
               Choose a platform
             </h2>
             <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-              Start with Android today. The desktop app is being prepared for its first public release.
+              Download the Android APK or the Windows desktop installer from the official ProjectFlow release.
             </p>
           </div>
 
@@ -151,11 +153,12 @@ export default function Downloads() {
                   </div>
                   <div>
                     <h3 className="text-lg font-bold">Desktop</h3>
-                    <p className="text-sm text-muted-foreground">Windows installer</p>
+                    <p className="text-sm text-muted-foreground">Windows 64-bit installer</p>
                   </div>
                 </div>
-                <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                  Coming soon
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  Available
                 </span>
               </div>
 
@@ -175,14 +178,14 @@ export default function Downloads() {
               </ul>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex min-h-11 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-muted px-4 text-sm font-semibold text-muted-foreground"
+                <a
+                  href={WINDOWS_INSTALLER_URL}
+                  download="ProjectFlow-Desktop-Setup.exe"
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
                 >
-                  <Monitor size={16} aria-hidden="true" />
-                  Windows installer coming soon
-                </button>
+                  <ArrowDownToLine size={16} aria-hidden="true" />
+                  Download for Windows
+                </a>
                 <a
                   href={ALL_RELEASES_URL}
                   target="_blank"
@@ -194,7 +197,8 @@ export default function Downloads() {
                 </a>
               </div>
               <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                The Windows installer will be linked here once a configured desktop build is published.
+                The installer is unsigned, so Windows may show a SmartScreen warning. Confirm the
+                download came from the official ProjectFlow GitHub release.
               </p>
             </article>
           </div>
