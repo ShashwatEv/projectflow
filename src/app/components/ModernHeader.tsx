@@ -9,7 +9,6 @@ import {
   Settings,
   Sun,
   User,
-  Smartphone,
   Download,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -23,9 +22,6 @@ interface ModernHeaderProps {
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
 }
-
-const ANDROID_APK_URL =
-  'https://github.com/ShashwatEv/projectflow/releases/download/Projectflow/ProjectFlow.apk';
 
 export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
@@ -195,7 +191,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         </span>
       </Link>
 
-      {/* Right Area: Search, APK Download, Timer, Theme toggle, Notifications, Profile */}
+      {/* Right Area: Search, Downloads, Timer, Theme toggle, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
         <button
           type="button"
@@ -217,17 +213,14 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           <Search size={17} />
         </button>
 
-        {/* Desktop-only Android APK Download button */}
-        <a
-          href={ANDROID_APK_URL}
-          download="ProjectFlow.apk"
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-xs font-semibold shadow-xs transition-all"
-          title="Download standalone Android APK"
+        <Link
+          to="/downloads"
+          aria-label="Download ProjectFlow apps"
+          className="hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-indigo-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-indigo-400 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40 md:inline-flex"
+          title="Download ProjectFlow apps"
         >
-          <Smartphone size={14} className="text-indigo-600 dark:text-indigo-400" />
-          <span>Android App</span>
-          <Download size={13} className="opacity-70" />
-        </a>
+          <Download size={17} aria-hidden="true" />
+        </Link>
 
         {/* Task Timer: hidden on mobile to avoid overcrowding */}
         <div className="hidden sm:block">

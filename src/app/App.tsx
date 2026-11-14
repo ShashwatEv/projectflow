@@ -55,6 +55,7 @@ import MobileTriageDeck from './pages/MobileTriageDeck';
 import DailyStandupStories from './pages/DailyStandupStories';
 import QuickCaptureSheet from './pages/QuickCaptureSheet';
 import ProjectMeetings from './pages/ProjectMeetings';
+import Downloads from './pages/Downloads';
 
 const ApiPlayground = lazy(() =>
   import('./pages/ApiPlayground').catch(() => ({
@@ -228,7 +229,8 @@ export default function App() {
             <AppRouter>
               <ErrorBoundary>
                 <Routes>
-                  {/* Public authentication routes */}
+                  {/* Public routes */}
+                  <Route path="/downloads" element={<Downloads />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
