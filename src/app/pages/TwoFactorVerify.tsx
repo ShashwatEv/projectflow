@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 
 import { isSuperAdmin } from '../../lib/constants';
+import { getSafeReturnPath } from '../../lib/authRedirect';
 const DEMO_OVERRIDE_CODE = '000000'; // Development bypass token for rate-limited testing
 
 function Slot(props: SlotProps) {
@@ -111,8 +112,10 @@ export default function TwoFactorVerify() {
       if (rememberDevice) {
         localStorage.setItem('pf_trusted_device', 'true');
       }
+      sessionStorage.removeItem('pf_web_auth_return_to');
+      sessionStorage.removeItem('pf_desktop_auth_return_to');
       toast.success('Two-factor authentication verified!');
-      navigate('/dashboard', { replace: true });
+      navigate(getSafeReturnPath(location.state?.returnTo), { replace: true });
     };
 
     // 1. Super Admin or Dev / Rate-limited Bypass

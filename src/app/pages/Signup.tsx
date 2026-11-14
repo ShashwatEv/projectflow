@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { Loader2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { getSafeReturnPath } from '../../lib/authRedirect';
 import AuthPageFrame from '../components/AuthPageFrame';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useAccentTheme();
 
   const [loading, setLoading] = useState(false);
@@ -47,7 +49,9 @@ export default function Signup() {
       if (error) throw error;
       
       toast.success('Account created! Please check your email to verify.');
-      navigate('/login');
+      navigate('/login', {
+        state: { from: getSafeReturnPath(location.state?.returnTo) },
+      });
     } catch (err: any) {
       toast.error(err.message || 'Error signing up. Please try again.');
     } finally {

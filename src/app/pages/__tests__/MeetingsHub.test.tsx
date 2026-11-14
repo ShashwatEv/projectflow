@@ -42,7 +42,6 @@ describe('MeetingsHub', () => {
     mockRpc.mockResolvedValue({
       data: [{
         id: 'meeting-id',
-        project_id: 'project-id',
         title: 'Planning',
         ended_at: null,
       }],
@@ -73,12 +72,12 @@ describe('MeetingsHub', () => {
     });
   });
 
-  it('finds a meeting from a pasted code and opens its project room', async () => {
+  it('finds a meeting from a pasted code and opens the global meeting room', async () => {
     render(
       <MemoryRouter initialEntries={['/meetings']}>
         <Routes>
           <Route path="/meetings" element={<MeetingsHub />} />
-          <Route path="/projects/:id/meetings" element={<CurrentRoute />} />
+          <Route path="/meetings/guest/:id" element={<CurrentRoute />} />
         </Routes>
       </MemoryRouter>
     );
@@ -89,10 +88,27 @@ describe('MeetingsHub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Find meeting' }));
 
     expect(await screen.findByTestId('current-route')).toHaveTextContent(
-      '/projects/project-id/meetings?join=meeting-id'
+      '/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678'
     );
     expect(mockRpc).toHaveBeenCalledWith('find_project_meeting_by_code', {
       p_code: 'ABCD1234EFGH5678',
     });
+  });
+
+  it('opens an active meeting from the hub in the global meeting room', async () => {
+    render(
+      <MemoryRouter initialEntries={['/meetings']}>
+        <Routes>
+          <Route path="/meetings" element={<MeetingsHub />} />
+          <Route path="/meetings/guest/:id" element={<CurrentRoute />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('link', { name: /Open meeting/i }));
+
+    expect(await screen.findByTestId('current-route')).toHaveTextContent(
+      '/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678'
+    );
   });
 });
