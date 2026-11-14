@@ -55,6 +55,7 @@ import MobileTriageDeck from './pages/MobileTriageDeck';
 import DailyStandupStories from './pages/DailyStandupStories';
 import QuickCaptureSheet from './pages/QuickCaptureSheet';
 import ProjectMeetings from './pages/ProjectMeetings';
+import MeetingsHub from './pages/MeetingsHub';
 import Downloads from './pages/Downloads';
 
 const ApiPlayground = lazy(() =>
@@ -251,6 +252,7 @@ export default function App() {
                       <Route path="/projects" element={<Projects />} />
                       <Route path="/projects/:id" element={<ProjectDetail />} />
                       <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+                      <Route path="/meetings" element={<MeetingsHub />} />
                       <Route
                         path="/sprint-planner"
                         element={

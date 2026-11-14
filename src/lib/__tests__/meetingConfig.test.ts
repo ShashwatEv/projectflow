@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createMeetingInviteUrl,
+  formatMeetingCode,
   getMeetingIceServers,
+  getMeetingInviteOrigin,
   getMeetingRoomTopic,
   getMeetingSignalTopic,
   isMeetingSignal,
+  normalizeMeetingCode,
 } from '../meetingConfig';
 
 describe('meeting configuration and signaling', () => {
@@ -34,6 +38,24 @@ describe('meeting configuration and signaling', () => {
     expect(getMeetingSignalTopic('meeting-id', 'alice', 'bob')).toBe(
       'projectflow-meeting-signal:meeting-id:alice:bob'
     );
+  });
+
+  it('normalizes and shares meeting codes without changing their identity', () => {
+    expect(normalizeMeetingCode(' abcd-1234 efgh-5678 ')).toBe('ABCD1234EFGH5678');
+    expect(formatMeetingCode('abcd1234efgh5678')).toBe('ABCD-1234-EFGH-5678');
+    expect(createMeetingInviteUrl('abcd1234efgh5678', 'https://projectflow.example')).toBe(
+      'https://projectflow.example/meetings?code=ABCD-1234-EFGH-5678'
+    );
+  });
+
+  it('uses the public web app origin for desktop invite links unless configured', () => {
+    expect(getMeetingInviteOrigin(undefined, true, 'file://app')).toBe(
+      'https://projectflow-d9dk.onrender.com'
+    );
+    expect(getMeetingInviteOrigin(' https://custom.example/ ', true, 'file://app')).toBe(
+      'https://custom.example/'
+    );
+    expect(getMeetingInviteOrigin(undefined, false, 'https://web.example')).toBe('https://web.example');
   });
 
   it('accepts only well-formed WebRTC signaling messages', () => {

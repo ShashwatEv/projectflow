@@ -19,7 +19,8 @@ import {
   MessageSquareCode,
   Layers,
   Film,
-  Camera
+  Camera,
+  Video
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -119,6 +120,7 @@ export function ModernSidebar({ isOpen = true, onClose }: SidebarProps) {
 
           <div className="px-3 mt-5 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Work</div>
           <NavItem to="/projects" icon={<FolderKanban size={18} />} label="Projects" isActive={location.pathname.startsWith('/projects')} theme={theme} onClick={onClose} />
+          <NavItem to="/meetings" icon={<Video size={18} />} label="Meetings" isActive={location.pathname === '/meetings'} theme={theme} onClick={onClose} />
           
           <NavItem 
             to="/tasks" 

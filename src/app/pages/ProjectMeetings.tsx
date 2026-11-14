@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Camera,
+  Copy,
   Loader2,
   Mic,
   MicOff,
   MonitorUp,
   PhoneOff,
   Plus,
+  Send,
   Users,
   Video,
   VideoOff,
@@ -19,6 +21,9 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import {
   getMeetingIceServers,
+  createMeetingInviteUrl,
+  formatMeetingCode,
+  getMeetingInviteOrigin,
   getMeetingRoomTopic,
   getMeetingSignalTopic,
   isMeetingSignal,
@@ -32,6 +37,15 @@ interface Meeting {
   created_by: string;
   created_at: string;
   ended_at: string | null;
+  invite_code: string;
+}
+
+interface MeetingChatMessage {
+  id: string;
+  meeting_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
 }
 
 interface ParticipantPresence {
@@ -133,6 +147,8 @@ function VideoTile({
 
 export default function ProjectMeetings() {
   const { id: projectId } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedMeetingId = searchParams.get('join');
   const { user } = useAuth();
   const [projectName, setProjectName] = useState('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -151,6 +167,9 @@ export default function ProjectMeetings() {
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [chatMessages, setChatMessages] = useState<MeetingChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [sendingChat, setSendingChat] = useState(false);
 
   const roomRef = useRef<RealtimeChannel | null>(null);
   const peerConnections = useRef(new Map<string, PeerState>());
@@ -184,7 +203,7 @@ export default function ProjectMeetings() {
       setProjectName(project.name);
       const { data, error } = await supabase
         .from('project_meetings')
-        .select('id, project_id, title, created_by, created_at, ended_at')
+        .select('id, project_id, title, created_by, created_at, ended_at, invite_code')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false })
         .limit(25);
@@ -203,6 +222,48 @@ export default function ProjectMeetings() {
   useEffect(() => {
     void loadProjectAndMeetings();
   }, [loadProjectAndMeetings]);
+
+  useEffect(() => {
+    if (loading || !requestedMeetingId) return;
+    const meeting = meetings.find((candidate) => candidate.id === requestedMeetingId);
+    if (meeting && !meeting.ended_at) {
+      setPendingMeeting(meeting);
+    } else {
+      toast.error('That meeting is no longer available in this project.');
+    }
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('join');
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [loading, meetings, requestedMeetingId, searchParams, setSearchParams]);
+
+  const loadChatMessage = useCallback(async (meetingId: string, messageId: string) => {
+    const { data, error } = await supabase
+      .from('project_meeting_messages')
+      .select('id, meeting_id, user_id, body, created_at')
+      .eq('meeting_id', meetingId)
+      .eq('id', messageId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return;
+    setChatMessages((current) =>
+      current.some((message) => message.id === data.id) ? current : [...current, data]
+    );
+  }, []);
+
+  const loadMeetingChat = useCallback(async (meetingId: string) => {
+    const { data, error } = await supabase
+      .from('project_meeting_messages')
+      .select('id, meeting_id, user_id, body, created_at')
+      .eq('meeting_id', meetingId)
+      .order('created_at', { ascending: true })
+      .limit(100);
+    if (error) {
+      console.error('Could not load meeting chat:', error);
+      toast.error('Meeting joined, but chat could not be loaded. Check the meeting codes and chat migration.');
+      return;
+    }
+    setChatMessages(data || []);
+  }, []);
 
   const removePeer = useCallback(async (remoteUserId: string) => {
     const peer = peerConnections.current.get(remoteUserId);
@@ -355,6 +416,8 @@ export default function ProjectMeetings() {
     setScreenStream(null);
     setRemoteStreams(new Map());
     setParticipants([]);
+    setChatMessages([]);
+    setChatDraft('');
     setAudioEnabled(false);
     setVideoEnabled(false);
     setScreenSharing(false);
@@ -396,7 +459,7 @@ export default function ProjectMeetings() {
 
       const { data, error } = await supabase
         .from('project_meetings')
-        .select('id, project_id, title, created_by, created_at, ended_at')
+        .select('id, project_id, title, created_by, created_at, ended_at, invite_code')
         .eq('id', meetingId)
         .single();
       if (error) throw error;
@@ -515,6 +578,15 @@ export default function ProjectMeetings() {
         void cleanupMediaAndRealtime();
         window.setTimeout(() => void loadProjectAndMeetings(), 500);
       });
+      room.on('broadcast', { event: 'chat_message' }, ({ payload }) => {
+        const messageId = payload?.messageId;
+        if (isUserId(messageId)) {
+          void loadChatMessage(pendingMeeting.id, messageId).catch((error) => {
+            console.error('Could not load a meeting chat message:', error);
+            toast.error('A meeting chat message could not be loaded.');
+          });
+        }
+      });
 
       roomRef.current = room;
       await waitForSubscription(room);
@@ -543,6 +615,7 @@ export default function ProjectMeetings() {
       setParticipants([presence]);
       setActiveMeeting(pendingMeeting);
       setPendingMeeting(null);
+      void loadMeetingChat(pendingMeeting.id);
       accessCheckTimer.current = window.setInterval(async () => {
         if (accessCheckRunning.current) return;
         accessCheckRunning.current = true;
@@ -603,6 +676,54 @@ export default function ProjectMeetings() {
       await cleanupMediaAndRealtime();
       setLeaving(false);
       await loadProjectAndMeetings();
+    }
+  };
+
+  const sendChatMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!activeMeeting || !chatDraft.trim()) return;
+    setSendingChat(true);
+    try {
+      const { data: messageId, error } = await supabase.rpc('send_project_meeting_message', {
+        p_meeting_id: activeMeeting.id,
+        p_body: chatDraft.trim(),
+      });
+      if (error) throw error;
+      if (typeof messageId !== 'string') throw new Error('The message could not be saved.');
+
+      const room = roomRef.current;
+      const broadcastResult = room
+        ? await room.send({
+          type: 'broadcast',
+          event: 'chat_message',
+          payload: { messageId },
+        })
+        : 'error';
+      try {
+        await loadChatMessage(activeMeeting.id, messageId);
+      } catch (error) {
+        console.error('Message was sent but could not be loaded into chat:', error);
+        toast.error('Message was sent, but could not be displayed here.');
+      }
+      if (broadcastResult !== 'ok') {
+        toast.error('Message was saved, but could not be delivered to other participants in real time.');
+      }
+      setChatDraft('');
+    } catch (error) {
+      console.error('Could not send meeting chat message:', error);
+      toast.error(error instanceof Error ? error.message : 'Could not send message.');
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
+  const copyMeetingValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch (error) {
+      console.error(`Could not copy meeting ${label.toLowerCase()}:`, error);
+      toast.error(`Could not copy the ${label.toLowerCase()}.`);
     }
   };
 
@@ -685,6 +806,16 @@ export default function ProjectMeetings() {
     }
   };
 
+  const inviteOrigin = getMeetingInviteOrigin(
+    import.meta.env.VITE_APP_URL,
+    Boolean(window.projectFlowDesktop?.isDesktop),
+    window.location.origin
+  );
+  const meetingCode = activeMeeting ? formatMeetingCode(activeMeeting.invite_code) : '';
+  const meetingInviteUrl = activeMeeting
+    ? createMeetingInviteUrl(activeMeeting.invite_code, inviteOrigin)
+    : '';
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center p-12">
@@ -721,10 +852,29 @@ export default function ProjectMeetings() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600">Live meeting</p>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">{activeMeeting.title}</h2>
+              <p className="mt-1 font-mono text-xs font-semibold tracking-widest text-gray-500 dark:text-gray-400">
+                Code: {meetingCode}
+              </p>
             </div>
-            <span className="inline-flex items-center gap-2 text-sm text-gray-500">
-              <Users size={16} /> {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyMeetingValue(meetingCode, 'Meeting code')}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <Copy size={13} /> Copy code
+              </button>
+              <button
+                type="button"
+                onClick={() => void copyMeetingValue(meetingInviteUrl, 'Invite link')}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <Copy size={13} /> Copy invite
+              </button>
+              <span className="inline-flex items-center gap-2 text-sm text-gray-500">
+                <Users size={16} /> {participants.length} {participants.length === 1 ? 'participant' : 'participants'}
+              </span>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -770,6 +920,59 @@ export default function ProjectMeetings() {
               </button>
             )}
           </div>
+
+          <section className="border-t border-gray-100 pt-4 dark:border-gray-700" aria-labelledby="meeting-chat-heading">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 id="meeting-chat-heading" className="font-semibold text-gray-900 dark:text-white">Meeting chat</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Messages are visible to active project meeting participants.</p>
+              </div>
+            </div>
+            <div
+              className="mb-3 max-h-64 min-h-24 space-y-3 overflow-y-auto rounded-xl bg-gray-50 p-3 dark:bg-gray-900/60"
+              aria-live="polite"
+              aria-relevant="additions"
+            >
+              {chatMessages.length === 0 ? (
+                <p className="py-6 text-center text-sm text-gray-500">No messages yet. Send the first one.</p>
+              ) : (
+                chatMessages.map((message) => {
+                  const senderName = message.user_id === user?.id
+                    ? 'You'
+                    : participants.find((participant) => participant.userId === message.user_id)?.name || 'ProjectFlow member';
+                  return (
+                    <article key={message.id} className="rounded-lg bg-white px-3 py-2 shadow-sm dark:bg-gray-800">
+                      <div className="mb-1 flex items-baseline justify-between gap-2">
+                        <span className="truncate text-xs font-semibold text-gray-800 dark:text-gray-200">{senderName}</span>
+                        <time className="shrink-0 text-[10px] text-gray-400" dateTime={message.created_at}>
+                          {new Date(message.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </time>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">{message.body}</p>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+            <form onSubmit={(event) => void sendChatMessage(event)} className="flex gap-2">
+              <input
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                maxLength={2000}
+                aria-label="Meeting chat message"
+                placeholder="Write a message…"
+                className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+              />
+              <button
+                type="submit"
+                disabled={sendingChat || !chatDraft.trim()}
+                aria-label="Send meeting message"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingChat ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </button>
+            </form>
+          </section>
         </section>
       ) : (
         <form onSubmit={(event) => void createMeeting(event)} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:flex-row">
