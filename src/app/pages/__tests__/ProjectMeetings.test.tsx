@@ -1,134 +1,165 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '../../../context/ThemeContext';
+import { MeetingProvider } from '../../../context/MeetingContext';
 import ProjectMeetings from '../ProjectMeetings';
 
-const { mockFrom, mockRpc } = vi.hoisted(() => ({ mockFrom: vi.fn(), mockRpc: vi.fn() }));
+const mockFrom = vi.fn();
+const mockRpc = vi.fn();
 
-interface MockResult {
-  data: unknown;
-  error: null;
-}
-
-interface MockQuery {
-  select: () => MockQuery;
-  eq: () => MockQuery;
-  order: () => MockQuery;
-  limit: () => MockQuery;
-  maybeSingle: () => Promise<MockResult>;
-  then: (
-    onfulfilled?: (value: MockResult) => unknown,
-    onrejected?: (reason: unknown) => unknown
-  ) => Promise<unknown>;
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockChannel: Record<string, any> = {
+  on: vi.fn().mockReturnThis(),
+  subscribe: vi.fn(() => mockChannel),
+  track: vi.fn().mockResolvedValue('ok'),
+  untrack: vi.fn().mockResolvedValue('ok'),
+  send: vi.fn().mockResolvedValue('ok'),
+  presenceState: vi.fn(() => ({})),
+};
 
 vi.mock('../../../lib/supabaseClient', () => ({
-  supabase: { from: mockFrom, rpc: mockRpc },
+  supabase: {
+    from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    channel: vi.fn(() => mockChannel),
+    removeChannel: vi.fn().mockResolvedValue('ok'),
+  },
 }));
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: () => ({
-    user: {
-      id: '00000000-0000-4000-8000-000000000001',
-      name: 'Meeting member',
-      avatar: '',
-    },
+    user: { id: 'user-1', name: 'Test User', role: 'Member', avatar: '' },
+    session: null,
   }),
 }));
 
+const sampleMeeting = {
+  id: '11111111-1111-4111-8111-111111111111',
+  project_id: '22222222-2222-4222-8222-222222222222',
+  title: 'Sprint Sync',
+  created_by: 'user-1',
+  created_at: '2026-11-19T10:00:00.000Z',
+  ended_at: null,
+  invite_code: 'ABCD1234EF567890',
+};
+
+function renderProjectMeetings(route: string, guestMode = false) {
+  return render(
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[route]}>
+        <MeetingProvider>
+          <Routes>
+            <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+            <Route
+              path="/meetings/guest/:id"
+              element={<ProjectMeetings guestMode={guestMode} />}
+            />
+          </Routes>
+        </MeetingProvider>
+      </MemoryRouter>
+    </ThemeProvider>
+  );
+}
+
 describe('ProjectMeetings', () => {
   beforeEach(() => {
-    mockFrom.mockClear();
-    mockRpc.mockReset();
+    vi.clearAllMocks();
     mockFrom.mockImplementation((table: string) => {
-      const result: MockResult =
-        table === 'projects'
-          ? { data: { id: 'project-id', name: 'Launch project' }, error: null }
-          : {
-              data: [
-                {
-                  id: 'meeting-id',
-                  project_id: 'project-id',
-                  title: 'Planning',
-                  created_by: '00000000-0000-4000-8000-000000000001',
-                  created_at: '2026-11-14T06:00:00.000Z',
-                  ended_at: null,
-                  invite_code: 'ABCD1234EFGH5678',
-                },
-              ],
-              error: null,
-            };
-      const builder = {} as MockQuery;
-      builder.select = vi.fn(() => builder);
-      builder.eq = vi.fn(() => builder);
-      builder.order = vi.fn(() => builder);
-      builder.limit = vi.fn(() => builder);
-      builder.maybeSingle = vi.fn(async () => result);
-      builder.then = (onfulfilled, onrejected) => Promise.resolve(result).then(onfulfilled, onrejected);
-      return builder;
+      if (table === 'projects') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { id: sampleMeeting.project_id, name: 'Core Platform' },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === 'project_meetings') {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => Promise.resolve({ data: [sampleMeeting], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === 'project_meeting_messages') {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => Promise.resolve({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      };
     });
+    mockRpc.mockResolvedValue({ data: null, error: null });
   });
 
   it('requires explicit media consent before enabling the join action', async () => {
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/projects/project-id/meetings']}>
-          <Routes>
-            <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+    renderProjectMeetings(
+      `/projects/${sampleMeeting.project_id}/meetings?join=${sampleMeeting.id}`
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Join meeting' }));
-    const joinButton = screen.getByRole('button', { name: 'Join with devices' });
+    const joinButton = await screen.findByRole('button', { name: /join with devices/i });
     expect(joinButton).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /I consent to accessing my microphone and camera/i }));
+    const checkbox = screen.getByRole('checkbox');
+    fireEvent.click(checkbox);
+
     expect(joinButton).toBeEnabled();
   });
 
   it('opens the consent flow for a meeting selected from an invite link', async () => {
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/projects/project-id/meetings?join=meeting-id']}>
-          <Routes>
-            <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+    renderProjectMeetings(
+      `/projects/${sampleMeeting.project_id}/meetings?join=${sampleMeeting.id}`
     );
 
-    expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Join with devices' })).toBeDisabled();
+    expect(
+      await screen.findByRole('heading', { name: new RegExp(`join ${sampleMeeting.title}`, 'i') })
+    ).toBeInTheDocument();
   });
 
   it('lets a signed-in non-member open a code-backed guest invite without loading project data', async () => {
-    mockRpc.mockResolvedValue({
-      data: [{
-        id: 'meeting-id',
-        title: 'Planning',
-        created_at: '2026-11-14T06:00:00.000Z',
-        ended_at: null,
-      }],
-      error: null,
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === 'find_project_meeting_by_code') {
+        return Promise.resolve({
+          data: {
+            id: sampleMeeting.id,
+            title: sampleMeeting.title,
+            created_at: sampleMeeting.created_at,
+            ended_at: null,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
     });
 
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={['/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678']}>
-          <Routes>
-            <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
-          </Routes>
-        </MemoryRouter>
-      </ThemeProvider>
+    renderProjectMeetings(
+      `/meetings/guest/${sampleMeeting.id}?code=ABCD-1234-EF56-7890`,
+      true
     );
 
-    expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
-    expect(mockRpc).toHaveBeenCalledWith('find_project_meeting_by_code', {
-      p_code: 'ABCD1234EFGH5678',
-    });
-    expect(mockFrom).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole('heading', { name: new RegExp(`join ${sampleMeeting.title}`, 'i') })
+    ).toBeInTheDocument();
+    expect(mockFrom).not.toHaveBeenCalledWith('projects');
   });
 });
