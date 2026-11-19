@@ -79,10 +79,31 @@ export default function Analytics() {
         supabase.from('timesheets').select('*'),
       ]);
 
-      if (tasksRes.data) setTasks(tasksRes.data);
-      if (timesheetsRes.data) setTimesheets(timesheetsRes.data);
-    } catch (err) {
-      console.error('Failed to load telemetry data:', err);
+      if (tasksRes.data) {
+        setTasks(
+          tasksRes.data.map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status || 'todo',
+            priority: t.priority || 'medium',
+            estimate_hours: t.estimate_hours ?? undefined,
+            created_at: t.created_at,
+          }))
+        );
+      }
+      if (timesheetsRes.data) {
+        setTimesheets(
+          timesheetsRes.data.map((ts) => ({
+            id: ts.id,
+            hours: ts.hours ?? Number((ts.duration_minutes / 60).toFixed(2)),
+            date: ts.date,
+            created_at: ts.created_at,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error('Failed to fetch analytics data:', error);
+      toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }

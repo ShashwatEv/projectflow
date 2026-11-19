@@ -155,12 +155,12 @@ export default function MyTasks() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .select('*, project:projects(name), assignee:users(id, name, avatar, role)')
+        .select('*, project:projects(name), assignee:users!assigned_to(id, name, avatar, role)')
         .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data) setTasks(data as Task[]);
+      if (data) setTasks(data as unknown as Task[]);
     } catch (err: any) {
       console.error('Error fetching tasks:', err);
       toast.error('Failed to load tasks');
@@ -231,7 +231,7 @@ export default function MyTasks() {
           due_date: selectedDate ? selectedDate.toISOString() : null,
           assigned_to: user.id,
         })
-        .select('*, project:projects(name), assignee:users(id, name, avatar, role)')
+        .select('*, project:projects(name), assignee:users!assigned_to(id, name, avatar, role)')
         .single();
 
       if (error) throw error;

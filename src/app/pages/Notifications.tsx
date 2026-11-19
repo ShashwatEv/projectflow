@@ -42,7 +42,17 @@ export default function Notifications() {
         console.error('Error fetching notifications:', error);
       }
 
-      const realList: NotificationItem[] = storedData || [];
+      const realList: NotificationItem[] = (storedData || []).map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        type: (['code', 'task', 'project', 'message', 'deadline'].includes(n.type || '')
+          ? n.type
+          : 'task') as NotificationItem['type'],
+        link: n.link ?? undefined,
+        is_read: Boolean(n.is_read),
+        created_at: n.created_at,
+      }));
 
       // 2. Synthesize automated progress & deadline notifications from active projects
       const { data: activeProjects } = await supabase
@@ -70,7 +80,7 @@ export default function Notifications() {
           type: 'project',
           link: `/projects/${proj.id}`,
           is_read: false,
-          created_at: proj.created_at,
+          created_at: proj.created_at ?? new Date().toISOString(),
         };
       });
 
@@ -97,15 +107,17 @@ export default function Notifications() {
           if (dueTasksError) {
             console.error('Could not load due task reminders:', dueTasksError);
           } else {
-            dueTaskReminders = (dueTasks || []).map((task) => ({
-              id: `automation-deadline-${task.id}`,
-              title: new Date(task.due_date).getTime() < Date.now() ? 'Task overdue' : 'Task due today',
-              message: task.title,
-              type: 'deadline',
-              link: '/tasks',
-              is_read: false,
-              created_at: task.due_date,
-            }));
+            dueTaskReminders = (dueTasks || [])
+              .filter((task): task is { id: string; title: string; due_date: string } => Boolean(task.due_date))
+              .map((task) => ({
+                id: `automation-deadline-${task.id}`,
+                title: new Date(task.due_date).getTime() < Date.now() ? 'Task overdue' : 'Task due today',
+                message: task.title,
+                type: 'deadline',
+                link: '/tasks',
+                is_read: false,
+                created_at: task.due_date,
+              }));
           }
         }
       }

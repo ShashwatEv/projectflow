@@ -72,16 +72,29 @@ export default function Profile() {
       setGoogleAvatar(targetUserId === currentId ? getGoogleProfilePhoto(authUser) : null);
 
       // Fetch user profile row
-      const { data, error } = await supabase
-        .from(targetUserId === currentId ? 'users' : 'user_profiles')
-        .select('*')
-        .eq('id', targetUserId)
-        .single();
+      const isSelf = targetUserId === currentId;
+      let data: {
+        email?: string | null;
+        role?: string | null;
+        name?: string | null;
+        bio?: string | null;
+        location?: string | null;
+        website?: string | null;
+        phone?: string | null;
+        avatar?: string | null;
+        is_verified?: boolean | null;
+        created_at?: string | null;
+      } | null = null;
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      if (isSelf) {
+        const res = await supabase.from('users').select('*').eq('id', targetUserId).maybeSingle();
+        if (res.error && res.error.code !== 'PGRST116') throw res.error;
+        data = res.data;
+      } else {
+        const res = await supabase.from('user_profiles').select('*').eq('id', targetUserId).maybeSingle();
+        if (res.error && res.error.code !== 'PGRST116') throw res.error;
+        data = res.data;
       }
-
       const email = data?.email || (targetUserId === currentId ? authUser?.email : '') || '';
       const isSuperAdminAccount = isSuperAdmin(email, data?.role);
 
@@ -94,9 +107,9 @@ export default function Profile() {
         location: data?.location || '',
         website: data?.website || '',
         phone: data?.phone || '',
-        avatar: data?.avatar || (targetUserId === currentId ? authUser?.user_metadata?.avatar_url : '/pfp.jpg') || '/pfp.jpg',
+         avatar: data?.avatar ?? (targetUserId === currentId ? authUser?.user_metadata?.avatar_url ?? '/pfp.jpg' : '/pfp.jpg'),
         is_verified: Boolean(data?.is_verified || isSuperAdminAccount),
-        created_at: data?.created_at,
+       created_at: data?.created_at ?? undefined,
       };
 
       setProfile(loadedProfile);

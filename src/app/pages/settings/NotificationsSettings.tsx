@@ -30,6 +30,11 @@ export default function NotificationsSettings() {
 
   // 1. Fetch user notification preferences
   useEffect(() => {
+    const isValidDigest = (
+      val: unknown
+    ): val is NotificationPreferences['digest_frequency'] =>
+      val === 'off' || val === 'daily' || val === 'weekly';
+
     async function loadPreferences() {
       try {
         const { data: authData } = await supabase.auth.getUser();
@@ -42,10 +47,20 @@ export default function NotificationsSettings() {
           .eq('id', user.id)
           .single();
 
-        if (!error && data?.notification_preferences) {
+        if (
+          !error &&
+          data?.notification_preferences &&
+          typeof data.notification_preferences === 'object' &&
+          !Array.isArray(data.notification_preferences)
+        ) {
+          const savedPrefs =
+            data.notification_preferences as Partial<NotificationPreferences>;
           setPreferences({
             ...DEFAULT_PREFERENCES,
-            ...data.notification_preferences,
+            ...savedPrefs,
+            digest_frequency: isValidDigest(savedPrefs.digest_frequency)
+              ? savedPrefs.digest_frequency
+              : DEFAULT_PREFERENCES.digest_frequency,
           });
         }
 
@@ -56,7 +71,13 @@ export default function NotificationsSettings() {
           .maybeSingle();
 
         if (!workspaceError && workspacePreferences) {
-          setPreferences((current) => ({ ...current, ...workspacePreferences }));
+          setPreferences((current) => ({
+            ...current,
+            ...workspacePreferences,
+            digest_frequency: isValidDigest(workspacePreferences.digest_frequency)
+              ? workspacePreferences.digest_frequency
+              : current.digest_frequency,
+          }));
         }
       } catch (err: any) {
         console.error('Failed to load notification settings:', err);

@@ -45,7 +45,7 @@ export default function Dashboard() {
       if (projectsError) throw projectsError;
 
       const activeProjects = projects?.filter(p => p.status === 'active').length || 0;
-      const newProjectsInWindow = projects?.filter(p => new Date(p.created_at) >= windowStart).length || 0;
+      const newProjectsInWindow = projects?.filter(p => p.created_at && new Date(p.created_at) >= windowStart).length || 0;
 
       const { data: users, error: usersError } = await supabase
         .from('user_profiles')
@@ -60,7 +60,7 @@ export default function Dashboard() {
         .select('id, status, created_at');
       if (tasksError) throw tasksError;
 
-      const tasksInWindow = tasks?.filter(t => new Date(t.created_at) >= windowStart) || [];
+      const tasksInWindow = tasks?.filter(t => t.created_at && new Date(t.created_at) >= windowStart) || [];
       const totalTasks = tasksInWindow.length;
       const completedTasks = tasksInWindow.filter(t => t.status === 'done').length;
       const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -89,8 +89,8 @@ export default function Dashboard() {
           recentTasks.map(t => ({
             id: t.id,
             title: t.title,
-            status: t.status,
-            created_at: t.created_at,
+            status: t.status || 'todo',
+            created_at: t.created_at || new Date().toISOString(),
           }))
         );
       }
@@ -285,7 +285,7 @@ export default function Dashboard() {
                         <span className="text-gray-600 dark:text-gray-300 font-normal">{item.title}</span>
                       </p>
                       <p className="text-[11px] text-gray-400 capitalize">
-                        Current status: {item.status} • Created {new Date(item.created_at).toLocaleDateString()}
+                        Current status: {item.status} • Created {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date'}
                       </p>
                     </div>
                   </Link>

@@ -31,7 +31,7 @@ interface Project {
   id: string;
   name: string;
   owner_id?: string | null;
-  github_repo?: string;
+  github_repo?: string | null;
   locked_file?: string | null;
   locked_by?: string | null;
 }

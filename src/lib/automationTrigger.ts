@@ -13,9 +13,10 @@ export async function dispatchAutomation(payload: AutomationEventPayload) {
   try {
     // 1. Resolve true authenticated user identity
     let authorName = payload.user;
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUserId = authData?.user?.id || null;
 
     if (!authorName) {
-      const { data: authData } = await supabase.auth.getUser();
       if (authData?.user) {
         const { data: userProfile } = await supabase
           .from('users')
@@ -51,25 +52,26 @@ export async function dispatchAutomation(payload: AutomationEventPayload) {
         const triggerLower = rule.trigger.toLowerCase();
         const eventLower = payload.event.replace('_', ' ').toLowerCase();
 
-        // Check if trigger rule matches the current event context
         if (
           triggerLower.includes(eventLower) ||
           triggerLower.includes('any') ||
           (payload.event === 'code_pushed' && triggerLower.includes('code'))
         ) {
-          // Update last_run on the automation rule
           await supabase
             .from('automations')
             .update({ last_run: nowIso })
             .eq('id', rule.id);
 
-          // Insert in-app notification
-          await supabase.from('notifications').insert({
-            title: `Automation Fired: ${rule.title}`,
-            message: `${payload.description} (Triggered by ${authorName})`,
-            type: 'system',
-            is_read: false,
-          });
+          const recipientId = rule.user_id || currentUserId;
+          if (recipientId) {
+            await supabase.from('notifications').insert({
+              user_id: recipientId,
+              title: `Automation Fired: ${rule.title}`,
+              message: `${payload.description} (Triggered by ${authorName})`,
+              type: 'system',
+              is_read: false,
+            });
+          }
         }
       }
     }

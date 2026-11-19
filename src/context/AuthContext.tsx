@@ -55,13 +55,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data) {
-        const isAdmin = isSuperAdmin(defaultEmail, data.role);
+        const profileData = data as typeof data & {
+          bannerUrl?: string | null;
+          banner_url?: string | null;
+        };
+        const isAdmin = isSuperAdmin(defaultEmail, profileData.role);
         setUser({
-          ...data,
-          role: isAdmin ? 'Admin' : (data.role || 'Member'),
-          is_verified: Boolean(data.is_verified || isAdmin),
-          email_verified: Boolean(data.email_verified || isAdmin),
-          phone_verified: Boolean(data.phone_verified),
+          ...profileData,
+          id: profileData.id,
+          name: profileData.name || metadata.full_name || metadata.name || defaultEmail.split('@')[0] || 'User',
+          email: profileData.email || defaultEmail,
+          avatar: profileData.avatar || metadata.avatar_url || '/pfp.jpg',
+          location: profileData.location || undefined,
+          phone: profileData.phone || undefined,
+          bio: profileData.bio || undefined,
+          website: profileData.website || undefined,
+          bannerUrl: profileData.bannerUrl || profileData.banner_url || undefined,
+          role: isAdmin ? 'Admin' : (profileData.role || 'Member'),
+          is_verified: Boolean(profileData.is_verified || isAdmin),
+          email_verified: Boolean(profileData.email_verified || isAdmin),
+          phone_verified: Boolean(profileData.phone_verified),
+          is_2fa_enabled: Boolean(profileData.is_2fa_enabled),
+          two_factor_channel: profileData.two_factor_channel === 'phone' ? 'phone' : profileData.two_factor_channel === 'email' ? 'email' : undefined,
+          two_factor_target: profileData.two_factor_target || undefined,
         });
       } else {
         // Fallback to auth metadata until the database row is populated

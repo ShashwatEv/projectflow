@@ -104,8 +104,16 @@ export default function Projects() {
       const merged: Project[] = (projectData || []).map((p) => {
         const ownerUser = p.owner_id ? userMap.get(p.owner_id) : undefined;
         return {
-          ...p,
-          owner: ownerUser ? { name: ownerUser.name, avatar: ownerUser.avatar } : undefined,
+          id: p.id,
+          name: p.name,
+          description: p.description ?? undefined,
+          status: (['active', 'completed', 'on_hold'].includes(p.status || '') ? p.status : 'active') as Project['status'],
+          progress: p.progress ?? 0,
+          created_at: p.created_at || new Date().toISOString(),
+          due_date: p.due_date,
+          owner_id: p.owner_id ?? undefined,
+          github_repo: p.github_repo ?? undefined,
+          owner: ownerUser ? { name: ownerUser.name ?? undefined, avatar: ownerUser.avatar ?? undefined } : undefined,
         };
       });
 

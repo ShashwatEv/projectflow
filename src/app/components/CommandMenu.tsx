@@ -73,12 +73,28 @@ export default function CommandMenu() {
 
     async function fetchData() {
       const { data: projData } = await supabase.from('projects').select('id, name, status').limit(8);
-      if (projData) setProjects(projData);
+      if (projData) {
+        setProjects(
+          projData.map((p) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status || 'active',
+          }))
+        );
+      }
 
       const { data: userData } = await supabase.from('user_profiles').select('id, name, role, avatar').limit(8);
-      if (userData) setUsers(userData);
+      if (userData) {
+        setUsers(
+          userData.map((u) => ({
+            id: u.id,
+            name: u.name || 'User',
+            role: u.role || 'Member',
+            avatar: u.avatar || '/pfp.jpg',
+          }))
+        );
+      }
     }
-
     fetchData();
   }, [open]);
 

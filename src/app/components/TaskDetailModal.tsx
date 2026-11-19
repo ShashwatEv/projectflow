@@ -121,12 +121,21 @@ export default function TaskDetailModal({
 
         if (error) throw error;
         if (data) {
-          setTask(data);
+          setTask({
+            id: data.id,
+            title: data.title,
+            description: data.description ?? undefined,
+            status: (data.status as TaskRecord['status'] | null) || 'todo',
+            priority: (data.priority as TaskRecord['priority'] | null) || 'medium',
+            due_date: data.due_date ?? undefined,
+            project: data.project ?? undefined,
+            assigned_to: data.assigned_to ?? undefined,
+          });
           setTitle(data.title || '');
-          setDescription(data.description || '');
-          setStatus(data.status || 'todo');
-          setPriority(data.priority || 'medium');
-          setDueDate(data.due_date ? data.due_date.split('T')[0] : '');
+          setDescription(data.description ?? '');
+          setStatus((data.status as TaskRecord['status'] | null) || 'todo');
+          setPriority((data.priority as TaskRecord['priority'] | null) || 'medium');
+          setDescription(data.description ?? '');
         }
       } catch {
         toast.error('Failed to load task details');
@@ -150,7 +159,9 @@ export default function TaskDetailModal({
           console.error('Failed to load users for task mentions:', error);
           return;
         }
-        if (active) setMentionableUsers(data || []);
+        // Filter out users with null names since MentionableUser requires name: string
+        const validUsers = (data || []).filter((user): user is MentionableUser => user.name !== null);
+        if (active) setMentionableUsers(validUsers);
       });
     return () => {
       active = false;

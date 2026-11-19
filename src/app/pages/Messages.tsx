@@ -7,7 +7,7 @@ import {
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { ChatWallpaper, useTheme } from '../../context/ThemeContext';
 import { useTyping } from '../../hooks/useTyping';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';
 import TypingIndicator from '../components/TypingIndicator';
@@ -291,7 +291,7 @@ export default function Messages() {
         setIsCurrentRoomMuted(false);
         return;
       }
-      setActiveWallpaper(data?.wallpaper || chatWallpaper);
+      setActiveWallpaper((data?.wallpaper as ChatWallpaper) || chatWallpaper);
       setIsCurrentRoomMuted(data?.is_muted || false);
       setMutedRooms((current) => ({ ...current, [currentRoomId]: data?.is_muted || false }));
     };
@@ -313,14 +313,14 @@ export default function Messages() {
       }
       if (!active || !data) return;
 
-      setUsers(data);
-      const profilesById = new Map(data.map((profile: TeamUser) => [profile.id, profile]));
-      setMessages((current) => current.map((message) => {
-        const profile = profilesById.get(message.user_id);
-        return profile
-          ? { ...message, user: { name: profile.name, avatar: profile.avatar } }
-          : message;
+      const normalizedUsers: TeamUser[] = data.map((profile) => ({
+        id: profile.id,
+        name: profile.name || 'User',
+        avatar: profile.avatar || '/pfp.jpg',
+        email: profile.email || '',
+        role: profile.role || 'Member',
       }));
+      setUsers(normalizedUsers);
     }
     const handleProfileUpdated = () => void fetchUsers();
     void fetchUsers();

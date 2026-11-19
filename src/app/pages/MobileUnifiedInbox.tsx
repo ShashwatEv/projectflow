@@ -102,8 +102,13 @@ export default function MobileUnifiedInbox() {
     }));
     const latestIncomingByRoom = new Map<string, { id: string; room_id: string; content: string; created_at: string }>();
     (messagesResult.data || []).forEach((message) => {
-      if (message.user_id !== user?.id && !latestIncomingByRoom.has(message.room_id)) {
-        latestIncomingByRoom.set(message.room_id, message);
+      if (message.room_id && message.user_id !== user?.id && !latestIncomingByRoom.has(message.room_id)) {
+        latestIncomingByRoom.set(message.room_id, {
+          id: message.id,
+          room_id: message.room_id,
+          content: message.content,
+          created_at: message.created_at || new Date().toISOString(),
+        });
       }
     });
     const messageItems: InboxItem[] = Array.from(latestIncomingByRoom.values()).map((message) => {
@@ -181,7 +186,7 @@ export default function MobileUnifiedInbox() {
         ? [supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)]
         : []),
       ...items
-        .filter((item) => item.kind === 'message' && (item.unreadCount || 0) > 0 && item.roomId)
+        .filter((item): item is InboxItem & { roomId: string } => item.kind === 'message' && (item.unreadCount || 0) > 0 && Boolean(item.roomId))
         .map((item) =>
           supabase.from('workspace_channel_reads').upsert(
             { channel_id: item.roomId, user_id: user.id, last_read_at: new Date().toISOString() },

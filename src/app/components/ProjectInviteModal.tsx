@@ -71,6 +71,7 @@ export default function ProjectInviteModal({
 
   useEffect(() => {
     if (!isOpen || !currentUserId) return;
+    const userId = currentUserId;
     let active = true;
 
     async function loadProjects() {
@@ -79,7 +80,7 @@ export default function ProjectInviteModal({
         const [{ data: projectRows, error: projectsError }, { data: memberships, error: membersError }] =
           await Promise.all([
             supabase.from('projects').select('id, name, owner_id').order('name'),
-            supabase.from('project_members').select('project_id, role').eq('user_id', currentUserId),
+            supabase.from('project_members').select('project_id, role').eq('user_id', userId),
           ]);
 
         if (projectsError) throw projectsError;
@@ -142,7 +143,10 @@ export default function ProjectInviteModal({
       });
       if (error) throw error;
 
-      const result = Array.isArray(data) ? data[0] : data;
+      const result = (Array.isArray(data) ? data[0] : data) as
+        | { expires_at?: string; project_name?: string }
+        | null
+        | undefined;
       setInviteCode(code);
       setExpiresAt(result?.expires_at || null);
       toast.success(`Viewer invite created for ${result?.project_name || selectedProject?.name || 'project'}.`);
@@ -164,7 +168,10 @@ export default function ProjectInviteModal({
       });
       if (error) throw error;
 
-      const result = Array.isArray(data) ? data[0] : data;
+      const result = (Array.isArray(data) ? data[0] : data) as
+        | { project_name?: string }
+        | null
+        | undefined;
       toast.success(`You now have Viewer access to ${result?.project_name || 'the project'}.`);
       setRedeemCode('');
       onAccessGranted();

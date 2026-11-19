@@ -106,7 +106,54 @@ export default function ProjectDetail() {
     }
   }, [id]);
 
+  const normalizeTaskStatus = (status?: string | null): TaskItem['status'] =>
+    (['todo', 'inProgress', 'review', 'done'].includes(status || '')
+      ? status
+      : 'todo') as TaskItem['status'];
+
+  const normalizeTaskPriority = (priority?: string | null): TaskItem['priority'] =>
+    (['low', 'medium', 'high'].includes(priority || '')
+      ? priority
+      : 'medium') as TaskItem['priority'];
+
+  const normalizeMilestoneStatus = (status?: string | null): ProjectMilestone['status'] =>
+    (['planned', 'in_progress', 'complete'].includes(status || '')
+      ? status
+      : 'planned') as ProjectMilestone['status'];
+
+  const mapTaskRow = (row: {
+    id: string;
+    title: string;
+    description: string | null;
+    status: string | null;
+    priority: string | null;
+    due_date: string | null;
+    created_at: string | null;
+    project_id: string | null;
+    assigned_to: string | null;
+    user?: { id: string; name: string | null; avatar: string | null } | null;
+  }): TaskItem => ({
+    id: row.id,
+    title: row.title,
+    description: row.description ?? undefined,
+    status: normalizeTaskStatus(row.status),
+    priority: normalizeTaskPriority(row.priority),
+    due_date: row.due_date ?? undefined,
+    created_at: row.created_at ?? undefined,
+    project_id: row.project_id ?? undefined,
+    assigned_to: row.assigned_to ?? undefined,
+    user: row.user
+      ? {
+          id: row.user.id,
+          name: row.user.name || 'User',
+          avatar: row.user.avatar || '/pfp.jpg',
+        }
+      : undefined,
+  });
+
   const fetchProjectData = async () => {
+    if (!id) return;
+
     try {
       setLoading(true);
       const { data: projectData, error: projectError } = await supabase
@@ -121,15 +168,24 @@ export default function ProjectDetail() {
         return;
       }
 
-      setProject(projectData);
+      setProject({
+        id: projectData.id,
+        name: projectData.name,
+        description: projectData.description ?? undefined,
+        status: projectData.status || 'active',
+        due_date: projectData.due_date ?? undefined,
+        created_at: projectData.created_at ?? undefined,
+        owner_id: projectData.owner_id ?? undefined,
+        progress: projectData.progress ?? undefined,
+      });
       setEditName(projectData.name || '');
       setEditDescription(projectData.description || '');
       setEditStatus(projectData.status || 'active');
-      setEditDueDate(projectData.due_date ? projectData.due_date.split('T')[0] : '');
+      setEditDueDate(projectData.due_date ? (projectData.due_date.split('T')[0] ?? '') : '');
 
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
-        .select('*, user:users(id, name, avatar)')
+        .select('*, user:users!assigned_to(id, name, avatar)')
         .eq('project_id', id)
         .order('created_at', { ascending: false });
 
@@ -137,49 +193,77 @@ export default function ProjectDetail() {
         console.warn('Could not query tasks by project_id:', tasksError.message);
         setTasks([]);
       } else if (tasksData) {
-        setTasks(tasksData);
+        setTasks(tasksData.map(mapTaskRow));
       }
 
       const [
         { data: milestoneData, error: milestoneError },
         { data: taskActivityData, error: taskActivityError },
         { data: projectActivityData, error: projectActivityError },
-      ] =
-        await Promise.all([
-          supabase
-            .from('project_milestones')
-            .select('id, title, due_date, status')
-            .eq('project_id', id)
-            .order('due_date', { ascending: true }),
-          supabase
-            .from('task_activity')
-            .select('id, action, details, created_at')
-            .eq('project_id', id)
-            .order('created_at', { ascending: false })
-            .limit(8),
-          supabase
-            .from('project_activity')
-            .select('id, action, details, created_at')
-            .eq('project_id', id)
-            .order('created_at', { ascending: false })
-            .limit(8),
-        ]);
+      ] = await Promise.all([
+        supabase
+          .from('project_milestones')
+          .select('id, title, due_date, status')
+          .eq('project_id', id)
+          .order('due_date', { ascending: true }),
+        supabase
+          .from('task_activity')
+          .select('id, action, details, created_at')
+          .eq('project_id', id)
+          .order('created_at', { ascending: false })
+          .limit(8),
+        supabase
+          .from('project_activity')
+          .select('id, action, details, created_at')
+          .eq('project_id', id)
+          .order('created_at', { ascending: false })
+          .limit(8),
+      ]);
+
       if (milestoneError) {
         console.error('Could not load project milestones:', milestoneError);
         toast.error('Milestones are unavailable. Apply the collaboration database migration.');
       } else {
-        setMilestones(milestoneData || []);
+        setMilestones(
+          (milestoneData || []).map((m) => ({
+            id: m.id,
+            title: m.title,
+            due_date: m.due_date,
+            status: normalizeMilestoneStatus(m.status),
+          }))
+        );
       }
+
       if (taskActivityError || projectActivityError) {
         console.error('Could not load project activity:', taskActivityError || projectActivityError);
       } else {
+        const toRecord = (val: unknown): Record<string, unknown> =>
+          val && typeof val === 'object' && !Array.isArray(val)
+            ? (val as Record<string, unknown>)
+            : {};
+
         const activityItems: ActivityItem[] = [
-          ...((taskActivityData || []).map((item) => ({ ...item, source: 'task' as const }))),
-          ...((projectActivityData || []).map((item) => ({ ...item, source: 'project' as const }))),
+          ...(taskActivityData || []).map((item) => ({
+            id: item.id,
+            action: item.action,
+            details: toRecord(item.details),
+            created_at: item.created_at,
+            source: 'task' as const,
+          })),
+          ...(projectActivityData || []).map((item) => ({
+            id: item.id,
+            action: item.action,
+            details: toRecord(item.details),
+            created_at: item.created_at,
+            source: 'project' as const,
+          })),
         ];
-        setProjectActivity(activityItems
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 8));
+
+        setProjectActivity(
+          activityItems
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 8)
+        );
       }
     } catch (err: any) {
       console.error('Error fetching project:', err);
@@ -191,20 +275,33 @@ export default function ProjectDetail() {
 
   const fetchTeamMembers = async () => {
     try {
-      const { data, error } = await supabase.from('user_profiles').select('id, name, email, avatar, role');
-      if (data && !error) setTeamMembers(data);
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, name, email, avatar, role');
+
+      if (data && !error) {
+        setTeamMembers(
+          data.map((m) => ({
+            id: m.id,
+            name: m.name || 'Member',
+            email: m.email || '',
+            avatar: m.avatar || '/pfp.jpg',
+            role: m.role || 'Member',
+          }))
+        );
+      }
     } catch (err) {
       console.error('Error fetching team members:', err);
     }
   };
 
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === 'done').length;
+  const completedTasks = tasks.filter((t) => t.status === 'done').length;
   const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const handleUpdateTaskStatus = async (taskId: string, newStatus: TaskItem['status']) => {
     try {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
 
       const { error } = await supabase
         .from('tasks')
@@ -212,8 +309,8 @@ export default function ProjectDetail() {
         .eq('id', taskId);
 
       if (error) throw error;
-      toast.success(`Task moved to ${COLUMNS.find(c => c.id === newStatus)?.label}`);
-    } catch (err: any) {
+      toast.success(`Task moved to ${COLUMNS.find((c) => c.id === newStatus)?.label}`);
+    } catch {
       toast.error('Failed to update task status');
       fetchProjectData();
     }
@@ -222,11 +319,11 @@ export default function ProjectDetail() {
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
     try {
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
       const { error } = await supabase.from('tasks').delete().eq('id', taskId);
       if (error) throw error;
       toast.success('Task deleted');
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete task');
       fetchProjectData();
     }
@@ -238,7 +335,7 @@ export default function ProjectDetail() {
     setSavingTask(true);
 
     try {
-      const newTaskPayload: any = {
+      const newTaskPayload = {
         title: newTaskTitle.trim(),
         description: newTaskDescription.trim(),
         status: newTaskStatus,
@@ -251,13 +348,13 @@ export default function ProjectDetail() {
       const { data, error } = await supabase
         .from('tasks')
         .insert(newTaskPayload)
-        .select('*, user:users(id, name, avatar)')
+        .select('*, user:users!assigned_to(id, name, avatar)')
         .single();
 
       if (error) throw error;
 
       if (data) {
-        setTasks(prev => [data, ...prev]);
+        setTasks((prev) => [mapTaskRow(data), ...prev]);
       } else {
         fetchProjectData();
       }
@@ -293,7 +390,19 @@ export default function ProjectDetail() {
         .select('id, title, due_date, status')
         .single();
       if (error) throw error;
-      setMilestones((current) => [...current, data].sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')));
+
+      const createdMilestone: ProjectMilestone = {
+        id: data.id,
+        title: data.title,
+        due_date: data.due_date,
+        status: normalizeMilestoneStatus(data.status),
+      };
+
+      setMilestones((current) =>
+        [...current, createdMilestone].sort((a, b) =>
+          (a.due_date || '').localeCompare(b.due_date || '')
+        )
+      );
       setMilestoneTitle('');
       setMilestoneDueDate('');
       toast.success('Milestone added');

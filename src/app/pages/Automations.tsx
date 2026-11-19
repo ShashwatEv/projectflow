@@ -214,7 +214,7 @@ export default function Automations() {
     }
   };
 
-  const handleCreateAutomation = async (e: React.FormEvent) => {
+ const handleCreateAutomation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
@@ -222,40 +222,22 @@ export default function Automations() {
     triggerHaptic('tap');
 
     try {
-      // Standard schema insert (title, trigger, action, status, platform)
       const { data, error } = await supabase
         .from('automations')
         .insert({
+          user_id: user?.id || null,
           title: name.trim(),
           trigger: triggerType,
           action: actionType,
           status: 'active',
-          platform: platform,
+          platform,
         })
         .select()
         .single();
 
-      if (error) {
-        // Fallback: newer schema with (name, trigger_type, action_type, is_active)
-        const fallbackRes = await supabase
-          .from('automations')
-          .insert({
-            name: name.trim(),
-            trigger_type: triggerType,
-            action_type: actionType,
-            is_active: true,
-            platform: platform,
-            created_by: user?.id || null,
-          })
-          .select()
-          .single();
+      if (error) throw error;
 
-        if (fallbackRes.error) throw error;
-        setAutomations((prev) => [fallbackRes.data as AutomationRule, ...prev]);
-      } else {
-        setAutomations((prev) => [data as AutomationRule, ...prev]);
-      }
-
+      setAutomations((prev) => [data as AutomationRule, ...prev]);
       setShowCreateModal(false);
       setName('');
       toast.success('Automation created successfully');
