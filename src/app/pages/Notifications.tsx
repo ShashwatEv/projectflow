@@ -1,12 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Bell, Check, Code2, AlertCircle, MessageSquare, 
-  FolderKanban, Clock, ArrowRight, Loader2, Inbox
+import {
+  Bell,
+  CheckCheck,
+  Clock,
+  Code2,
+  FolderKanban,
+  Inbox,
+  ListTodo,
+  MessageSquare,
+  ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
-import { toast } from 'sonner';
 
 export interface NotificationItem {
   id: string;
@@ -26,13 +33,11 @@ export default function Notifications() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
 
-  // 1. Fetch real notifications and auto-synthesize live project/deadline triggers
-  const fetchLiveNotifications = async () => {
+  const fetchLiveNotifications = useCallback(async () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData.user?.id;
 
-      // 1. Fetch stored notifications
       const { data: storedData, error } = await supabase
         .from('notifications')
         .select('*')
@@ -54,7 +59,6 @@ export default function Notifications() {
         created_at: n.created_at,
       }));
 
-      // 2. Synthesize automated progress & deadline notifications from active projects
       const { data: activeProjects } = await supabase
         .from('projects')
         .select('id, name, progress, created_at, status')
@@ -79,8 +83,8 @@ export default function Notifications() {
           message,
           type: 'project',
           link: `/projects/${proj.id}`,
-          is_read: false,
-          created_at: proj.created_at ?? new Date().toISOString(),
+          is_read: true,
+          created_at: proj.created_at || new Date().toISOString(),
         };
       });
 
@@ -108,176 +112,164 @@ export default function Notifications() {
             console.error('Could not load due task reminders:', dueTasksError);
           } else {
             dueTaskReminders = (dueTasks || [])
-              .filter((task): task is { id: string; title: string; due_date: string } => Boolean(task.due_date))
+              .filter((task): task is { id: string; title: string; due_date: string } =>
+                Boolean(task.due_date)
+              )
               .map((task) => ({
                 id: `automation-deadline-${task.id}`,
-                title: new Date(task.due_date).getTime() < Date.now() ? 'Task overdue' : 'Task due today',
+                title:
+                  new Date(task.due_date).getTime() < Date.now()
+                    ? 'Task overdue'
+                    : 'Task due today',
                 message: task.title,
                 type: 'deadline',
                 link: '/tasks',
-                is_read: false,
+                is_read: true,
                 created_at: task.due_date,
               }));
           }
         }
       }
 
-      // Merge and sort newest first
       const combined = [...realList, ...projectAutomations, ...dueTaskReminders].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
       setNotifications(combined);
     } catch (err) {
-      console.error('Failed to load notifications:', err);
+      console.error('Error building notifications:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchLiveNotifications();
+    void fetchLiveNotifications();
 
-    // Realtime channel listener for dynamic updates
     const channel = supabase
-      .channel('notifications-live')
+      .channel('notifications_page_live')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications' },
-        (payload) => {
-          setNotifications((prev) => [payload.new as NotificationItem, ...prev]);
-        }
+        { event: '*', schema: 'public', table: 'notifications' },
+        () => void fetchLiveNotifications()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'projects' },
+        () => void fetchLiveNotifications()
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchLiveNotifications]);
 
-  // Mark all notifications as read
-  const handleMarkAllAsRead = async () => {
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      const currentUserId = authData?.user?.id;
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const visibleNotifications =
+    filter === 'unread' ? notifications.filter((n) => !n.is_read) : notifications;
 
-      if (currentUserId) {
-        await supabase
-          .from('notifications')
-          .update({ is_read: true })
-          .eq('user_id', currentUserId);
-      }
+  const markAllAsRead = async () => {
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUserId = authData.user?.id;
 
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      toast.success('Marked all notifications as read');
-    } catch (err: any) {
-      toast.error('Failed to update notifications');
-    }
-  };
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
 
-  // Mark single item read & navigate
-  const handleItemClick = async (item: NotificationItem) => {
-    if (!item.is_read && !item.id.startsWith('automation-')) {
+    if (currentUserId) {
       await supabase
         .from('notifications')
         .update({ is_read: true })
-        .eq('id', item.id);
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
     }
+  };
 
+  const handleOpenNotification = async (item: NotificationItem) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
     );
+
+    if (!item.id.startsWith('automation-')) {
+      await supabase.from('notifications').update({ is_read: true }).eq('id', item.id);
+    }
 
     if (item.link) {
       navigate(item.link);
     }
   };
 
-  // Format relative timestamp
-  const formatTime = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return 'Just now';
-    }
-  };
-
-  const getIconForType = (type: NotificationItem['type']) => {
+  const getTypeIcon = (type: NotificationItem['type']) => {
     switch (type) {
       case 'code':
-        return <Code2 size={18} className={theme.textAccent} />;
-      case 'deadline':
-      case 'task':
-        return <AlertCircle size={18} className="text-amber-400" />;
+        return <Code2 size={18} />;
       case 'project':
-        return <FolderKanban size={18} className={theme.textAccent} />;
+        return <FolderKanban size={18} />;
       case 'message':
+        return <MessageSquare size={18} />;
+      case 'deadline':
+        return <Clock size={18} />;
       default:
-        return <MessageSquare size={18} className="text-blue-400" />;
+        return <ListTodo size={18} />;
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-  const filteredNotifications = notifications.filter((n) => {
-    if (filter === 'unread') return !n.is_read;
-    return true;
-  });
-
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6 text-gray-200 animate-in fade-in duration-200">
-      
-      {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
-              <Bell size={22} />
-            </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Notifications</h1>
+    <div className="mx-auto max-w-4xl space-y-6 p-5 sm:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
+            <Bell size={22} />
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Stay updated with your live workspace activity and team events.
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Notifications
+            </h1>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Stay updated with your live workspace activity and team events.
+            </p>
+          </div>
         </div>
 
-        {/* Filter Pills & Mark All Action */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             onClick={() => navigate('/mobile/inbox')}
-            className="flex min-h-9 items-center gap-1.5 rounded-xl border border-gray-800 bg-[#161b22] px-3 text-xs font-semibold text-gray-300 transition-colors hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
             <Inbox size={14} />
             <span>Unified inbox</span>
           </button>
+
           <button
-            onClick={handleMarkAllAsRead}
+            type="button"
+            onClick={() => void markAllAsRead()}
             disabled={unreadCount === 0}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#161b22] hover:bg-gray-800 text-gray-300 border border-gray-800 text-xs font-semibold transition-all disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            <Check size={14} className="text-emerald-400" />
+            <CheckCheck size={14} />
             <span>Mark all as read</span>
           </button>
 
-          <div className="flex items-center bg-[#161b22] p-1 rounded-xl border border-gray-800">
+          <div className="inline-flex items-center rounded-xl border border-gray-200 bg-gray-100 p-1 text-xs font-semibold dark:border-gray-700 dark:bg-gray-800">
             <button
+              type="button"
               onClick={() => setFilter('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                filter === 'all'
-                  ? `${theme.btnPrimary} shadow-sm`
-                  : 'text-gray-400 hover:text-white'
-              }`}
+              className={`rounded-lg px-3 py-1.5 transition ${filter === 'all'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+                }`}
             >
               All ({notifications.length})
             </button>
             <button
+              type="button"
               onClick={() => setFilter('unread')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                filter === 'unread'
-                  ? `${theme.btnPrimary} shadow-sm`
-                  : 'text-gray-400 hover:text-white'
-              }`}
+              className={`rounded-lg px-3 py-1.5 transition ${filter === 'unread'
+                  ? 'bg-orange-600 text-white shadow-xs'
+                  : 'text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+                }`}
             >
               Unread ({unreadCount})
             </button>
@@ -285,69 +277,57 @@ export default function Notifications() {
         </div>
       </div>
 
-      {/* Notifications List */}
       {loading ? (
-        <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
-          <Loader2 size={28} className={`animate-spin ${theme.textAccent}`} />
-          <p className="text-xs">Checking workspace events...</p>
+        <div className="flex items-center justify-center rounded-2xl border border-gray-200 bg-white p-12 dark:border-gray-800 dark:bg-gray-900">
+          <Loader2 className="animate-spin text-indigo-600 dark:text-indigo-400" size={28} />
         </div>
-      ) : filteredNotifications.length === 0 ? (
-        <div className="py-20 text-center bg-[#161b22] border border-gray-800 rounded-2xl p-8 space-y-3">
-          <Bell size={36} className="mx-auto text-gray-600" />
-          <h3 className="text-base font-bold text-white">No notifications</h3>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            {filter === 'unread'
-              ? 'You have caught up with all unread updates.'
-              : 'Workspace activities, commits, and milestone events will show up here.'}
+      ) : visibleNotifications.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center dark:border-gray-700 dark:bg-gray-900">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {filter === 'unread' ? 'No unread notifications.' : 'No notifications yet.'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredNotifications.map((item) => (
+          {visibleNotifications.map((item) => (
             <div
               key={item.id}
-              onClick={() => handleItemClick(item)}
-              className={`p-4 md:p-5 rounded-2xl border transition-all cursor-pointer flex items-start gap-4 ${
-                !item.is_read
-                  ? 'bg-[#161b22] border-gray-800 hover:border-gray-700 shadow-md'
-                  : 'bg-[#161b22]/40 border-gray-800/40 opacity-70 hover:opacity-100'
-              }`}
+              onClick={() => void handleOpenNotification(item)}
+              className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition sm:p-5 ${item.is_read
+                  ? 'border-gray-200 bg-gray-50/90 text-gray-700 hover:bg-gray-100/80 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-300 dark:hover:bg-gray-900'
+                  : 'border-gray-200 bg-white text-gray-900 shadow-xs hover:border-gray-300 hover:bg-gray-50/60 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:border-gray-600'
+                }`}
             >
-              {/* Type Avatar Badge */}
-              <div className="p-2.5 rounded-xl bg-[#0d1117] border border-gray-800 shrink-0">
-                {getIconForType(item.type)}
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/25`}
+              >
+                {getTypeIcon(item.type)}
               </div>
 
-              {/* Body */}
-              <div className="flex-1 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-bold text-white tracking-tight">
+                  <h2 className="truncate text-sm font-bold text-gray-900 dark:text-white">
                     {item.title}
-                  </h4>
+                  </h2>
                   {!item.is_read && (
-                    <span className={`w-2 h-2 rounded-full ${theme.toggleActive} shrink-0 animate-pulse`} />
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-orange-500" />
                   )}
                 </div>
-
-                <p className="text-xs text-gray-400 leading-relaxed">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   {item.message}
                 </p>
-
-                {/* Metadata & Deep Link */}
-                <div className="flex items-center gap-4 pt-2 text-[11px] text-gray-500">
-                  <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-4 pt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="inline-flex items-center gap-1">
                     <Clock size={12} />
-                    <span>{formatTime(item.created_at)}</span>
-                  </div>
-
+                    {new Date(item.created_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                   {item.link && (
-                    <button
-                      type="button"
-                      className={`font-semibold ${theme.textAccent} ${theme.textHover} flex items-center gap-1 transition-colors`}
-                    >
-                      <span>View item</span>
-                      <ArrowRight size={11} />
-                    </button>
+                    <span className="inline-flex items-center gap-1 font-semibold text-orange-600 dark:text-orange-400">
+                      View item <ArrowRight size={12} />
+                    </span>
                   )}
                 </div>
               </div>

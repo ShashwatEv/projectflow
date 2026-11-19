@@ -19,6 +19,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "preview": "vite preview",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },

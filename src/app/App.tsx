@@ -28,35 +28,35 @@ import ForgotPassword from './pages/ForgotPassword';
 import TwoFactorVerify from './pages/TwoFactorVerify';
 import SettingsLayout from './pages/settings/SettingsLayout';
 
-// Feature pages
-import Projects from './pages/Projects';
-import MyTasks from './pages/MyTasks';
-import Team from './pages/Team';
-import Profile from './pages/Profile';
-import Calendar from './pages/Calendar';
-import Analytics from './pages/Analytics';
-import Notifications from './pages/Notifications';
-import Automations from './pages/Automations';
-import Timesheets from './pages/Timesheets';
-import Messages from './pages/Messages';
-import ProjectDetail from './pages/ProjectDetail';
+// Feature pages (lazy-loaded to trim the initial bundle)
+const Projects = lazy(() => import('./pages/Projects'));
+const MyTasks = lazy(() => import('./pages/MyTasks'));
+const Team = lazy(() => import('./pages/Team'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Automations = lazy(() => import('./pages/Automations'));
+const Timesheets = lazy(() => import('./pages/Timesheets'));
+const Messages = lazy(() => import('./pages/Messages'));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const CodeStudio = lazy(() => import('./pages/CodeStudio'));
-import SprintPlanner from './pages/SprintPlanner';
-import ApiDocs from './pages/ApiDocs';
-import Retrospectives from './pages/Retrospectives';
-import TeamVelocity from './pages/TeamVelocity';
-import ProjectFlowAbout from './pages/ProjectFlowAbout';
-import MobileProjectsOverview from './pages/MobileProjectsOverview';
-import MobileUnifiedInbox from './pages/MobileUnifiedInbox';
-import MobilePeopleDirectory from './pages/MobilePeopleDirectory';
+const SprintPlanner = lazy(() => import('./pages/SprintPlanner'));
+const ApiDocs = lazy(() => import('./pages/ApiDocs'));
+const Retrospectives = lazy(() => import('./pages/Retrospectives'));
+const TeamVelocity = lazy(() => import('./pages/TeamVelocity'));
+const ProjectFlowAbout = lazy(() => import('./pages/ProjectFlowAbout'));
+const MobileProjectsOverview = lazy(() => import('./pages/MobileProjectsOverview'));
+const MobileUnifiedInbox = lazy(() => import('./pages/MobileUnifiedInbox'));
+const MobilePeopleDirectory = lazy(() => import('./pages/MobilePeopleDirectory'));
 
-// Mobile-specific workflow pages
-import MobileTriageDeck from './pages/MobileTriageDeck';
-import DailyStandupStories from './pages/DailyStandupStories';
-import QuickCaptureSheet from './pages/QuickCaptureSheet';
-import ProjectMeetings from './pages/ProjectMeetings';
-import MeetingsHub from './pages/MeetingsHub';
-import Downloads from './pages/Downloads';
+// Mobile-specific and meetings/downloads workflow pages (lazy-loaded)
+const MobileTriageDeck = lazy(() => import('./pages/MobileTriageDeck'));
+const DailyStandupStories = lazy(() => import('./pages/DailyStandupStories'));
+const QuickCaptureSheet = lazy(() => import('./pages/QuickCaptureSheet'));
+const ProjectMeetings = lazy(() => import('./pages/ProjectMeetings'));
+const MeetingsHub = lazy(() => import('./pages/MeetingsHub'));
+const Downloads = lazy(() => import('./pages/Downloads'));
 
 const ApiPlayground = lazy(() =>
   import('./pages/ApiPlayground').catch(() => ({
@@ -229,135 +229,137 @@ export default function App() {
             <Toaster richColors position="top-right" />
             <AppRouter>
               <ErrorBoundary>
-                <Routes>
-                  {/* Public routes */}
-                  <Route path="/downloads" element={<Downloads />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/signup" element={<Signup />} />
-                  <Route path="/forgot-password" element={<ForgotPassword />} />
-                  <Route path="/2fa" element={<TwoFactorVerify />} />
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    {/* Public routes */}
+                    <Route path="/downloads" element={<Downloads />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/signup" element={<Signup />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/2fa" element={<TwoFactorVerify />} />
 
-                  {/* Protected workspace routes */}
-                  <Route element={<RequireAuth />}>
-                    <Route element={<Layout />}>
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/about" element={<ProjectFlowAbout />} />
-                      <Route path="/mobile/projects" element={<MobileProjectsOverview />} />
-                      <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
-                      <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
+                    {/* Protected workspace routes */}
+                    <Route element={<RequireAuth />}>
+                      <Route element={<Layout />}>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        <Route path="/about" element={<ProjectFlowAbout />} />
+                        <Route path="/mobile/projects" element={<MobileProjectsOverview />} />
+                        <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
+                        <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
 
-                      {/* Work routes */}
-                      <Route path="/tasks" element={<MyTasks />} />
-                      <Route path="/projects" element={<Projects />} />
-                      <Route path="/projects/:id" element={<ProjectDetail />} />
-                      <Route path="/projects/:id/meetings" element={<Navigate to="/meetings" replace />} />
-                      <Route path="/meetings" element={<MeetingsHub />} />
-                      <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
-                      <Route
-                        path="/sprint-planner"
-                        element={
-                          <DesktopOnlyGuard featureName="Sprint Planner">
-                            <SprintPlanner />
-                          </DesktopOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/code"
-                        element={
-                          <DesktopOnlyGuard featureName="Code Studio">
-                            <CodeStudio />
-                          </DesktopOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/api-playground"
-                        element={
-                          <DesktopOnlyGuard featureName="API Console">
-                            <ApiPlayground />
-                          </DesktopOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/docs"
-                        element={<ApiDocs />}
-                      />
-                      <Route
-                        path="/timesheets"
-                        element={<Timesheets />}
-                      />
-                      <Route
-                        path="/automations"
-                        element={<Automations />}
-                      />
+                        {/* Work routes */}
+                        <Route path="/tasks" element={<MyTasks />} />
+                        <Route path="/projects" element={<Projects />} />
+                        <Route path="/projects/:id" element={<ProjectDetail />} />
+                        <Route path="/projects/:id/meetings" element={<Navigate to="/meetings" replace />} />
+                        <Route path="/meetings" element={<MeetingsHub />} />
+                        <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
+                        <Route
+                          path="/sprint-planner"
+                          element={
+                            <DesktopOnlyGuard featureName="Sprint Planner">
+                              <SprintPlanner />
+                            </DesktopOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/code"
+                          element={
+                            <DesktopOnlyGuard featureName="Code Studio">
+                              <CodeStudio />
+                            </DesktopOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/api-playground"
+                          element={
+                            <DesktopOnlyGuard featureName="API Console">
+                              <ApiPlayground />
+                            </DesktopOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/docs"
+                          element={<ApiDocs />}
+                        />
+                        <Route
+                          path="/timesheets"
+                          element={<Timesheets />}
+                        />
+                        <Route
+                          path="/automations"
+                          element={<Automations />}
+                        />
 
-                      {/* Team and collaboration */}
-                      <Route
-                        path="/messages"
-                        element={<Navigate to="/messages/room_1" replace />}
-                      />
-                      <Route path="/messages/:roomId" element={<Messages />} />
-                      <Route path="/team" element={<Team />} />
-                      <Route
-                        path="/retrospectives"
-                        element={
-                          <DesktopOnlyGuard featureName="Retrospectives">
-                            <Retrospectives />
-                          </DesktopOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/retrospectives/velocity"
-                        element={<TeamVelocity />}
-                      />
-                      <Route
-                        path="/calendar"
-                        element={<Calendar />}
-                      />
+                        {/* Team and collaboration */}
+                        <Route
+                          path="/messages"
+                          element={<Navigate to="/messages/room_1" replace />}
+                        />
+                        <Route path="/messages/:roomId" element={<Messages />} />
+                        <Route path="/team" element={<Team />} />
+                        <Route
+                          path="/retrospectives"
+                          element={
+                            <DesktopOnlyGuard featureName="Retrospectives">
+                              <Retrospectives />
+                            </DesktopOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/retrospectives/velocity"
+                          element={<TeamVelocity />}
+                        />
+                        <Route
+                          path="/calendar"
+                          element={<Calendar />}
+                        />
 
-                      {/* Account and analytics */}
-                      <Route path="/notifications" element={<Notifications />} />
-                      <Route path="/profile" element={<Profile />} />
-                      <Route path="/profile/:id" element={<Profile />} />
-                      <Route
-                        path="/analytics"
-                        element={<Analytics />}
-                      />
+                        {/* Account and analytics */}
+                        <Route path="/notifications" element={<Notifications />} />
+                        <Route path="/profile" element={<Profile />} />
+                        <Route path="/profile/:id" element={<Profile />} />
+                        <Route
+                          path="/analytics"
+                          element={<Analytics />}
+                        />
 
-                      {/* Dedicated mobile experiences guarded against desktop screen widths */}
-                      <Route
-                        path="/triage"
-                        element={
-                          <MobileOnlyGuard>
-                            <MobileTriageDeck />
-                          </MobileOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/standup"
-                        element={
-                          <MobileOnlyGuard>
-                            <DailyStandupStories />
-                          </MobileOnlyGuard>
-                        }
-                      />
-                      <Route
-                        path="/capture"
-                        element={
-                          <MobileOnlyGuard>
-                            <QuickCaptureSheet />
-                          </MobileOnlyGuard>
-                        }
-                      />
+                        {/* Dedicated mobile experiences guarded against desktop screen widths */}
+                        <Route
+                          path="/triage"
+                          element={
+                            <MobileOnlyGuard>
+                              <MobileTriageDeck />
+                            </MobileOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/standup"
+                          element={
+                            <MobileOnlyGuard>
+                              <DailyStandupStories />
+                            </MobileOnlyGuard>
+                          }
+                        />
+                        <Route
+                          path="/capture"
+                          element={
+                            <MobileOnlyGuard>
+                              <QuickCaptureSheet />
+                            </MobileOnlyGuard>
+                          }
+                        />
 
-                      {/* Settings */}
-                      <Route path="/settings" element={<SettingsLayout />} />
+                        {/* Settings */}
+                        <Route path="/settings" element={<SettingsLayout />} />
+                      </Route>
                     </Route>
-                  </Route>
 
-                  {/* Fallback catch-all */}
-                  <Route path="*" element={<Navigate to="/login" replace />} />
-                </Routes>
+                    {/* Fallback catch-all */}
+                    <Route path="*" element={<Navigate to="/login" replace />} />
+                  </Routes>
+                </Suspense>
               </ErrorBoundary>
             </AppRouter>
           </OnboardingSandboxProvider>

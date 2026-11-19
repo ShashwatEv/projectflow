@@ -50,7 +50,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     }
   }, [user]);
 
- useEffect(() => {
+  useEffect(() => {
     if (!user?.id) {
       setRecentNotifs([]);
       setUnreadCount(0);
@@ -254,7 +254,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         <Link
           to="/downloads"
           aria-label="Download ProjectFlow apps"
-          className="hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-indigo-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-indigo-400 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40 md:inline-flex"
+          className="hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-indigo-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-indigo-400 dark:hover:border-indigo-700 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-400 md:inline-flex"
           title="Download ProjectFlow apps"
         >
           <Download size={17} aria-hidden="true" />
@@ -288,7 +288,10 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           >
             <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full border border-white bg-indigo-600 text-[9px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-xs animate-pulse">
+              <span
+                data-testid="header-unread-badge"
+                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full border-2 border-white bg-indigo-600 text-[10px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-sm"
+              >
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -309,7 +312,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
               <div className="max-h-64 overflow-y-auto py-2 divide-y divide-gray-100 dark:divide-gray-700/50">
                 {recentNotifs.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-gray-400">
+                  <div className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
                     No new notifications right now.
                   </div>
                 ) : (
@@ -325,7 +328,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                       <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
                         {item.title}
                       </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
+                      <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
                         {item.message}
                       </p>
                     </div>
@@ -348,7 +351,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             className="flex items-center gap-2 rounded-xl p-1 transition-all hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <div className="hidden text-right md:block">
-              <p className="text-xs font-bold leading-none">{currentName}</p>
+              <p className="text-xs font-bold leading-none text-gray-900 dark:text-white">{currentName}</p>
               <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{currentRole}</p>
             </div>
 
@@ -356,7 +359,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
               src={currentAvatar}
               onError={(e) => { e.currentTarget.src = '/pfp.jpg'; }}
               alt={currentName}
-              className="h-8 w-8 rounded-lg object-cover bg-gray-800 border border-gray-700/60"
+              className="h-8 w-8 rounded-lg object-cover bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60"
             />
           </button>
 

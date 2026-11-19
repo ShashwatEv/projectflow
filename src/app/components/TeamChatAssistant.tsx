@@ -196,15 +196,23 @@ export default function TeamChatAssistant({
         setEditableProjectIds(editableIds);
 
         const { data: extendedData, error: extendedError } = await supabase.rpc('team_chat_assistant_extended_context');
-        if (!active) return;
-        if (extendedError) {
-          setTaskComments([]);
-          setMilestones([]);
-          setAdditionalContextWarning(
-            'Task comments and milestones are unavailable. Apply supabase/migrations/202611070003_team_chat_assistant_extended_context.sql, then retry.'
-          );
-          console.warn('Could not load extended authorized assistant context:', extendedError);
-        } else {
+if (!active) return;
+if (extendedError) {
+  setTaskComments([]);
+  setMilestones([]);
+  setAdditionalContextWarning(
+    'Task comments and milestones are unavailable. Apply supabase/migrations/202611070003_team_chat_assistant_extended_context.sql, then retry.'
+  );
+
+  const isMissingRpc =
+    extendedError.code === 'PGRST202' ||
+    extendedError.message?.toLowerCase().includes('function not found') ||
+    extendedError.message?.toLowerCase().includes('does not exist');
+
+  if (!isMissingRpc) {
+    console.warn('Could not load extended authorized assistant context:', extendedError);
+  }
+} else {
           const extendedContext = extendedData as {
             task_comments?: TaskCommentContext[];
             milestones?: MilestoneContext[];
