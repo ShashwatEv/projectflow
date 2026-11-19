@@ -38,7 +38,7 @@ import {
 import { toast } from 'sonner';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useTheme, type ThemeMode } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabaseClient';
 import {
   getMeetingIceServers,
@@ -98,6 +98,20 @@ interface FloatingReaction {
 }
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🎉', '👏', '🔥', '🚀'] as const;
+
+function useSafeMeetingTheme(): { theme: 'light' | 'dark'; setThemeMode: (mode: ThemeMode) => void } {
+  try {
+    const { theme, setThemeMode } = useTheme();
+    return { theme, setThemeMode };
+  } catch {
+    const isDark =
+      typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    return {
+      theme: isDark ? 'dark' : 'light',
+      setThemeMode: () => undefined,
+    };
+  }
+}
 
 function waitForSubscription(channel: RealtimeChannel): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -165,6 +179,23 @@ function VideoTile({
     if (stream) void videoRef.current.play().catch(() => undefined);
   }, [stream]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.2 : -0.2;
+      setZoom((z) => {
+        const next = Math.min(3, Math.max(1, +(z + delta).toFixed(2)));
+        if (next === 1) setPan({ x: 0, y: 0 });
+        return next;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
   const handleZoomIn = (e: React.MouseEvent) => {
     e.stopPropagation();
     setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)));
@@ -219,18 +250,6 @@ function VideoTile({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.2 : -0.2;
-      setZoom((z) => {
-        const next = Math.min(3, Math.max(1, +(z + delta).toFixed(2)));
-        if (next === 1) setPan({ x: 0, y: 0 });
-        return next;
-      });
-    }
-  };
-
   return (
     <div
       ref={containerRef}
@@ -239,7 +258,6 @@ function VideoTile({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onDoubleClick={handleDoubleClick}
-      onWheel={handleWheel}
       className={`group relative overflow-hidden rounded-2xl border transition-shadow bg-zinc-950 select-none ${
         pinned
           ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-indigo-500/10'
@@ -398,7 +416,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
   const inviteCode = normalizeMeetingCode(searchParams.get('code') || '');
   const requestedMeetingId = searchParams.get('join');
   const { user } = useAuth();
-  const { theme, setThemeMode } = useTheme();
+  const { theme, setThemeMode } = useSafeMeetingTheme();
 
   const [projectName, setProjectName] = useState('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -411,7 +429,10 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [participants, setParticipants] = useState<ParticipantPresence[]>([]);
-  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [remoteStreams, setRemoteStreams] = useState(() => {
+  const streams: Map<string, MediaStream> = new Map();
+  return streams;
+});
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -721,6 +742,9 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
       window.clearInterval(accessCheckTimer.current);
       accessCheckTimer.current = null;
     }
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+    }
     const room = roomRef.current;
     roomRef.current = null;
     if (room) {
@@ -755,8 +779,8 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     setViewMode('grid');
     setUnreadChatCount(0);
     setStageZoom(1);
+    setIsFullscreen(false);
   }, [removePeer]);
-
   useEffect(() => {
     mountedRef.current = true;
     const peers = peerConnections.current;
@@ -779,7 +803,10 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
 
   // Meeting elapsed timer
   useEffect(() => {
-    if (!joinedAt) { setElapsedTime('00:00'); return; }
+    if (!joinedAt) {
+      setElapsedTime('00:00');
+      return;
+    }
     const tick = () => {
       const diff = Math.floor((Date.now() - joinedAt.getTime()) / 1000);
       const h = Math.floor(diff / 3600);
@@ -1236,13 +1263,17 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     : '';
 
   // Calculate spotlight tile for speaker/spotlight mode
-  const spotlightUserId = pinnedUserId || (participants.find(p => p.screenSharing)?.userId) || (participants.find(p => p.userId !== user?.id)?.userId) || user?.id;
+  const spotlightUserId =
+    pinnedUserId ||
+    participants.find((p) => p.screenSharing)?.userId ||
+    participants.find((p) => p.userId !== user?.id)?.userId ||
+    user?.id;
 
-  const filteredParticipants = participants.filter(p =>
+  const filteredParticipants = participants.filter((p) =>
     p.name.toLowerCase().includes(participantSearch.toLowerCase())
   );
 
-  const someoneRaisedHand = participants.find(p => p.handRaised && p.userId !== user?.id);
+  const someoneRaisedHand = participants.find((p) => p.handRaised && p.userId !== user?.id);
 
   if (loading) {
     return (
@@ -1450,7 +1481,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                       />
                     ) : (
                       (() => {
-                        const spotParticipant = participants.find(p => p.userId === spotlightUserId);
+                        const spotParticipant = participants.find((p) => p.userId === spotlightUserId);
                         return spotParticipant ? (
                           <VideoTile
                             id={spotParticipant.userId}

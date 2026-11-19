@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
+import { ensureMonacoConfigured } from '../../lib/monacoConfig';
+
+ensureMonacoConfigured();
 import { 
   Code2, GitBranch, Workflow, FileCode, Save, RefreshCw, Key,
   Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 

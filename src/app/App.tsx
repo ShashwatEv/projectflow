@@ -40,7 +40,7 @@ import Automations from './pages/Automations';
 import Timesheets from './pages/Timesheets';
 import Messages from './pages/Messages';
 import ProjectDetail from './pages/ProjectDetail';
-import CodeStudio from './pages/CodeStudio';
+const CodeStudio = lazy(() => import('./pages/CodeStudio'));
 import SprintPlanner from './pages/SprintPlanner';
 import ApiDocs from './pages/ApiDocs';
 import Retrospectives from './pages/Retrospectives';

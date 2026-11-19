@@ -17,7 +17,6 @@ import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import OnboardingSpotlight from './OnboardingSpotlight';
 import { toast } from 'sonner';
-import guideVideoUrl from '../../../guide video.mp4';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+
+const GUIDE_VIDEO_URL = `${import.meta.env.BASE_URL}guide-video.mp4`;
 
 interface TourStep {
   title: string;
@@ -56,6 +57,13 @@ const TOUR_STEPS: TourStep[] = [
     selector: 'main',
     description: 'Organize work into repositories and initiatives. Connect GitHub repositories to synchronize commit trees and branches.',
     actionHint: 'Create or inspect workspaces linked with repository remotes.',
+  },
+  {
+    title: 'Project Meetings & Live Calls',
+    path: '/meetings',
+    selector: '[aria-label="Start or join a meeting"], main',
+    description: 'Start encrypted peer-to-peer video calls, screen shares, and live meeting chats scoped to your projects, or join with a 16-character invite code.',
+    actionHint: 'Select a project to launch a meeting room or paste an invite code to join without exposing workspace files.',
   },
   {
     title: 'In-Browser Code Studio',
@@ -324,7 +332,7 @@ export default function OnboardingTour() {
                 onEnded={() => setHasWatchedGuide(true)}
                 onError={() => setGuideVideoError(true)}
               >
-                <source src={guideVideoUrl} type="video/mp4" />
+                <source src={GUIDE_VIDEO_URL} type="video/mp4" />
                 Your browser does not support video playback.
               </video>
             </div>

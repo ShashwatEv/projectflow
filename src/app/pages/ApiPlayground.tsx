@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
+import { ensureMonacoConfigured } from '../../lib/monacoConfig';
+
+ensureMonacoConfigured();
 import { 
   Terminal, Play, Clock, Copy, Check, Plus, 
   Trash2, Send, Loader2, GitPullRequest, GitCommit, Webhook 

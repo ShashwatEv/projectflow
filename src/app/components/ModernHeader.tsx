@@ -50,38 +50,76 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     }
   }, [user]);
 
-  useEffect(() => {
+ useEffect(() => {
+    if (!user?.id) {
+      setRecentNotifs([]);
+      setUnreadCount(0);
+      return;
+    }
+
     const fetchNotifications = async () => {
       try {
-        const { count, data } = await supabase
-          .from('notifications')
-          .select('id, title, message, type, is_read, created_at')
-          .order('created_at', { ascending: false })
-          .limit(5);
+        const [{ data }, { count: notifCount }, { data: roomUnreads }] = await Promise.all([
+          supabase
+            .from('notifications')
+            .select('id, title, message, type, is_read, created_at')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(5),
+          supabase
+            .from('notifications')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('is_read', false),
+          supabase.rpc('workspace_unread_counts'),
+        ]);
 
         if (data) {
           setRecentNotifs(data);
-          const unread = data.filter((n) => !n.is_read).length;
-          setUnreadCount(count ?? unread);
         }
+
+        const unreadNotifications = typeof notifCount === 'number' ? notifCount : 0;
+        const unreadMessages = Array.isArray(roomUnreads)
+          ? roomUnreads.reduce((sum, row) => sum + (Number(row.unread_count) || 0), 0)
+          : 0;
+
+        setUnreadCount(unreadNotifications + unreadMessages);
       } catch {
-        // notification table fallback
+        // notification / unread RPC fallback
       }
     };
 
-    fetchNotifications();
+    void fetchNotifications();
 
     const channel = supabase
-      .channel('header_notifs_count')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
-        fetchNotifications();
-      })
+      .channel(`header_notifs_count_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => {
+          void fetchNotifications();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => {
+          void fetchNotifications();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'workspace_channel_reads', filter: `user_id=eq.${user.id}` },
+        () => {
+          void fetchNotifications();
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const syncProfile = async () => {

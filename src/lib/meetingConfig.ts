@@ -61,8 +61,8 @@ export function getMeetingSignalTopic(
   return `projectflow-meeting-signal:${meetingId}:${senderId}:${recipientId}`;
 }
 
-export function normalizeMeetingCode(value: string): string {
-  return value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+export function normalizeMeetingCode(value?: string | null): string {
+  return (value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
 }
 
 export function formatMeetingCode(value: string): string {

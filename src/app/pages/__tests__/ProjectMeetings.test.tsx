@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ThemeProvider } from '../../../context/ThemeContext';
 import ProjectMeetings from '../ProjectMeetings';
 
 const { mockFrom, mockRpc } = vi.hoisted(() => ({ mockFrom: vi.fn(), mockRpc: vi.fn() }));
@@ -53,6 +54,7 @@ describe('ProjectMeetings', () => {
                   created_by: '00000000-0000-4000-8000-000000000001',
                   created_at: '2026-11-14T06:00:00.000Z',
                   ended_at: null,
+                  invite_code: 'ABCD1234EFGH5678',
                 },
               ],
               error: null,
@@ -70,11 +72,13 @@ describe('ProjectMeetings', () => {
 
   it('requires explicit media consent before enabling the join action', async () => {
     render(
-      <MemoryRouter initialEntries={['/projects/project-id/meetings']}>
-        <Routes>
-          <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/project-id/meetings']}>
+          <Routes>
+            <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Join meeting' }));
@@ -87,11 +91,13 @@ describe('ProjectMeetings', () => {
 
   it('opens the consent flow for a meeting selected from an invite link', async () => {
     render(
-      <MemoryRouter initialEntries={['/projects/project-id/meetings?join=meeting-id']}>
-        <Routes>
-          <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/project-id/meetings?join=meeting-id']}>
+          <Routes>
+            <Route path="/projects/:id/meetings" element={<ProjectMeetings />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
@@ -110,11 +116,13 @@ describe('ProjectMeetings', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678']}>
-        <Routes>
-          <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/meetings/guest/meeting-id?code=ABCD-1234-EFGH-5678']}>
+          <Routes>
+            <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     );
 
     expect(await screen.findByRole('heading', { name: 'Join Planning' })).toBeInTheDocument();
