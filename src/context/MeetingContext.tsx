@@ -12,9 +12,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   Maximize2,
+  MessageSquare,
   Mic,
   MicOff,
   PhoneOff,
+  RefreshCw,
   Users,
   Video,
   VideoOff,
@@ -86,6 +88,11 @@ export interface MeetingPoll {
   closed: boolean;
 }
 
+export interface MediaDeviceOption {
+  deviceId: string;
+  label: string;
+}
+
 interface PeerState {
   connection: RTCPeerConnection;
   audioSender: RTCRtpSender;
@@ -94,6 +101,9 @@ interface PeerState {
   outboundChannel: RealtimeChannel;
   remoteStream: MediaStream;
   pendingCandidates: RTCIceCandidateInit[];
+  iceRestartTimer: number | null;
+  makingOffer: boolean;
+  renegotiateTimer: number | null;
 }
 
 interface JoinMeetingArgs {
@@ -107,12 +117,21 @@ interface MeetingContextValue {
   leaving: boolean;
   participants: ParticipantPresence[];
   remoteStreams: Map<string, MediaStream>;
+  reconnectingUserIds: string[];
+  speakingUserIds: string[];
   localStream: MediaStream | null;
   screenStream: MediaStream | null;
   audioEnabled: boolean;
   videoEnabled: boolean;
   screenSharing: boolean;
   handRaised: boolean;
+  audioInputDevices: MediaDeviceOption[];
+  videoInputDevices: MediaDeviceOption[];
+  selectedAudioDeviceId: string;
+  selectedVideoDeviceId: string;
+  refreshMediaDevices: () => Promise<void>;
+  switchAudioDevice: (deviceId: string) => Promise<void>;
+  switchVideoDevice: (deviceId: string) => Promise<void>;
   chatMessages: MeetingChatMessage[];
   unreadChatCount: number;
   setUnreadChatCount: React.Dispatch<React.SetStateAction<number>>;
@@ -135,7 +154,10 @@ interface MeetingContextValue {
   createPoll: (question: string, optionLabels: string[]) => Promise<void>;
   votePoll: (pollId: string, optionId: string) => Promise<void>;
   closePoll: (pollId: string) => Promise<void>;
+  sharePollSummaryToChat: (pollId: string) => Promise<void>;
 }
+
+const MINIPLAYER_POS_STORAGE_KEY = 'pf_meeting_miniplayer_pos_v1';
 
 const MeetingContext = createContext<MeetingContextValue | null>(null);
 
@@ -161,17 +183,36 @@ function isUserId(value: unknown): value is string {
   );
 }
 
+function loadStoredMiniPos(): { x: number; y: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(MINIPLAYER_POS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+      return { x: parsed.x, y: parsed.y };
+    }
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
 function MiniplayerVideoPreview({
   stream,
   name,
   avatar,
   hasVideo,
+  isSpeaking,
+  isReconnecting,
   isDarkTheme,
 }: {
   stream: MediaStream | null;
   name: string;
   avatar: string;
   hasVideo: boolean;
+  isSpeaking: boolean;
+  isReconnecting: boolean;
   isDarkTheme: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -179,7 +220,7 @@ function MiniplayerVideoPreview({
   useEffect(() => {
     if (!videoRef.current) return;
     videoRef.current.srcObject = stream;
-    if (stream) void videoRef.current.play().catch(() => undefined);
+    if (stream) void Promise.resolve(videoRef.current.play()).catch(() => undefined);
   }, [stream]);
 
   return (
@@ -203,10 +244,18 @@ function MiniplayerVideoPreview({
             <img
               src={avatar}
               alt=""
-              className="h-12 w-12 rounded-full object-cover ring-2 ring-indigo-500/40"
+              className={`h-12 w-12 rounded-full object-cover transition-shadow ${
+                isSpeaking
+                  ? 'ring-2 ring-emerald-400 shadow-md shadow-emerald-500/30'
+                  : 'ring-2 ring-indigo-500/40'
+              }`}
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-base font-bold text-white shadow-sm">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-base font-bold text-white shadow-sm transition-shadow ${
+                isSpeaking ? 'ring-2 ring-emerald-400 shadow-emerald-500/30' : ''
+              }`}
+            >
               {name.slice(0, 1).toUpperCase()}
             </div>
           )}
@@ -215,7 +264,7 @@ function MiniplayerVideoPreview({
               isDarkTheme ? 'text-zinc-400' : 'text-slate-500'
             }`}
           >
-            Camera off
+            {isReconnecting ? 'Reconnecting...' : 'Camera off'}
           </span>
         </div>
       )}
@@ -235,12 +284,20 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
   const [activeMeeting, setActiveMeeting] = useState<ActiveMeetingInfo | null>(null);
   const [participants, setParticipants] = useState<ParticipantPresence[]>([]);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(() => new Map());
+  const [reconnectingUserIds, setReconnectingUserIds] = useState<string[]>([]);
+  const [speakingUserIds, setSpeakingUserIds] = useState<string[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
+
+  const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceOption[]>([]);
+  const [videoInputDevices, setVideoInputDevices] = useState<MediaDeviceOption[]>([]);
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState('');
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState('');
+
   const [chatMessages, setChatMessages] = useState<MeetingChatMessage[]>([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
@@ -249,7 +306,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
   const [joinedAt, setJoinedAt] = useState<Date | null>(null);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [isMinimized, setIsMinimized] = useState(false);
-  const [miniPos, setMiniPos] = useState<{ x: number; y: number } | null>(null);
+  const [miniPos, setMiniPos] = useState<{ x: number; y: number } | null>(() => loadStoredMiniPos());
 
   const roomRef = useRef<RealtimeChannel | null>(null);
   const peerConnections = useRef(new Map<string, PeerState>());
@@ -281,12 +338,51 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         /^\/projects\/[^/]+\/meetings/.test(location.pathname))
   );
 
-  // Automatically restore full stage when user returns to the meeting route
   useEffect(() => {
     if (isOnMeetingRoute && isMinimized) {
       setIsMinimized(false);
     }
   }, [isOnMeetingRoute, isMinimized]);
+
+  const refreshMediaDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, idx) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Microphone ${idx + 1}`,
+        }));
+      const cams = devices
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, idx) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Camera ${idx + 1}`,
+        }));
+      setAudioInputDevices(mics);
+      setVideoInputDevices(cams);
+
+      const currentAudioTrack = localStreamRef.current?.getAudioTracks()[0];
+      const currentVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+      const activeMicId = currentAudioTrack?.getSettings?.().deviceId;
+      const activeCamId = currentVideoTrack?.getSettings?.().deviceId;
+      if (activeMicId) setSelectedAudioDeviceId(activeMicId);
+      if (activeCamId) setSelectedVideoDeviceId(activeCamId);
+    } catch {
+      // Device enumeration is best-effort
+    }
+  }, []);
+
+  useEffect(() => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) return;
+    const onDeviceChange = () => {
+      void refreshMediaDevices();
+    };
+    mediaDevices.addEventListener('devicechange', onDeviceChange);
+    return () => mediaDevices.removeEventListener('devicechange', onDeviceChange);
+  }, [refreshMediaDevices]);
 
   const loadChatMessage = useCallback(async (meetingId: string, messageId: string) => {
     const { data, error } = await supabase
@@ -316,23 +412,44 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     setChatMessages(data || []);
   }, []);
 
-  const removePeer = useCallback(async (remoteUserId: string) => {
-    const peer = peerConnections.current.get(remoteUserId);
-    if (!peer) return;
-    peerConnections.current.delete(remoteUserId);
-    peer.connection.ontrack = null;
-    peer.connection.onicecandidate = null;
-    peer.connection.close();
-    await Promise.all([
-      supabase.removeChannel(peer.inboundChannel),
-      supabase.removeChannel(peer.outboundChannel),
-    ]);
-    setRemoteStreams((current) => {
-      const next = new Map(current);
-      next.delete(remoteUserId);
-      return next;
+  const markReconnecting = useCallback((remoteUserId: string, reconnecting: boolean) => {
+    setReconnectingUserIds((prev) => {
+      const exists = prev.includes(remoteUserId);
+      if (reconnecting && !exists) return [...prev, remoteUserId];
+      if (!reconnecting && exists) return prev.filter((id) => id !== remoteUserId);
+      return prev;
     });
   }, []);
+
+  const removePeer = useCallback(
+    async (remoteUserId: string) => {
+      const peer = peerConnections.current.get(remoteUserId);
+      if (!peer) return;
+      peerConnections.current.delete(remoteUserId);
+      if (peer.iceRestartTimer !== null) {
+        window.clearTimeout(peer.iceRestartTimer);
+      }
+      if (peer.renegotiateTimer !== null) {
+        window.clearTimeout(peer.renegotiateTimer);
+      }
+      peer.connection.ontrack = null;
+      peer.connection.onicecandidate = null;
+      peer.connection.onconnectionstatechange = null;
+      peer.connection.oniceconnectionstatechange = null;
+      peer.connection.close();
+      markReconnecting(remoteUserId, false);
+      await Promise.all([
+        supabase.removeChannel(peer.inboundChannel),
+        supabase.removeChannel(peer.outboundChannel),
+      ]);
+      setRemoteStreams((current) => {
+        const next = new Map(current);
+        next.delete(remoteUserId);
+        return next;
+      });
+    },
+    [markReconnecting]
+  );
 
   const sendSignal = useCallback(async (peer: PeerState, signal: MeetingSignal) => {
     const result = await peer.outboundChannel.send({
@@ -342,6 +459,52 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     });
     if (result !== 'ok') throw new Error('Meeting signal could not be delivered.');
   }, []);
+
+  const scheduleRenegotiation = useCallback(
+    (remoteUserId: string) => {
+      const peer = peerConnections.current.get(remoteUserId);
+      if (!peer) return;
+      if (peer.renegotiateTimer !== null) {
+        window.clearTimeout(peer.renegotiateTimer);
+      }
+      peer.renegotiateTimer = window.setTimeout(() => {
+        peer.renegotiateTimer = null;
+        const currentPeer = peerConnections.current.get(remoteUserId);
+        if (!currentPeer) return;
+        const { connection } = currentPeer;
+        if (connection.signalingState !== 'stable' || currentPeer.makingOffer) return;
+        void (async () => {
+          currentPeer.makingOffer = true;
+          try {
+            const offer = await connection.createOffer();
+            await connection.setLocalDescription(offer);
+            await sendSignal(currentPeer, { type: 'offer', description: offer });
+          } catch (error) {
+            console.error('Could not renegotiate meeting media:', error);
+          } finally {
+            currentPeer.makingOffer = false;
+          }
+        })();
+      }, 120);
+    },
+    [sendSignal]
+  );
+
+  const syncTrackToPeers = useCallback(
+    async (kind: 'audio' | 'video', track: MediaStreamTrack | null) => {
+      const entries = Array.from(peerConnections.current.entries());
+      await Promise.allSettled(
+        entries.map(async ([remoteUserId, peer]) => {
+          const sender = kind === 'audio' ? peer.audioSender : peer.videoSender;
+          await sender.replaceTrack(track);
+          if (track) {
+            scheduleRenegotiation(remoteUserId);
+          }
+        })
+      );
+    },
+    [scheduleRenegotiation]
+  );
 
   const ensurePeer = useCallback(
     async (meetingId: string, remoteUserId: string, makeOffer: boolean) => {
@@ -364,22 +527,75 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         ),
         remoteStream: new MediaStream(),
         pendingCandidates: [],
+        iceRestartTimer: null,
+        makingOffer: false,
+        renegotiateTimer: null,
       };
       peerConnections.current.set(remoteUserId, peer);
 
       const audioTrack = localStreamRef.current?.getAudioTracks()[0] || null;
-      const videoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+      const videoTrack =
+        screenStreamRef.current?.getVideoTracks()[0] ||
+        localStreamRef.current?.getVideoTracks()[0] ||
+        null;
       await Promise.all([
         peer.audioSender.replaceTrack(audioTrack),
         peer.videoSender.replaceTrack(videoTrack),
       ]);
 
+      const triggerIceRestart = () => {
+        if (peer.iceRestartTimer !== null) return;
+        markReconnecting(remoteUserId, true);
+        peer.iceRestartTimer = window.setTimeout(() => {
+          peer.iceRestartTimer = null;
+          if (!peerConnections.current.has(remoteUserId)) return;
+          if (makeOffer && connection.signalingState === 'stable') {
+            void (async () => {
+              try {
+                const restartOffer = await connection.createOffer({ iceRestart: true });
+                await connection.setLocalDescription(restartOffer);
+                await sendSignal(peer, { type: 'offer', description: restartOffer });
+              } catch (err) {
+                console.error('ICE restart failed:', err);
+              }
+            })();
+          }
+        }, 1800);
+      };
+
+      connection.onconnectionstatechange = () => {
+        const state = connection.connectionState;
+        if (state === 'connected') {
+          if (peer.iceRestartTimer !== null) {
+            window.clearTimeout(peer.iceRestartTimer);
+            peer.iceRestartTimer = null;
+          }
+          markReconnecting(remoteUserId, false);
+        } else if (state === 'disconnected' || state === 'failed') {
+          triggerIceRestart();
+        }
+      };
+
+      connection.oniceconnectionstatechange = () => {
+        const iceState = connection.iceConnectionState;
+        if (iceState === 'connected' || iceState === 'completed') {
+          markReconnecting(remoteUserId, false);
+        } else if (iceState === 'disconnected' || iceState === 'failed') {
+          triggerIceRestart();
+        }
+      };
+
       connection.ontrack = ({ track }) => {
         if (!peer.remoteStream.getTracks().some((existing) => existing.id === track.id)) {
           peer.remoteStream.addTrack(track);
         }
-        setRemoteStreams((current) => new Map(current).set(remoteUserId, peer.remoteStream));
+        setRemoteStreams((current) => {
+          const next = new Map(current);
+          next.set(remoteUserId, new MediaStream(peer.remoteStream.getTracks()));
+          return next;
+        });
       };
+
       connection.onicecandidate = (event) => {
         if (event.candidate) {
           void sendSignal(peer, { type: 'ice', candidate: event.candidate.toJSON() }).catch((error) => {
@@ -387,11 +603,17 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
           });
         }
       };
+
+      const polite = localUser.id.localeCompare(remoteUserId) > 0;
+
       peer.inboundChannel.on('broadcast', { event: 'signal' }, ({ payload }) => {
         if (!isMeetingSignal(payload)) return;
         void (async () => {
           if (payload.type === 'offer') {
-            if (connection.signalingState !== 'stable') return;
+            const offerCollision =
+              payload.description.type === 'offer' &&
+              (peer.makingOffer || connection.signalingState !== 'stable');
+            if (offerCollision && !polite) return;
             await connection.setRemoteDescription(payload.description);
             for (const candidate of peer.pendingCandidates.splice(0)) {
               await connection.addIceCandidate(candidate);
@@ -419,16 +641,21 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
           waitForSubscription(peer.outboundChannel),
         ]);
         if (makeOffer) {
-          const offer = await connection.createOffer();
-          await connection.setLocalDescription(offer);
-          await sendSignal(peer, { type: 'offer', description: offer });
+          peer.makingOffer = true;
+          try {
+            const offer = await connection.createOffer();
+            await connection.setLocalDescription(offer);
+            await sendSignal(peer, { type: 'offer', description: offer });
+          } finally {
+            peer.makingOffer = false;
+          }
         }
       } catch (error) {
         await removePeer(remoteUserId);
         throw error;
       }
     },
-    [removePeer, sendSignal]
+    [markReconnecting, removePeer, sendSignal]
   );
 
   const updatePresence = useCallback(
@@ -458,7 +685,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       accessCheckTimer.current = null;
     }
     if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => undefined);
+      void Promise.resolve(document.exitFullscreen()).catch(() => undefined);
     }
     const room = roomRef.current;
     roomRef.current = null;
@@ -476,6 +703,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     setLocalStream(null);
     setScreenStream(null);
     setRemoteStreams(new Map());
+    setReconnectingUserIds([]);
+    setSpeakingUserIds([]);
     setParticipants([]);
     setChatMessages([]);
     setAudioEnabled(false);
@@ -489,7 +718,6 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     setJoinedAt(null);
     setUnreadChatCount(0);
     setIsMinimized(false);
-    setMiniPos(null);
     dragRef.current = null;
   }, [removePeer]);
 
@@ -504,6 +732,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       const room = roomRef.current;
       if (room) void supabase.removeChannel(room);
       for (const peer of peers.values()) {
+        if (peer.iceRestartTimer !== null) window.clearTimeout(peer.iceRestartTimer);
+        if (peer.renegotiateTimer !== null) window.clearTimeout(peer.renegotiateTimer);
         peer.connection.close();
         void supabase.removeChannel(peer.inboundChannel);
         void supabase.removeChannel(peer.outboundChannel);
@@ -512,6 +742,81 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  // Active Speaker Detection via Web Audio API AnalyserNode
+  useEffect(() => {
+    if (!activeMeeting) {
+      setSpeakingUserIds([]);
+      return;
+    }
+
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    let audioContext: AudioContext;
+    try {
+      audioContext = new AudioCtx();
+    } catch {
+      return;
+    }
+
+    const analysers = new Map<string, { analyser: AnalyserNode; data: Uint8Array }>();
+
+    const attachStream = (userId: string, stream: MediaStream | null) => {
+      if (!stream || stream.getAudioTracks().length === 0) return;
+      try {
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analysers.set(userId, { analyser, data: new Uint8Array(analyser.frequencyBinCount) });
+      } catch {
+        // Ignore streams that cannot be attached
+      }
+    };
+
+    if (user?.id && audioEnabled) {
+      attachStream(user.id, localStream);
+    }
+    remoteStreams.forEach((stream, remoteId) => {
+      attachStream(remoteId, stream);
+    });
+
+    if (analysers.size === 0) {
+      setSpeakingUserIds([]);
+      void Promise.resolve(audioContext.close()).catch(() => undefined);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      const activeSpeakers: string[] = [];
+      analysers.forEach(({ analyser, data }, uid) => {
+        analyser.getByteFrequencyData(
+          data as unknown as Parameters<AnalyserNode['getByteFrequencyData']>[0]
+        );
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          sum += data[i] || 0;
+        }
+        const avg = sum / data.length;
+        if (avg > 18) {
+          activeSpeakers.push(uid);
+        }
+      });
+      setSpeakingUserIds((prev) =>
+        prev.length === activeSpeakers.length && prev.every((id, idx) => id === activeSpeakers[idx])
+          ? prev
+          : activeSpeakers
+      );
+    }, 250);
+
+    return () => {
+      window.clearInterval(interval);
+      void Promise.resolve(audioContext.close()).catch(() => undefined);
+    };
+  }, [activeMeeting, audioEnabled, localStream, remoteStreams, user?.id]);
 
   useEffect(() => {
     if (!joinedAt) {
@@ -609,6 +914,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         }
         localStreamRef.current = stream;
         setLocalStream(stream);
+        void refreshMediaDevices();
 
         const room = supabase.channel(getMeetingRoomTopic(meeting.id), {
           config: { private: true, presence: { key: user.id } },
@@ -772,6 +1078,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       ensurePeer,
       loadChatMessage,
       loadMeetingChat,
+      refreshMediaDevices,
       removePeer,
       user,
     ]
@@ -807,6 +1114,68 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     [cleanupMediaAndRealtime]
   );
 
+  const switchAudioDevice = useCallback(
+    async (deviceId: string) => {
+      if (!navigator.mediaDevices?.getUserMedia || !deviceId) return;
+      try {
+        const nextMedia = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: deviceId } },
+        });
+        const newTrack = nextMedia.getAudioTracks()[0];
+        if (!newTrack) return;
+        newTrack.enabled = audioEnabled;
+
+        const currentStream = localStreamRef.current || new MediaStream();
+        for (const oldTrack of currentStream.getAudioTracks()) {
+          currentStream.removeTrack(oldTrack);
+          oldTrack.stop();
+        }
+        currentStream.addTrack(newTrack);
+        localStreamRef.current = currentStream;
+        setLocalStream(new MediaStream(currentStream.getTracks()));
+        setSelectedAudioDeviceId(deviceId);
+
+        await syncTrackToPeers('audio', audioEnabled ? newTrack : null);
+        toast.success('Microphone switched.');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not switch microphone.');
+      }
+    },
+    [audioEnabled, syncTrackToPeers]
+  );
+
+  const switchVideoDevice = useCallback(
+    async (deviceId: string) => {
+      if (!navigator.mediaDevices?.getUserMedia || !deviceId) return;
+      try {
+        const nextMedia = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId } },
+        });
+        const newTrack = nextMedia.getVideoTracks()[0];
+        if (!newTrack) return;
+        newTrack.enabled = videoEnabled;
+
+        const currentStream = localStreamRef.current || new MediaStream();
+        for (const oldTrack of currentStream.getVideoTracks()) {
+          currentStream.removeTrack(oldTrack);
+          oldTrack.stop();
+        }
+        currentStream.addTrack(newTrack);
+        localStreamRef.current = currentStream;
+        setLocalStream(new MediaStream(currentStream.getTracks()));
+        setSelectedVideoDeviceId(deviceId);
+
+        if (!screenStreamRef.current) {
+          await syncTrackToPeers('video', videoEnabled ? newTrack : null);
+        }
+        toast.success('Camera switched.');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not switch camera.');
+      }
+    },
+    [syncTrackToPeers, videoEnabled]
+  );
+
   const toggleAudio = useCallback(async () => {
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (!track) {
@@ -816,8 +1185,9 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     const enabled = !audioEnabled;
     track.enabled = enabled;
     setAudioEnabled(enabled);
+    await syncTrackToPeers('audio', enabled ? track : null);
     await updatePresence({ audioEnabled: enabled });
-  }, [audioEnabled, updatePresence]);
+  }, [audioEnabled, syncTrackToPeers, updatePresence]);
 
   const toggleVideo = useCallback(async () => {
     const track = localStreamRef.current?.getVideoTracks()[0];
@@ -828,24 +1198,23 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     const enabled = !videoEnabled;
     track.enabled = enabled;
     setVideoEnabled(enabled);
+    if (!screenStreamRef.current) {
+      await syncTrackToPeers('video', enabled ? track : null);
+    }
     await updatePresence({ videoEnabled: enabled });
-  }, [updatePresence, videoEnabled]);
+  }, [syncTrackToPeers, updatePresence, videoEnabled]);
 
   const stopScreenShare = useCallback(async () => {
     const stream = screenStreamRef.current;
     if (!stream) return;
     screenStreamRef.current = null;
     stream.getTracks().forEach((track) => track.stop());
-    const cameraTrack = localStreamRef.current?.getVideoTracks()[0] || null;
-    await Promise.allSettled(
-      Array.from(peerConnections.current.values()).map((peer) =>
-        peer.videoSender.replaceTrack(cameraTrack)
-      )
-    );
+    const cameraTrack = videoEnabled ? localStreamRef.current?.getVideoTracks()[0] || null : null;
+    await syncTrackToPeers('video', cameraTrack);
     setScreenStream(null);
     setScreenSharing(false);
     await updatePresence({ screenSharing: false });
-  }, [updatePresence]);
+  }, [syncTrackToPeers, updatePresence, videoEnabled]);
 
   const startScreenShare = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) {
@@ -858,11 +1227,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       if (!track) throw new Error('No screen-share video track was selected.');
       screenStreamRef.current = stream;
       setScreenStream(stream);
-      await Promise.all(
-        Array.from(peerConnections.current.values()).map((peer) =>
-          peer.videoSender.replaceTrack(track)
-        )
-      );
+      await syncTrackToPeers('video', track);
       track.addEventListener('ended', () => void stopScreenShare());
       setScreenSharing(true);
       await updatePresence({ screenSharing: true });
@@ -870,7 +1235,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       if (error instanceof DOMException && error.name === 'NotAllowedError') return;
       toast.error(error instanceof Error ? error.message : 'Could not share your screen.');
     }
-  }, [stopScreenShare, updatePresence]);
+  }, [stopScreenShare, syncTrackToPeers, updatePresence]);
 
   const toggleHandRaise = useCallback(async () => {
     const raised = !handRaised;
@@ -994,6 +1359,27 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const sharePollSummaryToChat = useCallback(
+    async (pollId: string) => {
+      const target = polls.find((p) => p.id === pollId);
+      if (!target) return;
+      const totalVotes = target.options.reduce((sum, o) => sum + o.voterIds.length, 0);
+      const breakdown = target.options
+        .map((opt) => {
+          const count = opt.voterIds.length;
+          const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+          return `• ${opt.label}: ${pct}% (${count})`;
+        })
+        .join('\n');
+      const summary = `📊 Poll Results — "${target.question}" (${totalVotes} ${
+        totalVotes === 1 ? 'vote' : 'votes'
+      })\n${breakdown}`;
+      const ok = await sendChatMessage(summary);
+      if (ok) toast.success('Poll results posted to meeting chat.');
+    },
+    [polls, sendChatMessage]
+  );
+
   const clampMiniPos = useCallback((x: number, y: number) => {
     const el = miniplayerRef.current;
     const width = el?.offsetWidth || 288;
@@ -1005,6 +1391,19 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       x: Math.min(Math.max(margin, x), maxX),
       y: Math.min(Math.max(margin, y), maxY),
     };
+  }, []);
+
+  const updateAndPersistMiniPos = useCallback((next: { x: number; y: number } | null) => {
+    setMiniPos(next);
+    try {
+      if (next) {
+        window.sessionStorage.setItem(MINIPLAYER_POS_STORAGE_KEY, JSON.stringify(next));
+      } else {
+        window.sessionStorage.removeItem(MINIPLAYER_POS_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage errors
+    }
   }, []);
 
   const handleMiniPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
@@ -1023,7 +1422,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
       originY,
       moved: false,
     };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
   const handleMiniPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
@@ -1035,29 +1434,36 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     if (!state.moved && Math.hypot(dx, dy) < 4) return;
     state.moved = true;
 
-    setMiniPos(clampMiniPos(state.originX + dx, state.originY + dy));
+    updateAndPersistMiniPos(clampMiniPos(state.originX + dx, state.originY + dy));
   };
 
   const handleMiniPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
     if (dragRef.current?.pointerId === e.pointerId) {
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
       }
       dragRef.current = null;
     }
   };
 
+  const handleMiniDoubleClick = (e: React.MouseEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+    updateAndPersistMiniPos(null);
+    toast.info('Miniplayer reset to default corner.');
+  };
+
   useEffect(() => {
     if (!miniPos) return;
     const onResize = () => {
-      setMiniPos((prev) => (prev ? clampMiniPos(prev.x, prev.y) : null));
+      updateAndPersistMiniPos(clampMiniPos(miniPos.x, miniPos.y));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [clampMiniPos, miniPos]);
+  }, [clampMiniPos, miniPos, updateAndPersistMiniPos]);
 
   const showMiniplayer = Boolean(activeMeeting && (!isOnMeetingRoute || isMinimized));
   const spotlightRemote = participants.find((p) => p.userId !== user?.id);
+  const targetUserId = spotlightRemote ? spotlightRemote.userId : user?.id || '';
   const miniStream = spotlightRemote
     ? remoteStreams.get(spotlightRemote.userId) || null
     : screenStream || localStream;
@@ -1066,6 +1472,8 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
     : Boolean(videoEnabled || screenSharing);
   const miniName = spotlightRemote ? spotlightRemote.name : user?.name || 'You';
   const miniAvatar = spotlightRemote ? spotlightRemote.avatar : user?.avatar || '';
+  const miniIsSpeaking = speakingUserIds.includes(targetUserId);
+  const miniIsReconnecting = reconnectingUserIds.includes(targetUserId);
   const openPollsCount = polls.filter((p) => !p.closed).length;
 
   return (
@@ -1076,12 +1484,21 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         leaving,
         participants,
         remoteStreams,
+        reconnectingUserIds,
+        speakingUserIds,
         localStream,
         screenStream,
         audioEnabled,
         videoEnabled,
         screenSharing,
         handRaised,
+        audioInputDevices,
+        videoInputDevices,
+        selectedAudioDeviceId,
+        selectedVideoDeviceId,
+        refreshMediaDevices,
+        switchAudioDevice,
+        switchVideoDevice,
         chatMessages,
         unreadChatCount,
         setUnreadChatCount,
@@ -1104,6 +1521,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
         createPoll,
         votePoll,
         closePoll,
+        sharePollSummaryToChat,
       }}
     >
       {children}
@@ -1117,6 +1535,7 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
           onPointerMove={handleMiniPointerMove}
           onPointerUp={handleMiniPointerUp}
           onPointerCancel={handleMiniPointerUp}
+          onDoubleClick={handleMiniDoubleClick}
           style={
             miniPos
               ? { left: `${miniPos.x}px`, top: `${miniPos.y}px`, bottom: 'auto' }
@@ -1125,10 +1544,12 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
           className={`fixed z-50 w-72 cursor-grab touch-none select-none overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl transition-shadow duration-200 active:cursor-grabbing ${
             miniPos ? '' : 'bottom-20 left-4 lg:bottom-4'
           } ${
-            isDarkTheme
+            miniIsSpeaking
+              ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+              : isDarkTheme
               ? 'border-zinc-700/90 bg-zinc-900/95 text-white'
               : 'border-slate-200 bg-white/95 text-slate-900'
-          }`}
+          } ${isDarkTheme ? 'bg-zinc-900/95 text-white' : 'bg-white/95 text-slate-900'}`}
         >
           <div className="group relative">
             <MiniplayerVideoPreview
@@ -1136,23 +1557,42 @@ export function MeetingProvider({ children }: { children: ReactNode }) {
               name={miniName}
               avatar={miniAvatar}
               hasVideo={miniHasVideo}
+              isSpeaking={miniIsSpeaking}
+              isReconnecting={miniIsReconnecting}
               isDarkTheme={isDarkTheme}
             />
 
-            <div className="absolute inset-x-2.5 top-2.5 flex items-center justify-between">
+            <div className="absolute inset-x-2.5 top-2.5 flex items-center justify-between gap-1">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-md">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                 {elapsedTime}
               </span>
 
               <div className="flex items-center gap-1">
+                {miniIsReconnecting && (
+                  <span
+                    title="Reconnecting peer"
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-zinc-950 shadow-sm"
+                  >
+                    <RefreshCw size={9} className="animate-spin" />
+                  </span>
+                )}
+                {unreadChatCount > 0 && (
+                  <span
+                    title={`${unreadChatCount} unread messages`}
+                    className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
+                  >
+                    <MessageSquare size={9} />
+                    {unreadChatCount}
+                  </span>
+                )}
                 {openPollsCount > 0 && (
                   <span
                     title="Active live poll"
                     className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm"
                   >
-                    <BarChart3 size={10} />
-                    Poll
+                    <BarChart3 size={9} />
+                    {openPollsCount}
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-md">

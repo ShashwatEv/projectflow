@@ -22,9 +22,11 @@ import {
   Pin,
   PinOff,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Send,
+  Share2,
   Smile,
   Sparkles,
   Square,
@@ -81,6 +83,8 @@ interface VideoTileProps {
   local?: boolean;
   handRaised?: boolean;
   audioMuted?: boolean;
+  isSpeaking?: boolean;
+  isReconnecting?: boolean;
   pinned?: boolean;
   onPin?: () => void;
   onUnpin?: () => void;
@@ -98,6 +102,8 @@ function VideoTile({
   local = false,
   handRaised = false,
   audioMuted = false,
+  isSpeaking = false,
+  isReconnecting = false,
   pinned = false,
   onPin,
   onUnpin,
@@ -113,10 +119,15 @@ function VideoTile({
   const hasVideo = Boolean(stream?.getVideoTracks().length && (cameraEnabled || screenSharing));
 
   useEffect(() => {
-    if (!videoRef.current) return;
-    videoRef.current.srcObject = stream;
-    if (stream) void videoRef.current.play().catch(() => undefined);
-  }, [stream]);
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.srcObject !== stream) {
+      el.srcObject = stream;
+    }
+    if (stream) {
+      void Promise.resolve(el.play()).catch(() => undefined);
+    }
+  }, [stream, hasVideo]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -202,7 +213,9 @@ function VideoTile({
           ? 'bg-zinc-900/90 text-white shadow-lg'
           : 'bg-white text-slate-900 shadow-sm'
       } ${
-        pinned
+        isSpeaking
+          ? 'border-emerald-500 ring-2 ring-emerald-500/40 shadow-emerald-500/10'
+          : pinned
           ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-indigo-500/10'
           : isDarkTheme
           ? 'border-zinc-800 hover:border-zinc-700'
@@ -247,15 +260,19 @@ function VideoTile({
             <img
               src={avatar}
               alt=""
-              className={`rounded-full object-cover ring-2 ${
-                isDarkTheme ? 'ring-zinc-700' : 'ring-slate-200'
+              className={`rounded-full object-cover ring-2 transition-shadow ${
+                isSpeaking
+                  ? 'ring-emerald-400 shadow-lg shadow-emerald-500/30'
+                  : isDarkTheme
+                  ? 'ring-zinc-700'
+                  : 'ring-slate-200'
               } ${isSpotlight ? 'h-28 w-28' : 'h-16 w-16'}`}
             />
           ) : (
             <div
-              className={`flex items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 font-bold text-white shadow-md ${
-                isSpotlight ? 'h-28 w-28 text-3xl' : 'h-16 w-16 text-xl'
-              }`}
+              className={`flex items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 font-bold text-white shadow-md transition-shadow ${
+                isSpeaking ? 'ring-4 ring-emerald-400/70' : ''
+              } ${isSpotlight ? 'h-28 w-28 text-3xl' : 'h-16 w-16 text-xl'}`}
             >
               {name.slice(0, 1).toUpperCase()}
             </div>
@@ -270,13 +287,21 @@ function VideoTile({
         </div>
       )}
 
-      {/* Top Left Badges: Hand Raised */}
-      {handRaised && (
-        <div className="absolute left-3 top-3 flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-bold text-zinc-950 shadow-lg backdrop-blur-md">
-          <Hand size={13} />
-          <span>Raised</span>
-        </div>
-      )}
+      {/* Top Left Badges: Hand Raised & Reconnecting */}
+      <div className="absolute left-3 top-3 flex flex-wrap items-center gap-1.5">
+        {handRaised && (
+          <div className="flex animate-pulse items-center gap-1.5 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-bold text-zinc-950 shadow-lg backdrop-blur-md">
+            <Hand size={13} />
+            <span>Raised</span>
+          </div>
+        )}
+        {isReconnecting && !local && (
+          <div className="flex items-center gap-1.5 rounded-full bg-amber-500/95 px-2.5 py-1 text-[11px] font-bold text-zinc-950 shadow-lg backdrop-blur-md">
+            <RefreshCw size={11} className="animate-spin" />
+            <span>Reconnecting...</span>
+          </div>
+        )}
+      </div>
 
       {/* Audio Muted Indicator */}
       {audioMuted && !local && (
@@ -352,6 +377,11 @@ function VideoTile({
           {local ? ' (You)' : ''}
         </span>
         <div className="flex items-center gap-1.5">
+          {isSpeaking && (
+            <span className="rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-950">
+              Speaking
+            </span>
+          )}
           {screenSharing && (
             <span className="rounded-full bg-indigo-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
               Screen
@@ -386,12 +416,21 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     leaving,
     participants,
     remoteStreams,
+    reconnectingUserIds,
+    speakingUserIds,
     localStream,
     screenStream,
     audioEnabled,
     videoEnabled,
     screenSharing,
     handRaised,
+    audioInputDevices,
+    videoInputDevices,
+    selectedAudioDeviceId,
+    selectedVideoDeviceId,
+    refreshMediaDevices,
+    switchAudioDevice,
+    switchVideoDevice,
     chatMessages,
     unreadChatCount,
     setUnreadChatCount,
@@ -413,6 +452,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     createPoll,
     votePoll,
     closePoll,
+    sharePollSummaryToChat,
   } = useMeeting();
 
   const [projectName, setProjectName] = useState('');
@@ -547,7 +587,10 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
     if (activeSidebarTab === 'polls') {
       setUnreadPollCount(0);
     }
-  }, [chatMessages, activeSidebarTab, setUnreadChatCount, setUnreadPollCount]);
+    if (activeSidebarTab === 'info') {
+      void refreshMediaDevices();
+    }
+  }, [chatMessages, activeSidebarTab, refreshMediaDevices, setUnreadChatCount, setUnreadPollCount]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -885,6 +928,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                         screenSharing={screenSharing}
                         local
                         handRaised={handRaised}
+                        isSpeaking={Boolean(user?.id && speakingUserIds.includes(user.id))}
                         isSpotlight
                         isDarkTheme={isDarkTheme}
                       />
@@ -901,6 +945,8 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                             screenSharing={spotParticipant.screenSharing}
                             audioMuted={!spotParticipant.audioEnabled}
                             handRaised={spotParticipant.handRaised}
+                            isSpeaking={speakingUserIds.includes(spotParticipant.userId)}
+                            isReconnecting={reconnectingUserIds.includes(spotParticipant.userId)}
                             pinned={pinnedUserId === spotParticipant.userId}
                             onPin={() => setPinnedUserId(spotParticipant.userId)}
                             onUnpin={() => setPinnedUserId(null)}
@@ -925,6 +971,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                           screenSharing={screenSharing}
                           local
                           handRaised={handRaised}
+                          isSpeaking={Boolean(user?.id && speakingUserIds.includes(user.id))}
                           isDarkTheme={isDarkTheme}
                         />
                       </div>
@@ -942,6 +989,8 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                             screenSharing={participant.screenSharing}
                             audioMuted={!participant.audioEnabled}
                             handRaised={participant.handRaised}
+                            isSpeaking={speakingUserIds.includes(participant.userId)}
+                            isReconnecting={reconnectingUserIds.includes(participant.userId)}
                             pinned={pinnedUserId === participant.userId}
                             onPin={() => setPinnedUserId(participant.userId)}
                             onUnpin={() => setPinnedUserId(null)}
@@ -973,6 +1022,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                     screenSharing={screenSharing}
                     local
                     handRaised={handRaised}
+                    isSpeaking={Boolean(user?.id && speakingUserIds.includes(user.id))}
                     isDarkTheme={isDarkTheme}
                   />
 
@@ -989,6 +1039,8 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                         screenSharing={participant.screenSharing}
                         audioMuted={!participant.audioEnabled}
                         handRaised={participant.handRaised}
+                        isSpeaking={speakingUserIds.includes(participant.userId)}
+                        isReconnecting={reconnectingUserIds.includes(participant.userId)}
                         pinned={pinnedUserId === participant.userId}
                         onPin={() => {
                           setPinnedUserId(participant.userId);
@@ -1113,6 +1165,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                     <div className="space-y-1">
                       {filteredParticipants.map((p) => {
                         const isSelf = p.userId === user?.id;
+                        const isSpeaking = speakingUserIds.includes(p.userId);
                         return (
                           <div
                             key={p.userId}
@@ -1122,9 +1175,19 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                           >
                             <div className="flex min-w-0 items-center gap-3">
                               {p.avatar ? (
-                                <img src={p.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
+                                <img
+                                  src={p.avatar}
+                                  alt=""
+                                  className={`h-9 w-9 rounded-full object-cover ${
+                                    isSpeaking ? 'ring-2 ring-emerald-500' : ''
+                                  }`}
+                                />
                               ) : (
-                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">
+                                <div
+                                  className={`flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white ${
+                                    isSpeaking ? 'ring-2 ring-emerald-500' : ''
+                                  }`}
+                                >
                                   {p.name.slice(0, 1).toUpperCase()}
                                 </div>
                               )}
@@ -1133,7 +1196,11 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                                   {p.name} {isSelf ? '(You)' : ''}
                                 </p>
                                 <p className="text-[11px] text-slate-400">
-                                  {isSelf ? 'Host / Member' : 'Participant'}
+                                  {isSpeaking
+                                    ? 'Speaking...'
+                                    : isSelf
+                                    ? 'Host / Member'
+                                    : 'Participant'}
                                 </p>
                               </div>
                             </div>
@@ -1228,7 +1295,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                                 </time>
                               </div>
                               <div
-                                className={`max-w-[85%] break-words rounded-2xl px-3.5 py-2 text-sm shadow-xs ${
+                                className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-xs ${
                                   isSelf
                                     ? 'rounded-br-xs bg-indigo-600 text-white'
                                     : isDarkTheme
@@ -1450,8 +1517,16 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                                 })}
                               </div>
 
-                              {!poll.closed && isCreator && (
-                                <div className="flex justify-end pt-1">
+                              <div className="flex items-center justify-between pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => void sharePollSummaryToChat(poll.id)}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                                >
+                                  <Share2 size={12} /> Share to chat
+                                </button>
+
+                                {!poll.closed && isCreator && (
                                   <button
                                     type="button"
                                     onClick={() => void closePoll(poll.id)}
@@ -1459,8 +1534,8 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                                   >
                                     End poll
                                   </button>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -1469,7 +1544,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                   </div>
                 )}
 
-                {/* TAB 4: MEETING DETAILS */}
+                {/* TAB 4: MEETING DETAILS & DEVICES */}
                 {activeSidebarTab === 'info' && (
                   <div className="flex-1 space-y-6 overflow-y-auto p-5">
                     <div>
@@ -1513,6 +1588,73 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
                         </button>
                       </div>
                     </div>
+
+                    {/* Audio & Video Device Switcher */}
+                    {(audioInputDevices.length > 0 || videoInputDevices.length > 0) && (
+                      <div
+                        className={`space-y-3 rounded-2xl border p-4 ${
+                          isDarkTheme ? 'border-zinc-800 bg-zinc-800/60' : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          Devices
+                        </h4>
+
+                        {audioInputDevices.length > 0 && (
+                          <div className="space-y-1">
+                            <label
+                              htmlFor="meeting-mic-select"
+                              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-zinc-300"
+                            >
+                              <Mic size={13} /> Microphone
+                            </label>
+                            <select
+                              id="meeting-mic-select"
+                              value={selectedAudioDeviceId}
+                              onChange={(e) => void switchAudioDevice(e.target.value)}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs outline-none transition ${
+                                isDarkTheme
+                                  ? 'border-zinc-700 bg-zinc-900 text-white focus:border-indigo-500'
+                                  : 'border-slate-200 bg-white text-slate-900 focus:border-indigo-500'
+                              }`}
+                            >
+                              {audioInputDevices.map((device) => (
+                                <option key={device.deviceId} value={device.deviceId}>
+                                  {device.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {videoInputDevices.length > 0 && (
+                          <div className="space-y-1">
+                            <label
+                              htmlFor="meeting-cam-select"
+                              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-zinc-300"
+                            >
+                              <Video size={13} /> Camera
+                            </label>
+                            <select
+                              id="meeting-cam-select"
+                              value={selectedVideoDeviceId}
+                              onChange={(e) => void switchVideoDevice(e.target.value)}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs outline-none transition ${
+                                isDarkTheme
+                                  ? 'border-zinc-700 bg-zinc-900 text-white focus:border-indigo-500'
+                                  : 'border-slate-200 bg-white text-slate-900 focus:border-indigo-500'
+                              }`}
+                            >
+                              {videoInputDevices.map((device) => (
+                                <option key={device.deviceId} value={device.deviceId}>
+                                  {device.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="space-y-2 text-xs text-slate-400">
                       <p>Share this code or link with your teammates or external guests to join this call.</p>
@@ -1667,7 +1809,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
               <button
                 type="button"
                 onClick={() => setActiveSidebarTab((t) => (t === 'info' ? null : 'info'))}
-                title="Meeting details"
+                title="Meeting details & devices"
                 className={`rounded-full p-3 transition ${
                   activeSidebarTab === 'info'
                     ? 'bg-indigo-600 text-white'
