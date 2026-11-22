@@ -16,6 +16,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabaseClient';
 import HeaderTaskTimer from './HeaderTaskTimer';
+import TeamSwitcher from './TeamSwitcher';
 
 interface ModernHeaderProps {
   onMenuClick?: () => void;
@@ -170,8 +171,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
   return (
     <header className="app-header relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
-      {/* Left Block: Hamburger button, breadcrumb, clickable mobile logo */}
-      <div className="flex items-center gap-3">
+      {/* Left Block: Hamburger button, breadcrumb, team switcher, clickable mobile logo */}
+      <div className="flex items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onMenuClick}
@@ -213,6 +214,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             {getPageTitle()}
           </Link>
         </div>
+
+        <TeamSwitcher compact className="hidden xl:inline-block" />
       </div>
 
       {/* Clickable Desktop Centered Brand Logo */}
@@ -231,6 +234,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
       {/* Right Area: Search, Downloads, Timer, Theme toggle, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
+        <TeamSwitcher compact className="xl:hidden" />
+
         <button
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('open-command-palette'))}

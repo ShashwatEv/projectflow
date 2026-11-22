@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Outlet, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider } from '../context/ThemeContext';
+import { WorkspaceProvider } from '../context/WorkspaceContext';
 import { MeetingProvider } from '../context/MeetingContext';
 import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
 import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
@@ -226,146 +227,148 @@ export default function App() {
 
       <AuthProvider>
         <ThemeProvider>
-          <OnboardingSandboxProvider>
-            <Toaster richColors position="top-right" />
-            <AppRouter>
-              <MeetingProvider>
-                <ErrorBoundary>
-                  <Suspense fallback={<PageLoader />}>
-                    <Routes>
-                      {/* Public routes */}
-                      <Route path="/downloads" element={<Downloads />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/signup" element={<Signup />} />
-                      <Route path="/forgot-password" element={<ForgotPassword />} />
-                      <Route path="/2fa" element={<TwoFactorVerify />} />
+          <WorkspaceProvider>
+            <OnboardingSandboxProvider>
+              <Toaster richColors position="top-right" />
+              <AppRouter>
+                <MeetingProvider>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageLoader />}>
+                      <Routes>
+                        {/* Public routes */}
+                        <Route path="/downloads" element={<Downloads />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/signup" element={<Signup />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/2fa" element={<TwoFactorVerify />} />
 
-                      {/* Protected workspace routes */}
-                      <Route element={<RequireAuth />}>
-                        <Route element={<Layout />}>
-                          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                          <Route path="/about" element={<ProjectFlowAbout />} />
-                          <Route path="/mobile/projects" element={<MobileProjectsOverview />} />
-                          <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
-                          <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
-                          <Route path="/dashboard" element={<Dashboard />} />
+                        {/* Protected workspace routes */}
+                        <Route element={<RequireAuth />}>
+                          <Route element={<Layout />}>
+                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                            <Route path="/about" element={<ProjectFlowAbout />} />
+                            <Route path="/mobile/projects" element={<MobileProjectsOverview />} />
+                            <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
+                            <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
+                            <Route path="/dashboard" element={<Dashboard />} />
 
-                          {/* Work routes */}
-                          <Route path="/tasks" element={<MyTasks />} />
-                          <Route path="/projects" element={<Projects />} />
-                          <Route path="/projects/:id" element={<ProjectDetail />} />
-                          <Route path="/projects/:id/meetings" element={<Navigate to="/meetings" replace />} />
-                          <Route path="/meetings" element={<MeetingsHub />} />
-                          <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
-                          <Route
-                            path="/sprint-planner"
-                            element={
-                              <DesktopOnlyGuard featureName="Sprint Planner">
-                                <SprintPlanner />
-                              </DesktopOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/code"
-                            element={
-                              <DesktopOnlyGuard featureName="Code Studio">
-                                <CodeStudio />
-                              </DesktopOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/api-playground"
-                            element={
-                              <DesktopOnlyGuard featureName="API Console">
-                                <ApiPlayground />
-                              </DesktopOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/docs"
-                            element={<ApiDocs />}
-                          />
-                          <Route
-                            path="/timesheets"
-                            element={<Timesheets />}
-                          />
-                          <Route
-                            path="/automations"
-                            element={<Automations />}
-                          />
+                            {/* Work routes */}
+                            <Route path="/tasks" element={<MyTasks />} />
+                            <Route path="/projects" element={<Projects />} />
+                            <Route path="/projects/:id" element={<ProjectDetail />} />
+                            <Route path="/projects/:id/meetings" element={<Navigate to="/meetings" replace />} />
+                            <Route path="/meetings" element={<MeetingsHub />} />
+                            <Route path="/meetings/guest/:id" element={<ProjectMeetings guestMode />} />
+                            <Route
+                              path="/sprint-planner"
+                              element={
+                                <DesktopOnlyGuard featureName="Sprint Planner">
+                                  <SprintPlanner />
+                                </DesktopOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/code"
+                              element={
+                                <DesktopOnlyGuard featureName="Code Studio">
+                                  <CodeStudio />
+                                </DesktopOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/api-playground"
+                              element={
+                                <DesktopOnlyGuard featureName="API Console">
+                                  <ApiPlayground />
+                                </DesktopOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/docs"
+                              element={<ApiDocs />}
+                            />
+                            <Route
+                              path="/timesheets"
+                              element={<Timesheets />}
+                            />
+                            <Route
+                              path="/automations"
+                              element={<Automations />}
+                            />
 
-                          {/* Team and collaboration */}
-                          <Route
-                            path="/messages"
-                            element={<Navigate to="/messages/room_1" replace />}
-                          />
-                          <Route path="/messages/:roomId" element={<Messages />} />
-                          <Route path="/team" element={<Team />} />
-                          <Route
-                            path="/retrospectives"
-                            element={
-                              <DesktopOnlyGuard featureName="Retrospectives">
-                                <Retrospectives />
-                              </DesktopOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/retrospectives/velocity"
-                            element={<TeamVelocity />}
-                          />
-                          <Route
-                            path="/calendar"
-                            element={<Calendar />}
-                          />
+                            {/* Team and collaboration */}
+                            <Route
+                              path="/messages"
+                              element={<Navigate to="/messages/room_1" replace />}
+                            />
+                            <Route path="/messages/:roomId" element={<Messages />} />
+                            <Route path="/team" element={<Team />} />
+                            <Route
+                              path="/retrospectives"
+                              element={
+                                <DesktopOnlyGuard featureName="Retrospectives">
+                                  <Retrospectives />
+                                </DesktopOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/retrospectives/velocity"
+                              element={<TeamVelocity />}
+                            />
+                            <Route
+                              path="/calendar"
+                              element={<Calendar />}
+                            />
 
-                          {/* Account and analytics */}
-                          <Route path="/notifications" element={<Notifications />} />
-                          <Route path="/profile" element={<Profile />} />
-                          <Route path="/profile/:id" element={<Profile />} />
-                          <Route
-                            path="/analytics"
-                            element={<Analytics />}
-                          />
+                            {/* Account and analytics */}
+                            <Route path="/notifications" element={<Notifications />} />
+                            <Route path="/profile" element={<Profile />} />
+                            <Route path="/profile/:id" element={<Profile />} />
+                            <Route
+                              path="/analytics"
+                              element={<Analytics />}
+                            />
 
-                          {/* Dedicated mobile experiences guarded against desktop screen widths */}
-                          <Route
-                            path="/triage"
-                            element={
-                              <MobileOnlyGuard>
-                                <MobileTriageDeck />
-                              </MobileOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/standup"
-                            element={
-                              <MobileOnlyGuard>
-                                <DailyStandupStories />
-                              </MobileOnlyGuard>
-                            }
-                          />
-                          <Route
-                            path="/capture"
-                            element={
-                              <MobileOnlyGuard>
-                                <QuickCaptureSheet />
-                              </MobileOnlyGuard>
-                            }
-                          />
+                            {/* Dedicated mobile experiences guarded against desktop screen widths */}
+                            <Route
+                              path="/triage"
+                              element={
+                                <MobileOnlyGuard>
+                                  <MobileTriageDeck />
+                                </MobileOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/standup"
+                              element={
+                                <MobileOnlyGuard>
+                                  <DailyStandupStories />
+                                </MobileOnlyGuard>
+                              }
+                            />
+                            <Route
+                              path="/capture"
+                              element={
+                                <MobileOnlyGuard>
+                                  <QuickCaptureSheet />
+                                </MobileOnlyGuard>
+                              }
+                            />
 
-                          {/* Settings */}
-                          <Route path="/settings" element={<SettingsLayout />} />
+                            {/* Settings */}
+                            <Route path="/settings" element={<SettingsLayout />} />
+                          </Route>
                         </Route>
-                      </Route>
 
-                      {/* Fallback catch-all */}
-                      <Route path="*" element={<Navigate to="/login" replace />} />
-                    </Routes>
-                  </Suspense>
-                </ErrorBoundary>
-              </MeetingProvider>
-            </AppRouter>
-          </OnboardingSandboxProvider>
+                        {/* Fallback catch-all */}
+                        <Route path="*" element={<Navigate to="/login" replace />} />
+                      </Routes>
+                    </Suspense>
+                  </ErrorBoundary>
+                </MeetingProvider>
+              </AppRouter>
+            </OnboardingSandboxProvider>
+          </WorkspaceProvider>
         </ThemeProvider>
       </AuthProvider>
     </>

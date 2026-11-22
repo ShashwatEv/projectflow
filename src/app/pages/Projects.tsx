@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FolderKanban, Plus, ArrowRight, MoreVertical, 
-  Trash2, Loader2, Search, Code2, Sparkles, Github, 
+import {
+  FolderKanban, Plus, ArrowRight, MoreVertical,
+  Trash2, Loader2, Search, Code2, Sparkles, Github,
   CheckCircle2, PauseCircle, PlayCircle, Lock, LayoutGrid, List, Columns3, CalendarDays,
   Milestone, Target
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useAuth } from '../../context/AuthContext';
+import { ALL_TEAMS_SCOPE, useWorkspace } from '../../context/WorkspaceContext';
+import { isRecordInTeamScope } from '../../lib/teamScope';
 import { toast } from 'sonner';
 import { recordAuditLog } from '../../lib/auditLogger';
 
@@ -23,6 +25,8 @@ interface Project {
   created_at: string;
   due_date?: string | null;
   owner_id?: string;
+  team_id?: string | null;
+  organization_id?: string | null;
   github_repo?: string;
   owner?: {
     name?: string;
@@ -58,6 +62,13 @@ export default function Projects() {
   const navigate = useNavigate();
   const theme = useAccentTheme();
   const { user: currentUser, session } = useAuth();
+  const {
+    selectedTeamId,
+    canViewAllTeams,
+    activeTeam,
+    activeOrganization,
+    teams,
+  } = useWorkspace();
 
   const isVerified = isUserVerified(currentUser, session);
 
@@ -75,7 +86,7 @@ export default function Projects() {
     const savedView = localStorage.getItem('pf_projects_view');
     return savedView === 'board' || savedView === 'list' || savedView === 'roadmap' ? savedView : 'grid';
   });
-  
+
   // Creation Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -86,7 +97,7 @@ export default function Projects() {
   // Active Context Menu State
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
@@ -101,7 +112,7 @@ export default function Projects() {
 
       const userMap = new Map((userData || []).map((u) => [u.id, u]));
 
-      const merged: Project[] = (projectData || []).map((p) => {
+      const merged: Project[] = (projectData || []).map((p: any) => {
         const ownerUser = p.owner_id ? userMap.get(p.owner_id) : undefined;
         return {
           id: p.id,
@@ -112,6 +123,8 @@ export default function Projects() {
           created_at: p.created_at || new Date().toISOString(),
           due_date: p.due_date,
           owner_id: p.owner_id ?? undefined,
+          team_id: p.team_id ?? null,
+          organization_id: p.organization_id ?? null,
           github_repo: p.github_repo ?? undefined,
           owner: ownerUser ? { name: ownerUser.name ?? undefined, avatar: ownerUser.avatar ?? undefined } : undefined,
         };
@@ -124,9 +137,9 @@ export default function Projects() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchRoadmap = async () => {
+  const fetchRoadmap = useCallback(async () => {
     const [milestonesResult, sprintsResult] = await Promise.all([
       supabase
         .from('project_milestones')
@@ -152,10 +165,10 @@ export default function Projects() {
     } else {
       setSprintGoals((sprintsResult.data || []) as SprintGoal[]);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchProjects();
+    void fetchProjects();
     void fetchRoadmap();
 
     const projectsChannel = supabase
@@ -163,7 +176,7 @@ export default function Projects() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'projects' },
-        () => fetchProjects()
+        () => void fetchProjects()
       )
       .subscribe();
 
@@ -177,16 +190,33 @@ export default function Projects() {
       supabase.removeChannel(projectsChannel);
       supabase.removeChannel(roadmapChannel);
     };
-  }, []);
+  }, [fetchProjects, fetchRoadmap]);
 
   useEffect(() => {
     localStorage.setItem('pf_projects_view', viewMode);
   }, [viewMode]);
 
+  const teamScopedProjects = projects.filter((p) => {
+    if (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE) {
+      return true;
+    }
+    if (teams.length === 0) {
+      return true;
+    }
+    return isRecordInTeamScope(
+      { team_id: p.team_id, organization_id: p.organization_id },
+      {
+        selectedTeamId,
+        canViewAllTeams,
+        includeUnassigned: !p.team_id && p.owner_id === currentUser?.id,
+      }
+    );
+  });
+
   const handleOpenCreateModal = () => {
     // Quota restriction: Unverified users can only own 1 project
     if (!isVerified) {
-      const ownedProjects = projects.filter((p) => p.owner_id === currentUser?.id);
+      const ownedProjects = teamScopedProjects.filter((p) => p.owner_id === currentUser?.id);
       if (ownedProjects.length >= 1) {
         toast.error('Verification Required', {
           description: 'Unverified accounts are limited to 1 project container. Please verify your email to unlock unlimited projects.',
@@ -210,17 +240,23 @@ export default function Projects() {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id;
+      const targetTeamId =
+        selectedTeamId !== ALL_TEAMS_SCOPE ? selectedTeamId : activeTeam?.id || null;
+
+      const insertPayload: Record<string, unknown> = {
+        name: newProjectName.trim(),
+        description: newProjectDesc.trim(),
+        github_repo: newProjectRepo.trim() || null,
+        status: 'active',
+        progress: 0,
+        owner_id: currentUserId,
+      };
+      if (targetTeamId) insertPayload.team_id = targetTeamId;
+      if (activeOrganization?.id) insertPayload.organization_id = activeOrganization.id;
 
       const { data, error } = await supabase
         .from('projects')
-        .insert({
-          name: newProjectName.trim(),
-          description: newProjectDesc.trim(),
-          github_repo: newProjectRepo.trim() || null,
-          status: 'active',
-          progress: 0,
-          owner_id: currentUserId,
-        })
+        .insert(insertPayload as any)
         .select()
         .single();
 
@@ -229,6 +265,7 @@ export default function Projects() {
       await recordAuditLog(`Created project "${newProjectName.trim()}"`, 'projects', {
         repo: newProjectRepo.trim() || null,
         projectId: data?.id,
+        teamId: targetTeamId,
       });
 
       toast.success('Project created successfully!');
@@ -236,7 +273,7 @@ export default function Projects() {
       setNewProjectName('');
       setNewProjectDesc('');
       setNewProjectRepo('');
-      fetchProjects();
+      void fetchProjects();
     } catch (err: any) {
       toast.error(err.message || 'Failed to create project');
     } finally {
@@ -253,7 +290,7 @@ export default function Projects() {
 
       if (error) throw error;
       toast.success(`Project marked as ${newStatus}`);
-      fetchProjects();
+      void fetchProjects();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update status');
     } finally {
@@ -293,7 +330,7 @@ export default function Projects() {
     }
   };
 
-  const filteredProjects = projects.filter((p) => {
+  const filteredProjects = teamScopedProjects.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.github_repo && p.github_repo.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -311,14 +348,14 @@ export default function Projects() {
   });
 
   const ownerOptions = Array.from(
-    projects.reduce((owners, project) => {
+    teamScopedProjects.reduce((owners, project) => {
       if (project.owner_id) owners.set(project.owner_id, project.owner?.name || 'Workspace');
       return owners;
     }, new Map<string, string>())
   );
   const projectStatuses: Project['status'][] = ['active', 'on_hold', 'completed'];
-  const activeCount = projects.filter((p) => p.status === 'active').length;
-  const completedCount = projects.filter((p) => p.status === 'completed').length;
+  const activeCount = teamScopedProjects.filter((p) => p.status === 'active').length;
+  const completedCount = teamScopedProjects.filter((p) => p.status === 'completed').length;
   const filteredProjectIds = new Set(filteredProjects.map((project) => project.id));
   const roadmapItems = [
     ...filteredProjects
@@ -338,7 +375,7 @@ export default function Projects() {
       .map((milestone) => ({
         id: `milestone-${milestone.id}`,
         projectId: milestone.project_id,
-        projectName: projects.find((project) => project.id === milestone.project_id)?.name || 'Project',
+        projectName: filteredProjects.find((project) => project.id === milestone.project_id)?.name || 'Project',
         title: milestone.title,
         details: '',
         date: milestone.due_date,
@@ -350,7 +387,7 @@ export default function Projects() {
       .map((sprint) => ({
         id: `sprint-${sprint.id}`,
         projectId: sprint.project_id,
-        projectName: projects.find((project) => project.id === sprint.project_id)?.name || 'Project',
+        projectName: filteredProjects.find((project) => project.id === sprint.project_id)?.name || 'Project',
         title: sprint.title,
         details: sprint.goal || '',
         date: sprint.target_date,
@@ -362,13 +399,13 @@ export default function Projects() {
     if (!b.date) return -1;
     return parseProjectDate(a.date).getTime() - parseProjectDate(b.date).getTime();
   });
-  const avgProgress = projects.length > 0 
-    ? Math.round(projects.reduce((acc, curr) => acc + (curr.progress || 0), 0) / projects.length) 
+  const avgProgress = teamScopedProjects.length > 0
+    ? Math.round(teamScopedProjects.reduce((acc, curr) => acc + (curr.progress || 0), 0) / teamScopedProjects.length)
     : 0;
 
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto text-gray-900 dark:text-gray-200 animate-in fade-in duration-300">
-      
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-6">
         <div className="flex items-center gap-3">
@@ -376,9 +413,20 @@ export default function Projects() {
             <FolderKanban size={26} />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">Projects Workspace</h1>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">Projects Workspace</h1>
+              {(activeTeam || (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE)) && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                  {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams ? 'All Teams' : activeTeam?.name}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Manage branches, automate sprints, and track milestones across your software portfolio.
+              {canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE
+                ? 'Manage branches, automate sprints, and track milestones across all teams.'
+                : activeTeam
+                ? `Manage branches, automate sprints, and track milestones for ${activeTeam.name}.`
+                : 'Manage branches, automate sprints, and track milestones across your software portfolio.'}
             </p>
           </div>
         </div>
@@ -470,7 +518,7 @@ export default function Projects() {
             className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
           >
             <option value="">All owners</option>
-            {projects.some((project) => !project.owner_id) && <option value="unassigned">Unassigned</option>}
+            {teamScopedProjects.some((project) => !project.owner_id) && <option value="unassigned">Unassigned</option>}
             {ownerOptions.map(([ownerId, ownerName]) => (
               <option key={ownerId} value={ownerId}>{ownerName}</option>
             ))}
@@ -722,8 +770,8 @@ export default function Projects() {
 
                     <div className="flex items-center gap-2">
                       <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        p.status === 'active' 
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60' 
+                        p.status === 'active'
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
                           : p.status === 'completed'
                           ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
                           : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60'
@@ -736,7 +784,7 @@ export default function Projects() {
                         <button
                           type="button"
                           onClick={() => setActiveMenuId(isMenuOpen ? null : p.id)}
-                          className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
                         >
                           <MoreVertical size={16} />
                         </button>
@@ -744,25 +792,25 @@ export default function Projects() {
                         {isMenuOpen && (
                           <div className="absolute right-0 top-7 w-40 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-20 py-1.5 text-xs animate-in fade-in zoom-in-95">
                             <button
-                              onClick={() => handleStatusChange(p.id, 'active')}
+                              onClick={() => void handleStatusChange(p.id, 'active')}
                               className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
                             >
                               <PlayCircle size={13} className="text-emerald-500" /> Mark Active
                             </button>
                             <button
-                              onClick={() => handleStatusChange(p.id, 'completed')}
+                              onClick={() => void handleStatusChange(p.id, 'completed')}
                               className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
                             >
                               <CheckCircle2 size={13} className="text-blue-500" /> Mark Complete
                             </button>
                             <button
-                              onClick={() => handleStatusChange(p.id, 'on_hold')}
+                              onClick={() => void handleStatusChange(p.id, 'on_hold')}
                               className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
                             >
                               <PauseCircle size={13} className="text-amber-500" /> Put on Hold
                             </button>
                             <button
-                              onClick={() => handleDeleteProject(p.id)}
+                              onClick={() => void handleDeleteProject(p.id)}
                               className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 mt-1 pt-1.5"
                             >
                               <Trash2 size={13} /> Delete Project
@@ -868,10 +916,14 @@ export default function Projects() {
           <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-md p-6 md:p-8 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Workspace Project</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Initialize a milestone container with tasks and GitHub linkage.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {activeTeam
+                  ? `Initialize a milestone container for ${activeTeam.name} with tasks and GitHub linkage.`
+                  : 'Initialize a milestone container with tasks and GitHub linkage.'}
+              </p>
             </div>
 
-            <form onSubmit={handleCreateProject} className="space-y-4">
+            <form onSubmit={(event) => void handleCreateProject(event)} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Project Name *</label>
                 <input

@@ -61,17 +61,6 @@ interface Meeting {
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🎉', '👏', '🔥', '🚀'] as const;
 
-function useSafeMeetingTheme(): 'light' | 'dark' {
-  try {
-    const { theme } = useTheme();
-    return theme;
-  } catch {
-    const isDark =
-      typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-    return isDark ? 'dark' : 'light';
-  }
-}
-
 interface VideoTileProps {
   id: string;
   name: string;
@@ -407,7 +396,7 @@ export default function ProjectMeetings({ guestMode = false }: ProjectMeetingsPr
   const inviteCode = normalizeMeetingCode(searchParams.get('code') || '');
   const requestedMeetingId = searchParams.get('join');
   const { user } = useAuth();
-  const theme = useSafeMeetingTheme();
+  const { theme } = useTheme();
   const isDarkTheme = theme === 'dark';
 
   const {

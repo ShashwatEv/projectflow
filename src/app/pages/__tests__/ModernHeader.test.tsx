@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ModernHeader } from '../../components/ModernHeader';
+import { WorkspaceProvider } from '../../../context/WorkspaceContext';
 
 const mockFrom = vi.fn();
 const mockRpc = vi.fn();
@@ -82,7 +83,9 @@ describe('ModernHeader unread badge', () => {
 
     render(
       <MemoryRouter>
-        <ModernHeader />
+        <WorkspaceProvider>
+          <ModernHeader />
+        </WorkspaceProvider>
       </MemoryRouter>
     );
 
@@ -101,7 +104,9 @@ describe('ModernHeader unread badge', () => {
 
     render(
       <MemoryRouter>
-        <ModernHeader />
+        <WorkspaceProvider>
+          <ModernHeader />
+        </WorkspaceProvider>
       </MemoryRouter>
     );
 

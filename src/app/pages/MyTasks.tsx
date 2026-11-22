@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Circle, Clock, Trash2, Plus,
@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { ALL_TEAMS_SCOPE, useWorkspace } from '../../context/WorkspaceContext';
+import { isRecordInTeamScope } from '../../lib/teamScope';
 import { triggerHaptic } from '../../lib/haptics';
 import PullToRefresh from '../components/PullToRefresh';
 import TaskSkeleton from '../components/TaskSkeleton';
@@ -23,7 +25,9 @@ interface Task {
   due_date?: string | null;
   created_at?: string;
   project_id?: string;
-  project?: { name: string };
+  team_id?: string | null;
+  organization_id?: string | null;
+  project?: { name: string; team_id?: string | null; organization_id?: string | null };
   assigned_to?: string;
   assignee?: {
     id: string;
@@ -90,6 +94,13 @@ function getDueLabel(value: string, now = new Date()) {
 
 export default function MyTasks() {
   const { user } = useAuth();
+  const {
+    selectedTeamId,
+    canViewAllTeams,
+    activeTeam,
+    activeOrganization,
+    teams,
+  } = useWorkspace();
   const navigate = useNavigate();
   const location = useLocation();
   const newTaskInputRef = useRef<HTMLInputElement>(null);
@@ -150,14 +161,19 @@ export default function MyTasks() {
     verifyUserRole();
   }, [user]);
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tasks')
         .select('*, project:projects(name), assignee:users!assigned_to(id, name, avatar, role)')
-        .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
+
+      if (!(canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE)) {
+        query = query.eq('assigned_to', user.id);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       if (data) setTasks(data as unknown as Task[]);
@@ -167,25 +183,25 @@ export default function MyTasks() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [canViewAllTeams, selectedTeamId, user]);
 
   useEffect(() => {
     if (!user) return;
-    fetchTasks();
+    void fetchTasks();
 
     const channel = supabase
       .channel(`my_tasks_${user.id}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: `assigned_to=eq.${user.id}` },
-        () => fetchTasks()
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => void fetchTasks()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, fetchTasks]);
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -200,11 +216,34 @@ export default function MyTasks() {
       d1.getFullYear() === d2.getFullYear();
   };
 
+  const getEffectiveTaskTeamId = (task: Task): string | null =>
+    task.team_id ?? task.project?.team_id ?? null;
+
+  const teamScopedTasks = tasks.filter((task) => {
+    const effectiveTeamId = getEffectiveTaskTeamId(task);
+    if (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE) {
+      return true;
+    }
+    if (teams.length === 0) {
+      return true;
+    }
+    return isRecordInTeamScope(
+      { team_id: effectiveTeamId },
+      {
+        selectedTeamId,
+        canViewAllTeams,
+        includeUnassigned: !effectiveTeamId && task.assigned_to === user?.id,
+      }
+    );
+  });
+
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskInput.trim() || !user) return;
 
     const title = newTaskInput.trim();
+    const targetTeamId =
+      selectedTeamId !== ALL_TEAMS_SCOPE ? selectedTeamId : activeTeam?.id || null;
     setNewTaskInput('');
     triggerHaptic('tap');
 
@@ -216,21 +255,27 @@ export default function MyTasks() {
       priority: 'medium',
       due_date: selectedDate ? selectedDate.toISOString() : undefined,
       assigned_to: user.id,
+      team_id: targetTeamId,
+      organization_id: activeOrganization?.id ?? null,
       created_at: new Date().toISOString(),
     };
 
     setTasks(prev => [optimisticTask, ...prev]);
 
     try {
+      const insertPayload: Record<string, unknown> = {
+        title,
+        status: 'todo',
+        priority: 'medium',
+        due_date: selectedDate ? selectedDate.toISOString() : null,
+        assigned_to: user.id,
+      };
+      if (targetTeamId) insertPayload.team_id = targetTeamId;
+      if (activeOrganization?.id) insertPayload.organization_id = activeOrganization.id;
+
       const { data, error } = await supabase
         .from('tasks')
-        .insert({
-          title,
-          status: 'todo',
-          priority: 'medium',
-          due_date: selectedDate ? selectedDate.toISOString() : null,
-          assigned_to: user.id,
-        })
+        .insert(insertPayload as any)
         .select('*, project:projects(name), assignee:users!assigned_to(id, name, avatar, role)')
         .single();
 
@@ -338,7 +383,7 @@ export default function MyTasks() {
     }
   };
 
-  const processedTasks = tasks
+  const processedTasks = teamScopedTasks
     .filter(t => {
       if (selectedDate && (!t.due_date || !isSameDay(parseDueDate(t.due_date), selectedDate))) {
         return false;
@@ -377,9 +422,10 @@ export default function MyTasks() {
     }
   };
 
-  const pendingCount = tasks.filter(t => t.status !== 'done').length;
-  const completedCount = tasks.filter(t => t.status === 'done').length;
-  const reviewCount = tasks.filter(t => t.status === 'review').length;
+  const pendingCount = teamScopedTasks.filter(t => t.status !== 'done').length;
+  const completedCount = teamScopedTasks.filter(t => t.status === 'done').length;
+  const reviewCount = teamScopedTasks.filter(t => t.status === 'review').length;
+  const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
 
   return (
     <PullToRefresh onRefresh={fetchTasks}>
@@ -404,11 +450,16 @@ export default function MyTasks() {
           {/* Top Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">My Tasks</h1>
                 {userRole && (
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                     {userRole}
+                  </span>
+                )}
+                {(activeTeam || (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE)) && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                    {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams ? 'All Teams' : activeTeam?.name}
                   </span>
                 )}
               </div>
@@ -426,7 +477,11 @@ export default function MyTasks() {
                 </button>
               ) : (
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Showing deliverables assigned to your account. Tap any item to inspect details.
+                  {canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE
+                    ? 'Viewing deliverables across all teams in your workspace.'
+                    : activeTeam
+                    ? `Showing deliverables for ${activeTeam.name}. Tap any item to inspect details.`
+                    : 'Showing deliverables assigned to your account. Tap any item to inspect details.'}
                 </p>
               )}
             </div>
@@ -511,7 +566,7 @@ export default function MyTasks() {
               value={newTaskInput}
               onChange={(e) => setNewTaskInput(e.target.value)}
               aria-label="New task title"
-              placeholder="Add a new task assigned to you..."
+              placeholder={activeTeam ? `Add a new task for ${activeTeam.name}...` : 'Add a new task assigned to you...'}
               className="w-full pl-12 pr-4 py-4 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-indigo-500 rounded-xl shadow-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none transition-all text-sm"
             />
           </form>
@@ -528,6 +583,8 @@ export default function MyTasks() {
                   const isSelected = selectedTasks.includes(task.id);
                   const isMine = task.assigned_to === user?.id;
                   const dueLabel = !isDone && task.due_date ? getDueLabel(task.due_date) : null;
+                  const effectiveTeamId = getEffectiveTaskTeamId(task);
+                  const taskTeamName = effectiveTeamId ? teamNameById.get(effectiveTeamId) : null;
 
                   return (
                     <div
@@ -552,9 +609,9 @@ export default function MyTasks() {
 
                         <button
                           type="button"
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            toggleTaskComplete(task.id, isDone); 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTaskComplete(task.id, isDone);
                           }}
                           className={`shrink-0 transition-transform active:scale-90 ${isDone ? 'text-emerald-500' : 'text-gray-300 dark:text-gray-600 hover:text-indigo-500'}`}
                         >
@@ -576,6 +633,12 @@ export default function MyTasks() {
                                 <User size={10} /> {task.assignee.name}
                               </span>
                             ) : null}
+
+                            {taskTeamName && (
+                              <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/70 dark:border-indigo-800/70 shrink-0">
+                                {taskTeamName}
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
@@ -732,7 +795,7 @@ export default function MyTasks() {
                                 <option value="high">High</option>
                               </select>
                               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800">
-                                You
+                                {task.assigned_to === user?.id ? 'You' : task.assignee?.name || 'Member'}
                               </span>
                             </div>
 
@@ -740,7 +803,7 @@ export default function MyTasks() {
                               {task.title}
                             </h4>
 
-                            <div 
+                            <div
                               className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-700/60 text-[11px]"
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -805,11 +868,11 @@ export default function MyTasks() {
               <button onClick={deleteSelected} className="text-xs font-semibold hover:text-red-400 transition-colors flex items-center gap-1.5">
                 <Trash2 size={14} /> Delete
               </button>
-              <button 
+              <button
                 onClick={() => {
                   triggerHaptic('tap');
                   setSelectedTasks([]);
-                }} 
+                }}
                 className="p-1 text-gray-400 hover:text-white rounded-full"
               >
                 <X size={14} />
@@ -887,7 +950,7 @@ export default function MyTasks() {
               </div>
               <div className="flex justify-between text-gray-600 dark:text-gray-300 pt-2 border-t border-gray-100 dark:border-gray-700">
                 <span>Total Assigned</span>
-                <span className="font-bold text-gray-900 dark:text-white">{tasks.length}</span>
+                <span className="font-bold text-gray-900 dark:text-white">{teamScopedTasks.length}</span>
               </div>
             </div>
           </div>
