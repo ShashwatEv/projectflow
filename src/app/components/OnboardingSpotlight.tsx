@@ -12,6 +12,8 @@ interface SpotlightProps {
   title: string;
   description: string;
   actionHint: string;
+  illustration?: string;
+  badge?: string;
   shortcuts?: ShortcutTip[];
   stepIndex: number;
   totalSteps: number;
@@ -32,6 +34,8 @@ export default function OnboardingSpotlight({
   title,
   description,
   actionHint,
+  illustration,
+  badge,
   shortcuts,
   stepIndex,
   totalSteps,
@@ -105,7 +109,6 @@ export default function OnboardingSpotlight({
 
   // Drag Event Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag from header/grip
     setIsDragging(true);
     dragStartRef.current = {
       startX: e.clientX,
@@ -145,18 +148,18 @@ export default function OnboardingSpotlight({
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
 
-  // Base calculated coordinates
+  const cardWidth = 420;
   const baseTop = rect
-    ? Math.min(viewportHeight - (tooltipRef.current?.offsetHeight ?? 360) - 20, Math.max(20, rect.top + rect.height + 16))
-    : viewportHeight / 2 - 140;
+    ? Math.min(viewportHeight - (tooltipRef.current?.offsetHeight ?? 480) - 20, Math.max(20, rect.top + rect.height + 16))
+    : viewportHeight / 2 - 220;
 
   const baseLeft = rect
-    ? Math.min(viewportWidth - 420, Math.max(20, rect.left))
-    : viewportWidth / 2 - 190;
+    ? Math.min(viewportWidth - (cardWidth + 20), Math.max(20, rect.left))
+    : viewportWidth / 2 - cardWidth / 2;
 
-  const tooltipHeight = tooltipRef.current?.offsetHeight ?? 360;
+  const tooltipHeight = tooltipRef.current?.offsetHeight ?? 480;
   const computedTop = Math.max(10, Math.min(viewportHeight - tooltipHeight - 10, baseTop + dragOffset.y));
-  const computedLeft = Math.max(10, Math.min(viewportWidth - 410, baseLeft + dragOffset.x));
+  const computedLeft = Math.max(10, Math.min(viewportWidth - (cardWidth + 10), baseLeft + dragOffset.x));
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-auto transition-opacity duration-300">
@@ -207,12 +210,15 @@ export default function OnboardingSpotlight({
           top: computedTop,
           left: computedLeft,
         }}
-        className="absolute max-h-[min(82dvh,620px)] w-[400px] max-w-[calc(100vw-2.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-5 shadow-2xl text-xs text-gray-800 dark:text-gray-200 z-50 animate-in fade-in zoom-in-95 duration-200 select-none"
+        className="absolute max-h-[min(86dvh,680px)] w-[420px] max-w-[calc(100vw-2.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl shadow-2xl text-xs text-gray-800 dark:text-gray-200 z-50 animate-in fade-in zoom-in-95 duration-200 select-none"
       >
+        {/* Top Accent Strip */}
+        <div className="h-1 w-full bg-gradient-to-r from-[#4B74FF] via-indigo-500 to-violet-500" />
+
         {/* Header - Drag Handle */}
-        <div 
+        <div
           onMouseDown={handleMouseDown}
-          className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800 cursor-grab active:cursor-grabbing"
+          className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100 dark:border-gray-800 cursor-grab active:cursor-grabbing"
           title="Drag to move guide"
         >
           <div className="flex items-center gap-2.5 pointer-events-none">
@@ -242,8 +248,25 @@ export default function OnboardingSpotlight({
           </div>
         </div>
 
+        {/* Page Illustration Banner */}
+        {illustration && (
+          <div className="relative aspect-[16/9] w-full overflow-hidden border-b border-gray-100 bg-[#ECEEFF] dark:border-gray-800">
+            <img
+              key={illustration}
+              src={illustration}
+              alt={title}
+              className="h-full w-full object-contain p-3 transition-all duration-300"
+            />
+            {badge && (
+              <span className="pointer-events-none absolute left-3.5 top-3 rounded-full border border-indigo-200/80 bg-white/95 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#4B74FF] shadow-xs backdrop-blur-xs">
+                {badge}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Content */}
-        <div className="py-3.5 space-y-3">
+        <div className="px-5 py-3.5 space-y-3">
           <p className="text-gray-600 dark:text-gray-300 leading-relaxed text-xs">
             {description}
           </p>
@@ -290,7 +313,7 @@ export default function OnboardingSpotlight({
         </div>
 
         {/* Footer Navigation */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between px-5 pb-4 pt-2 border-t border-gray-100 dark:border-gray-800">
           <button
             type="button"
             onClick={onSkip}

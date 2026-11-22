@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react';
-import { 
-  Key, Shield, Eye, EyeOff, Loader2, CheckCircle2, Circle, 
-  Mail, Smartphone 
+import {
+  Key,
+  Shield,
+  Eye,
+  EyeOff,
+  Loader2,
+  CheckCircle2,
+  Circle,
+  Mail,
+  Smartphone,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -30,7 +37,6 @@ export default function SecuritySettings() {
   const [saving2Fa, setSaving2Fa] = useState(false);
   const [_loadingConfig, setLoadingConfig] = useState(true);
 
-  // Load existing 2FA configuration from users table
   useEffect(() => {
     async function loadSecurityConfig() {
       if (!user?.id) return;
@@ -56,7 +62,6 @@ export default function SecuritySettings() {
     loadSecurityConfig();
   }, [user?.id]);
 
-  // Password requirement evaluations
   const checks = {
     length: newPassword.length >= 8,
     uppercase: /[A-Z]/.test(newPassword),
@@ -65,14 +70,13 @@ export default function SecuritySettings() {
     matches: newPassword.length > 0 && newPassword === confirmPassword,
   };
 
-  const isFormValid = 
-    checks.length && 
-    checks.uppercase && 
-    checks.number && 
-    checks.special && 
+  const isFormValid =
+    checks.length &&
+    checks.uppercase &&
+    checks.number &&
+    checks.special &&
     checks.matches;
 
-  // Real Password Change Handler
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -88,7 +92,6 @@ export default function SecuritySettings() {
 
     setSavingPassword(true);
     try {
-      // 1. Re-authenticate with current password to prevent unauthorized takeover
       if (user?.email) {
         const { error: authError } = await supabase.auth.signInWithPassword({
           email: user.email,
@@ -99,7 +102,6 @@ export default function SecuritySettings() {
         }
       }
 
-      // 2. Apply updated password
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -119,13 +121,16 @@ export default function SecuritySettings() {
     }
   };
 
-  // Real 2FA Toggle & Destination Channel Handler
   const handleSave2FaConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
 
     if (is2FaEnabled && !twoFactorTarget.trim()) {
-      toast.error(`Please provide an alternate ${twoFactorChannel === 'email' ? 'email' : 'phone number'} to receive OTPs`);
+      toast.error(
+        `Please provide an alternate ${
+          twoFactorChannel === 'email' ? 'email' : 'phone number'
+        } to receive OTPs`
+      );
       return;
     }
 
@@ -145,7 +150,9 @@ export default function SecuritySettings() {
       if (error) throw error;
 
       await recordAuditLog(
-        is2FaEnabled ? 'Enabled Two-Factor Authentication' : 'Disabled Two-Factor Authentication',
+        is2FaEnabled
+          ? 'Enabled Two-Factor Authentication'
+          : 'Disabled Two-Factor Authentication',
         'security',
         { channel: twoFactorChannel, target: twoFactorTarget }
       );
@@ -162,39 +169,53 @@ export default function SecuritySettings() {
     }
   };
 
+  const passwordRules = [
+    { met: checks.length, label: 'Minimum 8 characters long' },
+    { met: checks.uppercase, label: 'At least one uppercase letter' },
+    { met: checks.number, label: 'At least one number' },
+    { met: checks.special, label: 'At least one special character' },
+  ];
+
   return (
-    <div className="space-y-8 max-w-4xl animate-in fade-in duration-200">
-      
+    <div className="max-w-4xl space-y-8 animate-in fade-in duration-200">
       {/* 1. Change Password Card */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
-        <div className="flex items-start gap-3 border-b border-gray-800/80 pb-5">
-          <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+      <section className="space-y-6 rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-[#161b22] dark:shadow-xl md:p-8">
+        <div className="flex items-start gap-3.5 border-b border-gray-100 pb-5 dark:border-gray-800/80">
+          <div
+            className={`mt-0.5 rounded-2xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <Key size={20} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Change Password</h2>
-            <p className="text-xs text-gray-400">Ensure your workspace credentials remain protected.</p>
+            <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+              Change Password
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Ensure your workspace credentials remain protected.
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <form onSubmit={handleUpdatePassword} className="lg:col-span-7 space-y-4">
-            
+        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
+          <form onSubmit={handleUpdatePassword} className="space-y-4 lg:col-span-7">
             {/* Current Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">Current Password</label>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Current Password
+              </label>
               <div className="relative">
                 <input
                   type={showCurrentPassword ? 'text' : 'password'}
                   placeholder="Enter current password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-4 py-2.5 pr-11 text-xs text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-2.5 pr-11 font-mono text-xs text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:bg-white dark:border-gray-800 dark:bg-[#0d1117] dark:text-white dark:placeholder:text-gray-500 dark:focus:bg-[#0d1117] ${theme.ringAccent}`}
                 />
                 <button
                   type="button"
+                  aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 transition-colors hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
                 >
                   {showCurrentPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -203,19 +224,22 @@ export default function SecuritySettings() {
 
             {/* New Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">New Password</label>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                New Password
+              </label>
               <div className="relative">
                 <input
                   type={showNewPassword ? 'text' : 'password'}
                   placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-4 py-2.5 pr-11 text-xs text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-2.5 pr-11 font-mono text-xs text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:bg-white dark:border-gray-800 dark:bg-[#0d1117] dark:text-white dark:placeholder:text-gray-500 dark:focus:bg-[#0d1117] ${theme.ringAccent}`}
                 />
                 <button
                   type="button"
+                  aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 transition-colors hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300"
                 >
                   {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
@@ -224,13 +248,15 @@ export default function SecuritySettings() {
 
             {/* Confirm New Password */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">Confirm New Password</label>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Confirm New Password
+              </label>
               <input
                 type="password"
                 placeholder="Confirm new password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
+                className={`w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-2.5 font-mono text-xs text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:bg-white dark:border-gray-800 dark:bg-[#0d1117] dark:text-white dark:placeholder:text-gray-500 dark:focus:bg-[#0d1117] ${theme.ringAccent}`}
               />
             </div>
 
@@ -238,73 +264,97 @@ export default function SecuritySettings() {
               <button
                 type="submit"
                 disabled={savingPassword || !isFormValid || !currentPassword}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
+                className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50 ${theme.btnPrimary}`}
               >
-                {savingPassword ? <Loader2 size={14} className="animate-spin" /> : <Key size={14} />}
+                {savingPassword ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Key size={14} />
+                )}
                 <span>Update Password</span>
               </button>
             </div>
           </form>
 
           {/* Checklist */}
-          <div className="lg:col-span-5 bg-[#0d1117] border border-gray-800/80 rounded-2xl p-5 space-y-3">
-            <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+          <div className="space-y-3 rounded-2xl border border-gray-200/80 bg-gray-50/80 p-5 dark:border-gray-800/80 dark:bg-[#0d1117] lg:col-span-5">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
               Password Requirements
             </h4>
-            
+
             <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2">
-                {checks.length ? <CheckCircle2 size={14} className={theme.textAccent} /> : <Circle size={14} className="text-gray-600" />}
-                <span className={checks.length ? 'text-gray-200' : 'text-gray-500'}>Minimum 8 characters long</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {checks.uppercase ? <CheckCircle2 size={14} className={theme.textAccent} /> : <Circle size={14} className="text-gray-600" />}
-                <span className={checks.uppercase ? 'text-gray-200' : 'text-gray-500'}>At least one uppercase letter</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {checks.number ? <CheckCircle2 size={14} className={theme.textAccent} /> : <Circle size={14} className="text-gray-600" />}
-                <span className={checks.number ? 'text-gray-200' : 'text-gray-500'}>At least one number</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {checks.special ? <CheckCircle2 size={14} className={theme.textAccent} /> : <Circle size={14} className="text-gray-600" />}
-                <span className={checks.special ? 'text-gray-200' : 'text-gray-500'}>At least one special character</span>
-              </div>
-              <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
-                {checks.matches ? <CheckCircle2 size={14} className={theme.textAccent} /> : <Circle size={14} className="text-gray-600" />}
-                <span className={checks.matches ? 'text-gray-200' : 'text-gray-500'}>Passwords match</span>
+              {passwordRules.map((rule) => (
+                <div key={rule.label} className="flex items-center gap-2">
+                  {rule.met ? (
+                    <CheckCircle2 size={14} className={theme.textAccent} />
+                  ) : (
+                    <Circle size={14} className="text-gray-300 dark:text-gray-600" />
+                  )}
+                  <span
+                    className={
+                      rule.met
+                        ? 'font-medium text-gray-800 dark:text-gray-200'
+                        : 'text-gray-500 dark:text-gray-500'
+                    }
+                  >
+                    {rule.label}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2 border-t border-gray-200 pt-2 dark:border-gray-800">
+                {checks.matches ? (
+                  <CheckCircle2 size={14} className={theme.textAccent} />
+                ) : (
+                  <Circle size={14} className="text-gray-300 dark:text-gray-600" />
+                )}
+                <span
+                  className={
+                    checks.matches
+                      ? 'font-medium text-gray-800 dark:text-gray-200'
+                      : 'text-gray-500 dark:text-gray-500'
+                  }
+                >
+                  Passwords match
+                </span>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* 2. Real Two-Factor Authentication Card with Destination Channel */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
-        <div className="flex items-center justify-between border-b border-gray-800/80 pb-5">
+      <section className="space-y-6 rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-[#161b22] dark:shadow-xl md:p-8">
+        <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-5 dark:border-gray-800/80">
           <div className="flex items-start gap-3.5">
-            <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+            <div
+              className={`mt-0.5 rounded-2xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+            >
               <Shield size={20} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Two-Factor Authentication (2FA)</h3>
-              <p className="text-xs text-gray-400">
+              <h3 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+                Two-Factor Authentication (2FA)
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 Enforce a mandatory one-time verification challenge upon signing in.
               </p>
             </div>
           </div>
 
-          {/* Toggle */}
           <button
             type="button"
             role="switch"
             aria-checked={is2FaEnabled}
+            aria-label="Enable Two-Factor Authentication"
             onClick={() => setIs2FaEnabled(!is2FaEnabled)}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              is2FaEnabled ? theme.toggleActive : 'bg-gray-700/60'
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#161b22] ${
+              is2FaEnabled
+                ? theme.toggleActive
+                : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700/70 dark:hover:bg-gray-700'
             }`}
           >
             <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
                 is2FaEnabled ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
@@ -313,18 +363,21 @@ export default function SecuritySettings() {
 
         {/* 2FA Destination Channel Setup Form */}
         <form onSubmit={handleSave2FaConfig} className="space-y-5">
-          <div className={`space-y-4 transition-opacity ${is2FaEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-            <label className="block text-xs font-semibold text-gray-300">
+          <div
+            className={`space-y-4 transition-opacity ${
+              is2FaEnabled ? 'opacity-100' : 'pointer-events-none opacity-45'
+            }`}
+          >
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
               Select OTP Delivery Channel
             </label>
 
-            {/* Radio options */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label
-                className={`p-3.5 rounded-2xl border flex items-center gap-3 cursor-pointer transition-all ${
+                className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5 transition-all ${
                   twoFactorChannel === 'email'
-                    ? `${theme.bgSubtle}${theme.textAccent} border-indigo-500/50 shadow-sm`
-                    : 'bg-[#0d1117] border-gray-800 text-gray-400 hover:border-gray-700'
+                    ? `${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/50 shadow-xs`
+                    : 'border-gray-200 bg-gray-50/70 text-gray-600 hover:border-gray-300 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-400 dark:hover:border-gray-700'
                 }`}
               >
                 <input
@@ -335,18 +388,22 @@ export default function SecuritySettings() {
                   onChange={() => setTwoFactorChannel('email')}
                   className="hidden"
                 />
-                <Mail size={18} />
+                <Mail size={18} className="shrink-0" />
                 <div>
-                  <p className="font-bold text-xs text-white">Alternate Email Address</p>
-                  <p className="text-[10px] text-gray-400">Receive 6-digit codes in inbox</p>
+                  <p className="text-xs font-bold text-gray-900 dark:text-white">
+                    Alternate Email Address
+                  </p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    Receive 6-digit codes in inbox
+                  </p>
                 </div>
               </label>
 
               <label
-                className={`p-3.5 rounded-2xl border flex items-center gap-3 cursor-pointer transition-all ${
+                className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5 transition-all ${
                   twoFactorChannel === 'phone'
-                    ? `${theme.bgSubtle}${theme.textAccent} border-indigo-500/50 shadow-sm`
-                    : 'bg-[#0d1117] border-gray-800 text-gray-400 hover:border-gray-700'
+                    ? `${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/50 shadow-xs`
+                    : 'border-gray-200 bg-gray-50/70 text-gray-600 hover:border-gray-300 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-400 dark:hover:border-gray-700'
                 }`}
               >
                 <input
@@ -357,26 +414,37 @@ export default function SecuritySettings() {
                   onChange={() => setTwoFactorChannel('phone')}
                   className="hidden"
                 />
-                <Smartphone size={18} />
+                <Smartphone size={18} className="shrink-0" />
                 <div>
-                  <p className="font-bold text-xs text-white">Phone / SMS</p>
-                  <p className="text-[10px] text-gray-400">Receive verification code on mobile</p>
+                  <p className="text-xs font-bold text-gray-900 dark:text-white">
+                    Phone / SMS
+                  </p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    Receive verification code on mobile
+                  </p>
                 </div>
               </label>
             </div>
 
             {/* Target Input */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-300">
-                {twoFactorChannel === 'email' ? 'Alternate Email Address' : 'Phone Number (with Country Code)'} *
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                {twoFactorChannel === 'email'
+                  ? 'Alternate Email Address'
+                  : 'Phone Number (with Country Code)'}{' '}
+                *
               </label>
               <input
                 type={twoFactorChannel === 'email' ? 'email' : 'tel'}
                 required={is2FaEnabled}
-                placeholder={twoFactorChannel === 'email' ? 'backup.security@company.com' : '+1 555 123 4567'}
+                placeholder={
+                  twoFactorChannel === 'email'
+                    ? 'backup.security@company.com'
+                    : '+1 555 123 4567'
+                }
                 value={twoFactorTarget}
                 onChange={(e) => setTwoFactorTarget(e.target.value)}
-                className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none ${theme.ringAccent} transition-colors font-mono`}
+                className={`w-full rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-2.5 font-mono text-xs text-gray-900 placeholder:text-gray-400 outline-none transition-colors focus:bg-white dark:border-gray-800 dark:bg-[#0d1117] dark:text-white dark:placeholder:text-gray-500 dark:focus:bg-[#0d1117] ${theme.ringAccent}`}
               />
             </div>
           </div>
@@ -385,15 +453,18 @@ export default function SecuritySettings() {
             <button
               type="submit"
               disabled={saving2Fa || (is2FaEnabled && !twoFactorTarget.trim())}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
+              className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-50 ${theme.btnPrimary}`}
             >
-              {saving2Fa ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+              {saving2Fa ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Shield size={14} />
+              )}
               <span>Save 2FA Preferences</span>
             </button>
           </div>
         </form>
-      </div>
-
+      </section>
     </div>
   );
 }

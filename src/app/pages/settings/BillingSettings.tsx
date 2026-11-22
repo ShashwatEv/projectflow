@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
-import { 
-  CreditCard, Check, Users, HardDrive, Download, 
-  Sparkles, X, FolderKanban
+import {
+  CreditCard,
+  Check,
+  Users,
+  HardDrive,
+  Download,
+  Sparkles,
+  X,
+  FolderKanban,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
@@ -27,24 +33,20 @@ export default function BillingSettings() {
   const [isPlanModalOpen, setIsPlanModalOpen] = useState<boolean>(false);
   const [billingLedger, setBillingLedger] = useState<BillingRecord[]>([]);
 
-  // Fetch real Supabase metrics (Users count, Projects count, Storage size, and Audit records)
   useEffect(() => {
     async function loadWorkspaceBillingData() {
       setLoadingMetrics(true);
       try {
-        // 1. Fetch real team members count
         const { count: usersCount } = await supabase
           .from('users')
           .select('*', { count: 'exact', head: true });
         if (usersCount !== null) setMemberCount(usersCount);
 
-        // 2. Fetch real projects count
         const { count: projsCount } = await supabase
           .from('projects')
           .select('*', { count: 'exact', head: true });
         if (projsCount !== null) setProjectCount(projsCount);
 
-        // 3. Query real storage usage from Supabase 'chat-files' bucket
         const { data: storageFiles } = await supabase.storage
           .from('chat-files')
           .list('', { limit: 100 });
@@ -57,7 +59,6 @@ export default function BillingSettings() {
           setStorageBytes(totalBytes);
         }
 
-        // 4. Fetch real billing / security audit logs as verified receipts
         const { data: auditData } = await supabase
           .from('audit_logs')
           .select('*')
@@ -67,7 +68,9 @@ export default function BillingSettings() {
         if (auditData && auditData.length > 0) {
           const formattedLedger: BillingRecord[] = auditData.map((log: any, idx: number) => ({
             id: log.id,
-            invoice_number: `REC-${new Date(log.created_at).getFullYear()}-${String(idx + 1).padStart(3, '0')}`,
+            invoice_number: `REC-${new Date(log.created_at).getFullYear()}-${String(
+              idx + 1
+            ).padStart(3, '0')}`,
             date: new Date(log.created_at).toLocaleDateString(undefined, {
               month: 'short',
               day: 'numeric',
@@ -79,12 +82,15 @@ export default function BillingSettings() {
           }));
           setBillingLedger(formattedLedger);
         } else {
-          // Clean initial grant record if no audit entries exist yet
           setBillingLedger([
             {
               id: 'init_grant',
               invoice_number: 'REC-2026-001',
-              date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+              date: new Date().toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              }),
               action: 'Community Lifetime Developer Grant',
               amount: '$0.00',
               status: 'FREE',
@@ -101,7 +107,6 @@ export default function BillingSettings() {
     loadWorkspaceBillingData();
   }, []);
 
-  // Format Storage Display
   const formatStorage = (bytes: number) => {
     if (bytes === 0) return '0 MB';
     const mb = bytes / (1024 * 1024);
@@ -109,9 +114,12 @@ export default function BillingSettings() {
     return `${mb.toFixed(2)} MB`;
   };
 
-  const FREE_STORAGE_LIMIT_MB = 1024; // 1 GB free bucket limit
+  const FREE_STORAGE_LIMIT_MB = 1024;
   const currentStorageMb = storageBytes / (1024 * 1024);
-  const storagePercent = Math.min(100, Math.max(1, Math.round((currentStorageMb / FREE_STORAGE_LIMIT_MB) * 100)));
+  const storagePercent = Math.min(
+    100,
+    Math.max(1, Math.round((currentStorageMb / FREE_STORAGE_LIMIT_MB) * 100))
+  );
 
   const SEAT_LIMIT = 10;
   const seatsRemaining = Math.max(0, SEAT_LIMIT - memberCount);
@@ -140,70 +148,72 @@ Thank you for building with ProjectFlow!`;
     toast.success(`Downloaded ${record.invoice_number}`);
   };
 
+  const planFeatures = [
+    'Unlimited Projects & Task Columns',
+    `Up to ${SEAT_LIMIT} Team Members`,
+    'Pooled Gemini AI Code & Task Advisor',
+    'Supabase Realtime Broadcast & Presence',
+  ];
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 max-w-5xl">
+    <div className="max-w-5xl space-y-6 animate-in fade-in duration-300">
       {/* 1. Main Current Plan Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#161b2e] via-[#101423] to-[#0d1117] border border-gray-800 p-6 md:p-8 shadow-xl">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <section className="relative overflow-hidden rounded-3xl border border-indigo-200/80 bg-gradient-to-br from-[#ECEEFF] via-white to-indigo-50/70 p-6 shadow-sm dark:border-gray-800 dark:from-[#161b2e] dark:via-[#101423] dark:to-[#0d1117] dark:shadow-xl md:p-8">
+        <div className="h-1 w-full bg-gradient-to-r from-[#4B74FF] via-indigo-500 to-violet-500 absolute inset-x-0 top-0" />
+        <div className="flex flex-col items-start justify-between gap-6 pt-1 md:flex-row md:items-center">
           <div className="space-y-3">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 text-[11px] font-bold uppercase tracking-wider`}>
+            <div
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+            >
               <Sparkles size={12} />
               <span>Current Plan</span>
             </div>
 
             <div>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+              <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white md:text-3xl">
                 Developer Team Free
               </h2>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
                 Active lifetime development license • Realtime synchronization enabled
               </p>
             </div>
 
-            {/* Live Capabilities */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-2 text-xs text-gray-300 font-medium">
-              <div className="flex items-center gap-2">
-                <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Unlimited Projects & Task Columns</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Up to {SEAT_LIMIT} Team Members</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Pooled Gemini AI Code & Task Advisor</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check size={14} className="text-emerald-400 shrink-0" />
-                <span>Supabase Realtime Broadcast & Presence</span>
-              </div>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-2 pt-2 text-xs font-medium text-gray-700 dark:text-gray-300 sm:grid-cols-2">
+              {planFeatures.map((feat) => (
+                <div key={feat} className="flex items-center gap-2">
+                  <Check size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>{feat}</span>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Pricing & Plan Switch */}
-          <div className="w-full md:w-auto bg-[#0d1117]/80 backdrop-blur border border-gray-800 rounded-2xl p-5 flex flex-col items-center md:items-end gap-3 shrink-0">
+          <div className="flex w-full shrink-0 flex-col items-center gap-3 rounded-2xl border border-gray-200/90 bg-white/90 p-5 shadow-xs backdrop-blur dark:border-gray-800 dark:bg-[#0d1117]/80 md:w-auto md:items-end">
             <div className="text-center md:text-right">
-              <div className="flex items-baseline justify-center md:justify-end gap-1">
-                <span className="text-3xl font-extrabold text-white">$0</span>
-                <span className="text-xs text-gray-400 font-medium">/month</span>
+              <div className="flex items-baseline justify-center gap-1 md:justify-end">
+                <span className="text-3xl font-extrabold text-gray-900 dark:text-white">$0</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">/month</span>
               </div>
-              <span className="text-[10px] text-emerald-400 font-bold uppercase">
+              <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
                 100% Free Forever
               </span>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-gray-400 pt-1">
+            <div className="flex items-center gap-2 pt-1 text-xs text-gray-600 dark:text-gray-400">
               <span>Monthly</span>
               <button
                 type="button"
+                role="switch"
+                aria-checked={isAnnual}
+                aria-label="Toggle yearly billing view"
                 onClick={() => setIsAnnual(!isAnnual)}
-                className={`w-9 h-5 flex items-center rounded-full p-0.5 transition-colors ${
-                  isAnnual ? theme.toggleActive : 'bg-gray-700'
+                className={`flex h-5 w-9 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  isAnnual ? theme.toggleActive : 'bg-gray-300 dark:bg-gray-700'
                 }`}
               >
                 <div
-                  className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                  className={`h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${
                     isAnnual ? 'translate-x-4' : 'translate-x-0'
                   }`}
                 />
@@ -214,26 +224,28 @@ Thank you for building with ProjectFlow!`;
             <button
               type="button"
               onClick={() => setIsPlanModalOpen(true)}
-              className={`w-full md:w-auto px-5 py-2.5 ${theme.btnPrimary} font-bold text-xs rounded-xl shadow-md transition-all active:scale-95`}
+              className={`w-full rounded-xl px-5 py-2.5 text-xs font-bold text-white shadow-md transition-all active:scale-95 md:w-auto ${theme.btnPrimary}`}
             >
               Explore Tiers
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* 2. Real-time Telemetry Usage Meters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Seats Usage */}
-        <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="space-y-3 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-200/80 bg-blue-50 text-[#4B74FF] dark:border-blue-500/20 dark:bg-blue-600/10 dark:text-blue-400">
                 <Users size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Seats Utilized</h4>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+                  Seats Utilized
+                </h4>
+                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {loadingMetrics ? 'Fetching users...' : `${seatsRemaining} seats available`}
                 </p>
               </div>
@@ -241,13 +253,13 @@ Thank you for building with ProjectFlow!`;
           </div>
 
           <div className="space-y-1.5 pt-1">
-            <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
               <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                className="h-full rounded-full bg-[#4B74FF] transition-all duration-500 dark:bg-blue-500"
                 style={{ width: `${seatsPercent}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+            <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{memberCount} Active</span>
               <span>{SEAT_LIMIT} Free Max</span>
             </div>
@@ -255,15 +267,17 @@ Thank you for building with ProjectFlow!`;
         </div>
 
         {/* Live Supabase Storage Meter */}
-        <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="space-y-3 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-600/10 border border-purple-500/20 text-purple-400 flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-purple-200/80 bg-purple-50 text-purple-600 dark:border-purple-500/20 dark:bg-purple-600/10 dark:text-purple-400">
                 <HardDrive size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Storage Bucket</h4>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+                  Storage Bucket
+                </h4>
+                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {loadingMetrics ? 'Calculating bucket...' : 'Chat media & project files'}
                 </p>
               </div>
@@ -271,13 +285,13 @@ Thank you for building with ProjectFlow!`;
           </div>
 
           <div className="space-y-1.5 pt-1">
-            <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
               <div
-                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                className="h-full rounded-full bg-purple-600 transition-all duration-500 dark:bg-purple-500"
                 style={{ width: `${storagePercent}%` }}
               />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+            <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{formatStorage(storageBytes)}</span>
               <span>1 GB Limit</span>
             </div>
@@ -285,15 +299,19 @@ Thank you for building with ProjectFlow!`;
         </div>
 
         {/* Workspace Projects Meter */}
-        <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="space-y-3 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl ${theme.bgSubtle} border ${theme.borderAccent}/30 ${theme.textAccent} flex items-center justify-center`}>
+              <div
+                className={`flex h-9 w-9 items-center justify-center rounded-xl border ${theme.bgSubtle} ${theme.borderAccent}/30 ${theme.textAccent}`}
+              >
                 <FolderKanban size={18} />
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Active Projects</h4>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+                  Active Projects
+                </h4>
+                <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {loadingMetrics ? 'Counting...' : 'Unlimited boards enabled'}
                 </p>
               </div>
@@ -301,10 +319,12 @@ Thank you for building with ProjectFlow!`;
           </div>
 
           <div className="space-y-1.5 pt-1">
-            <div className="w-full h-2 rounded-full bg-gray-800 overflow-hidden">
-              <div className={`h-full ${theme.progressBar} rounded-full w-[35%] transition-all duration-500`} />
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                className={`h-full w-[35%] rounded-full transition-all duration-500 ${theme.progressBar}`}
+              />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400 font-mono">
+            <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{projectCount} Repos & Boards</span>
               <span>Unlimited</span>
             </div>
@@ -313,17 +333,19 @@ Thank you for building with ProjectFlow!`;
       </div>
 
       {/* 3. Payment Status */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-3">
-        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Payment Method</h4>
-        
-        <div className="flex items-center justify-between p-4 bg-[#0d1117] border border-gray-800 rounded-xl text-xs">
+      <section className="space-y-3 rounded-2xl border border-gray-200/90 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+          Payment Method
+        </h4>
+
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-gray-200/80 bg-gray-50/80 p-4 text-xs dark:border-gray-800 dark:bg-[#0d1117] sm:flex-row sm:items-center">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-7 rounded-md bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-300">
+            <div className="flex h-7 w-10 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
               <CreditCard size={18} />
             </div>
             <div>
-              <p className="font-semibold text-white">No payment required</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
+              <p className="font-semibold text-gray-900 dark:text-white">No payment required</p>
+              <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
                 Your workspace is operating on the open-access Developer community license.
               </p>
             </div>
@@ -331,51 +353,65 @@ Thank you for building with ProjectFlow!`;
 
           <button
             type="button"
-            onClick={() => toast.info('No card required! All current workspace features are completely free.')}
-            className={`text-xs font-semibold ${theme.textAccent} hover:underline transition-colors`}
+            onClick={() =>
+              toast.info('No card required! All current workspace features are completely free.')
+            }
+            className={`text-left text-xs font-semibold hover:underline transition-colors sm:text-right ${theme.textAccent}`}
           >
             Add Backup Card
           </button>
         </div>
-      </div>
+      </section>
 
       {/* 4. Real Supabase Receipts / Audit Billing Trail */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-2xl p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+      <section className="space-y-4 rounded-2xl border border-gray-200/90 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
           <div>
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Invoice & Audit Receipts</h4>
-            <p className="text-[11px] text-gray-400 mt-0.5">Cryptographic log of workspace subscription grants</p>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+              Invoice & Audit Receipts
+            </h4>
+            <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+              Cryptographic log of workspace subscription grants
+            </p>
           </div>
           <button
             type="button"
             onClick={() => billingLedger.forEach((rec) => downloadReceipt(rec))}
-            className={`text-xs font-semibold ${theme.textAccent} hover:underline transition-colors`}
+            className={`text-left text-xs font-semibold hover:underline transition-colors sm:text-right ${theme.textAccent}`}
           >
             Download All Receipts
           </button>
         </div>
 
-        <div className="divide-y divide-gray-800/80 border-t border-gray-800">
+        <div className="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-800/80 dark:border-gray-800">
           {billingLedger.map((rec) => (
             <div
               key={rec.id}
-              className="py-3.5 flex items-center justify-between text-xs text-gray-300 hover:bg-[#0d1117]/50 px-2 rounded-xl transition-colors"
+              className="flex items-center justify-between gap-3 rounded-xl px-2 py-3.5 text-xs text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-[#0d1117]/50"
             >
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-gray-200">{rec.invoice_number}</span>
-                <span className="text-gray-400 font-sans text-xs">{rec.action}</span>
-                <span className="text-gray-500 text-[11px] hidden sm:inline">{rec.date}</span>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="shrink-0 font-mono text-gray-900 dark:text-gray-200">
+                  {rec.invoice_number}
+                </span>
+                <span className="truncate font-sans text-xs text-gray-600 dark:text-gray-400">
+                  {rec.action}
+                </span>
+                <span className="hidden shrink-0 text-[11px] text-gray-400 dark:text-gray-500 sm:inline">
+                  {rec.date}
+                </span>
               </div>
 
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-emerald-400 font-bold">{rec.amount}</span>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800">
+              <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                  {rec.amount}
+                </span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400">
                   {rec.status}
                 </span>
                 <button
                   type="button"
                   onClick={() => downloadReceipt(rec)}
-                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                  className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
                   title="Download receipt"
                 >
                   <Download size={14} />
@@ -384,79 +420,113 @@ Thank you for building with ProjectFlow!`;
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* --- Plan Information Dialog Modal --- */}
       {isPlanModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0d1117]/80">
-              <h3 className="font-bold text-sm text-white">Workspace License Details</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/75">
+          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#161b22]">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/90 px-6 py-4 dark:border-gray-800 dark:bg-[#0d1117]/80">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Workspace License Details
+              </h3>
               <button
                 type="button"
                 onClick={() => setIsPlanModalOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 gap-4 p-6 text-xs md:grid-cols-2">
               {/* Free Tier Card */}
-              <div className="p-5 rounded-2xl bg-[#0d1117] border-2 border-emerald-500/80 flex flex-col justify-between">
+              <div className="flex flex-col justify-between rounded-2xl border-2 border-emerald-500/80 bg-gray-50/70 p-5 dark:bg-[#0d1117]">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-white text-sm">Developer Community</span>
-                    <span className="text-[10px] font-bold uppercase bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                      Developer Community
+                    </span>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-600/20 dark:text-emerald-400">
                       Active
                     </span>
                   </div>
-                  <p className="text-gray-400 text-[11px] mb-4">
+                  <p className="mb-4 text-[11px] text-gray-600 dark:text-gray-400">
                     Full workspace access, code studio, pooled Gemini AI, and realtime chat.
                   </p>
-                  <span className="text-2xl font-extrabold text-white block mb-4">$0 <span className="text-xs text-gray-500 font-normal">/mo forever</span></span>
-                  <ul className="space-y-2 text-gray-300">
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Up to {SEAT_LIMIT} team members</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Pooled Gemini code keys</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Monaco diff editor & terminal</li>
-                    <li className="flex items-center gap-2"><Check size={13} className="text-emerald-400" /> Full Supabase Realtime sync</li>
+                  <span className="mb-4 block text-2xl font-extrabold text-gray-900 dark:text-white">
+                    $0{' '}
+                    <span className="text-xs font-normal text-gray-500">/mo forever</span>
+                  </span>
+                  <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Up to{' '}
+                      {SEAT_LIMIT} team members
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Pooled
+                      Gemini code keys
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Monaco
+                      diff editor & terminal
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Full
+                      Supabase Realtime sync
+                    </li>
                   </ul>
                 </div>
                 <button
                   type="button"
                   disabled
-                  className="mt-6 w-full py-2 bg-gray-800 text-gray-400 rounded-xl font-bold text-xs cursor-default"
+                  className="mt-6 w-full cursor-default rounded-xl bg-gray-200 py-2 text-xs font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-400"
                 >
                   Active Current Plan
                 </button>
               </div>
 
               {/* Enterprise / Cloud Tier */}
-              <div className="p-5 rounded-2xl bg-[#0d1117] border border-gray-800 flex flex-col justify-between opacity-80 hover:opacity-100 transition-opacity">
+              <div className="flex flex-col justify-between rounded-2xl border border-gray-200/90 bg-white p-5 opacity-90 transition-opacity hover:opacity-100 dark:border-gray-800 dark:bg-[#0d1117]">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-white text-sm">Enterprise Dedicated</span>
-                    <span className="text-[10px] font-bold uppercase bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                      Enterprise Dedicated
+                    </span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                       Custom
                     </span>
                   </div>
-                  <p className="text-gray-400 text-[11px] mb-4">
+                  <p className="mb-4 text-[11px] text-gray-600 dark:text-gray-400">
                     For multi-tenant organizational compliance and custom SSO integrations.
                   </p>
-                  <span className="text-2xl font-extrabold text-white block mb-4">$29 <span className="text-xs text-gray-500 font-normal">/seat/mo</span></span>
-                  <ul className="space-y-2 text-gray-300">
-                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Unlimited organization seats</li>
-                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Dedicated private GitHub apps</li>
-                    <li className="flex items-center gap-2"><Check size={13} className={theme.textAccent} /> Custom enterprise SLA & audit export</li>
+                  <span className="mb-4 block text-2xl font-extrabold text-gray-900 dark:text-white">
+                    $29{' '}
+                    <span className="text-xs font-normal text-gray-500">/seat/mo</span>
+                  </span>
+                  <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className={theme.textAccent} /> Unlimited organization seats
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className={theme.textAccent} /> Dedicated private GitHub
+                      apps
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={13} className={theme.textAccent} /> Custom enterprise SLA &
+                      audit export
+                    </li>
                   </ul>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
                     setIsPlanModalOpen(false);
-                    toast.success('Your workspace is already enjoying all features on the Free tier!');
+                    toast.success(
+                      'Your workspace is already enjoying all features on the Free tier!'
+                    );
                   }}
-                  className={`mt-6 w-full py-2 ${theme.btnPrimary} text-white rounded-xl font-bold text-xs transition-colors`}
+                  className={`mt-6 w-full rounded-xl py-2 text-xs font-bold text-white transition-colors ${theme.btnPrimary}`}
                 >
                   Learn More
                 </button>

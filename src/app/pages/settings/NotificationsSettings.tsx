@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Mail, Bell, Loader2 } from 'lucide-react';
+import { Mail, Bell, Clock, Loader2, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
@@ -22,13 +22,22 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   digest_frequency: 'off',
 };
 
+const DIGEST_OPTIONS: {
+  value: NotificationPreferences['digest_frequency'];
+  label: string;
+  hint: string;
+}[] = [
+  { value: 'off', label: 'Off', hint: 'No scheduled summary' },
+  { value: 'daily', label: 'Daily', hint: 'Morning recap' },
+  { value: 'weekly', label: 'Weekly', hint: 'Monday overview' },
+];
+
 export default function NotificationsSettings() {
   const theme = useAccentTheme();
   const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
-  const [_savingKey, setSavingKey] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // 1. Fetch user notification preferences
   useEffect(() => {
     const isValidDigest = (
       val: unknown
@@ -79,7 +88,7 @@ export default function NotificationsSettings() {
               : current.digest_frequency,
           }));
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error('Failed to load notification settings:', err);
       } finally {
         setLoading(false);
@@ -89,8 +98,10 @@ export default function NotificationsSettings() {
     loadPreferences();
   }, []);
 
-  // 2. Toggle and persist preference state
-  const handleToggle = async (key: Exclude<keyof NotificationPreferences, 'digest_frequency'>) => {
+  const handleToggle = async (
+    key: Exclude<keyof NotificationPreferences, 'digest_frequency'>
+  ) => {
+    const previous = preferences;
     const updated = {
       ...preferences,
       [key]: !preferences[key],
@@ -127,19 +138,22 @@ export default function NotificationsSettings() {
           { onConflict: 'user_id' }
         );
       if (workspaceError) {
-        console.warn('Workspace notification preferences are unavailable; apply the collaboration migration to sync them.');
+        console.warn(
+          'Workspace notification preferences are unavailable; apply the collaboration migration to sync them.'
+        );
       }
       toast.success('Notification preferences updated');
-    } catch (err: any) {
+    } catch {
       toast.error('Could not save preference change');
-      // Rollback on network failure
-      setPreferences(preferences);
+      setPreferences(previous);
     } finally {
       setSavingKey(null);
     }
   };
 
-  const handleDigestChange = async (digestFrequency: NotificationPreferences['digest_frequency']) => {
+  const handleDigestChange = async (
+    digestFrequency: NotificationPreferences['digest_frequency']
+  ) => {
     const previous = preferences;
     const updated = { ...preferences, digest_frequency: digestFrequency };
     setPreferences(updated);
@@ -147,7 +161,9 @@ export default function NotificationsSettings() {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
-      if (!user) throw new Error('You must be signed in to update notification preferences.');
+      if (!user) {
+        throw new Error('You must be signed in to update notification preferences.');
+      }
 
       const { error } = await supabase
         .from('user_notification_preferences')
@@ -167,7 +183,9 @@ export default function NotificationsSettings() {
       toast.success('Digest preference updated');
     } catch (err) {
       setPreferences(previous);
-      toast.error('Apply the collaboration database migration before enabling digest preferences.');
+      toast.error(
+        'Apply the collaboration database migration before enabling digest preferences.'
+      );
       console.error('Could not save digest preference:', err);
     } finally {
       setSavingKey(null);
@@ -176,181 +194,233 @@ export default function NotificationsSettings() {
 
   if (loading) {
     return (
-      <div className="py-20 flex flex-col items-center justify-center text-gray-400 space-y-3">
+      <div className="flex flex-col items-center justify-center space-y-3 py-20 text-gray-500 dark:text-gray-400">
         <Loader2 size={26} className={`animate-spin ${theme.textAccent}`} />
-        <p className="text-xs">Loading preferences...</p>
+        <p className="text-xs font-medium">Loading notification preferences...</p>
       </div>
     );
   }
 
+  const emailItems: {
+    key: 'weekly_newsletter' | 'new_comments' | 'project_invites';
+    title: string;
+    description: string;
+  }[] = [
+    {
+      key: 'weekly_newsletter',
+      title: 'Weekly Newsletter',
+      description: "Get a summary of your team's performance every Monday.",
+    },
+    {
+      key: 'new_comments',
+      title: 'New Comments',
+      description: 'Receive an email when someone comments on your task.',
+    },
+    {
+      key: 'project_invites',
+      title: 'Project Invites',
+      description: 'Get notified when you are added to a new project.',
+    },
+  ];
+
+  const pushItems: {
+    key: 'mentions' | 'task_reminders';
+    title: string;
+    description: string;
+  }[] = [
+    {
+      key: 'mentions',
+      title: 'Mentions',
+      description: 'Notify when @mentioned in a comment or chat.',
+    },
+    {
+      key: 'task_reminders',
+      title: 'Task Reminders',
+      description: 'Show overdue and due-today tasks in your in-app notifications.',
+    },
+  ];
+
   return (
-    <div className="space-y-6 max-w-4xl animate-in fade-in duration-200">
+    <div className="max-w-4xl space-y-6 animate-in fade-in duration-200">
       {/* 1. Email Notifications Card */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
-        <div className="flex items-start gap-3 border-b border-gray-800/80 pb-5">
-          <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+      <section className="space-y-6 rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-[#161b22] dark:shadow-xl md:p-8">
+        <div className="flex items-start gap-3.5 border-b border-gray-100 pb-5 dark:border-gray-800/80">
+          <div
+            className={`mt-0.5 rounded-2xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <Mail size={20} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Email Notifications</h2>
-            <p className="text-xs text-gray-400">Choose what we send to your inbox.</p>
+            <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+              Email Notifications
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Choose what we send to your inbox.
+            </p>
           </div>
         </div>
 
-        <div className="divide-y divide-gray-800/70">
-          {/* Weekly Newsletter */}
-          <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white">Weekly Newsletter</p>
-              <p className="text-xs text-gray-400">Get a summary of your team's performance every Monday.</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={preferences.weekly_newsletter}
-              onClick={() => handleToggle('weekly_newsletter')}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                preferences.weekly_newsletter ? theme.toggleActive : 'bg-gray-700/60'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  preferences.weekly_newsletter ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+        <div className="divide-y divide-gray-100 dark:divide-gray-800/70">
+          {emailItems.map((item, idx) => {
+            const enabled = preferences[item.key];
+            const isSaving = savingKey === item.key;
+            return (
+              <div
+                key={item.key}
+                className={`flex items-center justify-between gap-4 py-4 ${
+                  idx === 0 ? 'pt-0' : ''
+                } ${idx === emailItems.length - 1 ? 'pb-0' : ''}`}
+              >
+                <div className="space-y-0.5 pr-2">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {item.description}
+                  </p>
+                </div>
 
-          {/* New Comments */}
-          <div className="py-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white">New Comments</p>
-              <p className="text-xs text-gray-400">Receive an email when someone comments on your task.</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={preferences.new_comments}
-              onClick={() => handleToggle('new_comments')}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                preferences.new_comments ? theme.toggleActive : 'bg-gray-700/60'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  preferences.new_comments ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Project Invites */}
-          <div className="py-4 last:pb-0 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white">Project Invites</p>
-              <p className="text-xs text-gray-400">Get notified when you are added to a new project.</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={preferences.project_invites}
-              onClick={() => handleToggle('project_invites')}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                preferences.project_invites ? theme.toggleActive : 'bg-gray-700/60'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  preferences.project_invites ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={item.title}
+                  disabled={isSaving}
+                  onClick={() => handleToggle(item.key)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#161b22] disabled:opacity-60 ${
+                    enabled
+                      ? theme.toggleActive
+                      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700/70 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
       {/* 2. Push Notifications Card */}
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
-        <div className="flex items-start gap-3 border-b border-gray-800/80 pb-5">
-          <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 mt-0.5`}>
+      <section className="space-y-6 rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-[#161b22] dark:shadow-xl md:p-8">
+        <div className="flex items-start gap-3.5 border-b border-gray-100 pb-5 dark:border-gray-800/80">
+          <div
+            className={`mt-0.5 rounded-2xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <Bell size={20} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight">Push Notifications</h2>
-            <p className="text-xs text-gray-400">Real-time alerts on your desktop/mobile.</p>
+            <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+              Push Notifications
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Real-time alerts on your desktop and mobile devices.
+            </p>
           </div>
         </div>
 
-        <div className="divide-y divide-gray-800/70">
-          {/* Mentions */}
-          <div className="py-4 first:pt-0 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white">Mentions</p>
-              <p className="text-xs text-gray-400">Notify when @mentioned in a comment or chat.</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={preferences.mentions}
-              onClick={() => handleToggle('mentions')}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                preferences.mentions ? theme.toggleActive : 'bg-gray-700/60'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  preferences.mentions ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+        <div className="divide-y divide-gray-100 dark:divide-gray-800/70">
+          {pushItems.map((item, idx) => {
+            const enabled = preferences[item.key];
+            const isSaving = savingKey === item.key;
+            return (
+              <div
+                key={item.key}
+                className={`flex items-center justify-between gap-4 py-4 ${
+                  idx === 0 ? 'pt-0' : ''
+                } ${idx === pushItems.length - 1 ? 'pb-0' : ''}`}
+              >
+                <div className="space-y-0.5 pr-2">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {item.description}
+                  </p>
+                </div>
 
-          {/* Task Reminders */}
-          <div className="py-4 last:pb-0 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-white">Task Reminders</p>
-              <p className="text-xs text-gray-400">Show overdue and due-today tasks in your in-app notifications.</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={preferences.task_reminders}
-              onClick={() => handleToggle('task_reminders')}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                preferences.task_reminders ? theme.toggleActive : 'bg-gray-700/60'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                  preferences.task_reminders ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={item.title}
+                  disabled={isSaving}
+                  onClick={() => handleToggle(item.key)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#161b22] disabled:opacity-60 ${
+                    enabled
+                      ? theme.toggleActive
+                      : 'bg-gray-200 hover:bg-gray-300 dark:bg-gray-700/70 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                      enabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-4">
-        <div>
-          <h2 className="text-base font-bold text-white tracking-tight">Activity digest</h2>
-          <p className="text-xs text-gray-400">
-            Choose a digest cadence. Email delivery requires a configured scheduler and mail provider.
-          </p>
-        </div>
-        <label className="flex items-center justify-between gap-4 text-sm text-gray-200">
-          <span>Digest frequency</span>
-          <select
-            value={preferences.digest_frequency}
-            onChange={(event) => handleDigestChange(event.target.value as NotificationPreferences['digest_frequency'])}
-            disabled={_savingKey === 'digest_frequency'}
-            className="rounded-xl border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      {/* 3. Activity Digest Card */}
+      <section className="space-y-5 rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-[#161b22] dark:shadow-xl md:p-8">
+        <div className="flex items-start gap-3.5 border-b border-gray-100 pb-5 dark:border-gray-800/80">
+          <div
+            className={`mt-0.5 rounded-2xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
           >
-            <option value="off">Off</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-          </select>
-        </label>
-      </div>
+            <Clock size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
+              Activity Digest
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              Choose a digest cadence. Email delivery requires a configured scheduler and mail provider.
+            </p>
+          </div>
+        </div>
+
+        <div
+          role="radiogroup"
+          aria-label="Digest frequency"
+          className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+        >
+          {DIGEST_OPTIONS.map((option) => {
+            const isSelected = preferences.digest_frequency === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                disabled={savingKey === 'digest_frequency'}
+                onClick={() => handleDigestChange(option.value)}
+                className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition-all disabled:opacity-60 ${
+                  isSelected
+                    ? `${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/50 shadow-xs`
+                    : 'border-gray-200 bg-gray-50/70 text-gray-700 hover:border-gray-300 hover:bg-gray-100/70 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-300 dark:hover:border-gray-700'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-gray-900 dark:text-white">
+                    {option.label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {option.hint}
+                  </p>
+                </div>
+                {isSelected && <Check size={15} className="shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
