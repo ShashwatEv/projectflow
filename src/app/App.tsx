@@ -5,11 +5,11 @@ import { ThemeProvider } from '../context/ThemeContext';
 import { WorkspaceProvider } from '../context/WorkspaceContext';
 import { MeetingProvider } from '../context/MeetingContext';
 import { OnboardingSandboxProvider } from '../context/OnboardingSandboxContext';
-import { Loader2, ShieldAlert, ArrowRight } from 'lucide-react';
+import { ShieldAlert, ArrowRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { supabase } from '../lib/supabaseClient';
 import { isSuperAdmin } from '../lib/constants';
-
+import { SlidingLoader } from './components/SlidingLoader';
 // Core component imports
 import { ModernHeader } from './components/ModernHeader';
 import { ModernSidebar } from './components/ModernSidebar';
@@ -18,7 +18,6 @@ import CommandMenu from './components/CommandMenu';
 import OnboardingTour from './components/OnboardingTour';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import DesktopOnlyGuard from './components/DesktopOnlyGuard';
-import SplashScreen from './components/SplashScreen';
 import NetworkStatusPill from './components/NetworkStatusPill';
 import MobileBottomNav from './components/MobileBottomNav';
 
@@ -76,11 +75,7 @@ const ApiPlayground = lazy(() =>
 );
 
 function PageLoader() {
-  return (
-    <div className="flex h-full w-full items-center justify-center p-12 text-gray-400">
-      <Loader2 size={24} className="animate-spin text-indigo-500" />
-    </div>
-  );
+  return <SlidingLoader intervalMs={2000} />;
 }
 
 // Redirects desktop displays to dashboard to prevent stretched mobile UI layouts
@@ -198,9 +193,8 @@ function Layout() {
 export default function App() {
   const AppRouter = window.projectFlowDesktop?.isDesktop ? HashRouter : BrowserRouter;
   const [showSplash, setShowSplash] = useState(() => {
-    const isMobileViewport =
-      typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
-    return isMobileViewport && !sessionStorage.getItem('pf_splash_shown');
+    if (typeof window === 'undefined') return false;
+    return !sessionStorage.getItem('pf_splash_shown');
   });
 
   const handleFinishSplash = () => {
@@ -208,21 +202,14 @@ export default function App() {
     setShowSplash(false);
   };
 
-  useEffect(() => {
-    const mobileViewport = window.matchMedia('(max-width: 767px)');
-    const hideDesktopSplash = () => {
-      if (!mobileViewport.matches) setShowSplash(false);
-    };
-
-    hideDesktopSplash();
-    mobileViewport.addEventListener('change', hideDesktopSplash);
-    return () => mobileViewport.removeEventListener('change', hideDesktopSplash);
-  }, []);
-
   return (
     <>
       {showSplash && (
-        <SplashScreen onFinish={handleFinishSplash} minDurationMs={3600} />
+        <SlidingLoader
+          intervalMs={2000}
+          autoDismissMs={8000}
+          onComplete={handleFinishSplash}
+        />
       )}
 
       <AuthProvider>
@@ -233,7 +220,7 @@ export default function App() {
               <AppRouter>
                 <MeetingProvider>
                   <ErrorBoundary>
-                    <Suspense fallback={<PageLoader />}>
+                    <Suspense fallback={<SlidingLoader intervalMs={2000} />}>
                       <Routes>
                         {/* Public routes */}
                         <Route path="/downloads" element={<Downloads />} />
