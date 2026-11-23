@@ -50,6 +50,10 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
   const [focusedTaskIndex, setFocusedTaskIndex] = useState<number>(0);
   const [activeModalTaskId, setActiveModalTaskId] = useState<string | null>(null);
 
+  const [quickAddColumn, setQuickAddColumn] = useState<ColumnType | null>(null);
+  const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
+
   const fetchTasks = async () => {
     if (isSandboxActive) {
       const grouped: ColumnData = {
@@ -157,6 +161,48 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     };
   }, [projectId, isSandboxActive, sandboxTasks]);
 
+  const handleOpenQuickAdd = (col: ColumnType) => {
+    setQuickAddColumn(col);
+    setQuickAddTitle('');
+  };
+
+  const handleQuickCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanTitle = quickAddTitle.trim();
+    if (!cleanTitle || !quickAddColumn || creatingTask) return;
+
+    const dbStatus = quickAddColumn === 'inProgress' ? 'in_progress' : quickAddColumn;
+    setCreatingTask(true);
+
+    try {
+      if (isSandboxActive) {
+        toast.info(`Draft "${cleanTitle}" noted for ${quickAddColumn} in Safe Sandbox.`);
+        setQuickAddTitle('');
+        setQuickAddColumn(null);
+        return;
+      }
+
+      const { error } = await supabase.from('tasks').insert({
+        title: cleanTitle,
+        status: dbStatus,
+        priority: 'medium',
+        ...(projectId ? { project_id: projectId } : {}),
+      });
+
+      if (error) throw error;
+
+      setQuickAddTitle('');
+      setQuickAddColumn(null);
+      toast.success('Task added to column');
+      await fetchTasks();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create task';
+      toast.error(message);
+    } finally {
+      setCreatingTask(false);
+    }
+  };
+
   const handleDrop = async (taskId: string, targetColumn: ColumnType) => {
     if (isSandboxActive) {
       updateSandboxTaskStatus(taskId, targetColumn);
@@ -229,6 +275,12 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
         return;
       }
 
+      if (e.key === 'Escape' && quickAddColumn) {
+        e.preventDefault();
+        setQuickAddColumn(null);
+        return;
+      }
+
       const activeColKey = COLUMN_KEYS[focusedColIndex] || 'todo';
       const currentTasks = columns[activeColKey] || [];
 
@@ -262,7 +314,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
         }
       }
     },
-    [focusedColIndex, focusedTaskIndex, columns]
+    [focusedColIndex, focusedTaskIndex, columns, quickAddColumn]
   );
 
   useEffect(() => {
@@ -355,6 +407,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
             density={density}
             hoveredTaskId={hoveredTaskId}
             onHoverTask={setHoveredTaskId}
+            onAddTask={() => handleOpenQuickAdd('todo')}
             onDrop={(taskId) => handleDrop(taskId, 'todo')}
             onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
             onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
@@ -367,6 +420,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
             density={density}
             hoveredTaskId={hoveredTaskId}
             onHoverTask={setHoveredTaskId}
+            onAddTask={() => handleOpenQuickAdd('inProgress')}
             onDrop={(taskId) => handleDrop(taskId, 'inProgress')}
             onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
             onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
@@ -379,6 +433,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
             density={density}
             hoveredTaskId={hoveredTaskId}
             onHoverTask={setHoveredTaskId}
+            onAddTask={() => handleOpenQuickAdd('review')}
             onDrop={(taskId) => handleDrop(taskId, 'review')}
             onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
             onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
@@ -391,6 +446,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
             density={density}
             hoveredTaskId={hoveredTaskId}
             onHoverTask={setHoveredTaskId}
+            onAddTask={() => handleOpenQuickAdd('done')}
             onDrop={(taskId) => handleDrop(taskId, 'done')}
             onTaskClick={(taskId) => setActiveModalTaskId(taskId)}
             onStatusChange={(taskId, st) => handleDrop(taskId, st as ColumnType)}
@@ -398,6 +454,56 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
           />
         </div>
       </DndProvider>
+
+      {/* Quick Add Task Modal */}
+      {quickAddColumn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <form
+            onSubmit={(e) => void handleQuickCreateTask(e)}
+            className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-800 dark:bg-[#161b22] space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                Add Task to{' '}
+                {quickAddColumn === 'inProgress'
+                  ? 'In Progress'
+                  : quickAddColumn.charAt(0).toUpperCase() + quickAddColumn.slice(1)}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setQuickAddColumn(null)}
+                className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Esc / Close
+              </button>
+            </div>
+            <input
+              autoFocus
+              required
+              value={quickAddTitle}
+              onChange={(e) => setQuickAddTitle(e.target.value)}
+              placeholder="Task title..."
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-[#0d1117] dark:text-white"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setQuickAddColumn(null)}
+                className="rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!quickAddTitle.trim() || creatingTask}
+                className={`rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-50 ${theme.btnPrimary}`}
+              >
+                {creatingTask ? 'Adding...' : 'Add Task'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Peek Detail Modal */}
       <TaskDetailModal

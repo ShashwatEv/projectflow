@@ -1,7 +1,7 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "projectflow-workspace",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.2.0",
   "description": "ProjectFlow collaborative workspace",
   "repository": {
     "type": "git",

@@ -1,13 +1,33 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
-import { 
-  LayoutGrid, FolderKanban, CheckSquare, Users, Calendar, 
-  BarChart2, MessageSquare, Clock, Zap, Settings, Sun, Moon, 
-  Plus, Search, ArrowRight, Code2, Sparkles, Terminal, X
+import {
+  LayoutGrid,
+  FolderKanban,
+  CheckSquare,
+  Users,
+  Calendar,
+  BarChart2,
+  MessageSquare,
+  Clock,
+  Zap,
+  Settings,
+  Sun,
+  Moon,
+  Plus,
+  Search,
+  ArrowRight,
+  Code2,
+  Sparkles,
+  Terminal,
+  X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
+import AvatarWithFrame, {
+  AVATAR_FRAMES,
+  type AvatarFrameId,
+} from './AvatarWithFrame';
 
 const SHORTCUT_ROUTES: Record<string, string> = {
   n: '/tasks',
@@ -18,13 +38,28 @@ const SHORTCUT_ROUTES: Record<string, string> = {
   'shift+n': '/capture',
 };
 
+interface CommandUser {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  frame: AvatarFrameId;
+}
+
+function normalizeFrameId(value: unknown): AvatarFrameId {
+  if (typeof value === 'string' && AVATAR_FRAMES.some((item) => item.id === value)) {
+    return value as AvatarFrameId;
+  }
+  return 'blue-sparkles';
+}
+
 export default function CommandMenu() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
   const [projects, setProjects] = useState<{ id: string; name: string; status: string }[]>([]);
-  const [users, setUsers] = useState<{ id: string; name: string; role: string; avatar: string }[]>([]);
+  const [users, setUsers] = useState<CommandUser[]>([]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -38,13 +73,7 @@ export default function CommandMenu() {
       const isEditingText =
         target instanceof HTMLElement &&
         (target.isContentEditable || target.matches('input, textarea, select, [role="textbox"]'));
-      if (
-        isEditingText ||
-        !e.altKey ||
-        e.ctrlKey ||
-        e.metaKey ||
-        e.repeat
-      ) {
+      if (isEditingText || !e.altKey || e.ctrlKey || e.metaKey || e.repeat) {
         return;
       }
 
@@ -54,7 +83,10 @@ export default function CommandMenu() {
       if (shortcutPath) {
         e.preventDefault();
         setOpen(false);
-        navigate(shortcutPath, shortcutPath === '/tasks' ? { state: { focusNewTask: true } } : undefined);
+        navigate(
+          shortcutPath,
+          shortcutPath === '/tasks' ? { state: { focusNewTask: true } } : undefined
+        );
       }
     };
 
@@ -83,19 +115,23 @@ export default function CommandMenu() {
         );
       }
 
-      const { data: userData } = await supabase.from('user_profiles').select('id, name, role, avatar').limit(8);
+      const { data: userData } = await supabase.from('user_profiles').select('*').limit(8);
       if (userData) {
         setUsers(
-          userData.map((u) => ({
-            id: u.id,
-            name: u.name || 'User',
-            role: u.role || 'Member',
-            avatar: u.avatar || '/pfp.jpg',
-          }))
+          userData.map((u) => {
+            const row = u as Record<string, unknown>;
+            return {
+              id: String(row.id || ''),
+              name: typeof row.name === 'string' && row.name ? row.name : 'User',
+              role: typeof row.role === 'string' && row.role ? row.role : 'Member',
+              avatar: typeof row.avatar === 'string' && row.avatar ? row.avatar : '/pfp.jpg',
+              frame: normalizeFrameId(row.avatar_frame),
+            };
+          })
         );
       }
     }
-    fetchData();
+    void fetchData();
   }, [open]);
 
   const runCommand = (action: () => void) => {
@@ -107,15 +143,15 @@ export default function CommandMenu() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div 
+      <div
         className="w-full max-w-xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <Command label="Global Command Menu" className="w-full">
           <div className="flex items-center gap-3 px-4 border-b border-gray-200 dark:border-gray-700">
             <Search className="text-gray-400 shrink-0" size={18} />
-            <Command.Input 
-              autoFocus 
+            <Command.Input
+              autoFocus
               placeholder="Type a command or jump to projects, people, views..."
               className="w-full py-4 text-sm bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-400"
             />
@@ -136,7 +172,10 @@ export default function CommandMenu() {
             </Command.Empty>
 
             {/* Recent Workspaces Quick Jump */}
-            <Command.Group heading="Recent Jumps" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
+            <Command.Group
+              heading="Recent Jumps"
+              className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5"
+            >
               <Command.Item
                 onSelect={() => runCommand(() => navigate('/code'))}
                 className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
@@ -172,7 +211,10 @@ export default function CommandMenu() {
             </Command.Group>
 
             {/* Quick Actions */}
-            <Command.Group heading="Quick Actions" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
+            <Command.Group
+              heading="Quick Actions"
+              className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5"
+            >
               <Command.Item
                 onSelect={() => runCommand(() => setTheme(theme === 'dark' ? 'light' : 'dark'))}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
@@ -191,7 +233,10 @@ export default function CommandMenu() {
             </Command.Group>
 
             {/* Navigation Group */}
-            <Command.Group heading="Navigation" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
+            <Command.Group
+              heading="Navigation"
+              className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5"
+            >
               {[
                 { name: 'Dashboard Overview', path: '/dashboard', icon: <LayoutGrid size={16} /> },
                 { name: 'Sprint Planner', path: '/sprint-planner', icon: <Sparkles size={16} /> },
@@ -220,7 +265,10 @@ export default function CommandMenu() {
 
             {/* Projects Group */}
             {projects.length > 0 && (
-              <Command.Group heading="Projects" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
+              <Command.Group
+                heading="Projects"
+                className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5"
+              >
                 {projects.map((proj) => (
                   <Command.Item
                     key={proj.id}
@@ -241,7 +289,10 @@ export default function CommandMenu() {
 
             {/* People Group */}
             {users.length > 0 && (
-              <Command.Group heading="Team Members" className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5">
+              <Command.Group
+                heading="Team Members"
+                className="text-gray-400 text-[11px] font-bold uppercase px-2 py-1.5"
+              >
                 {users.map((u) => (
                   <Command.Item
                     key={u.id}
@@ -249,10 +300,12 @@ export default function CommandMenu() {
                     className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-2.5 truncate">
-                      <img 
-                        src={u.avatar || '/pfp.jpg'} 
-                        alt="" 
-                        className="w-6 h-6 rounded-full object-cover border border-gray-200 dark:border-gray-700" 
+                      <AvatarWithFrame
+                        src={u.avatar || '/pfp.jpg'}
+                        alt={u.name}
+                        shape="circle"
+                        frame={u.frame}
+                        size={24}
                       />
                       <span className="truncate">{u.name}</span>
                     </div>
