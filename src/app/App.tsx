@@ -50,6 +50,7 @@ const ProjectFlowAbout = lazy(() => import('./pages/ProjectFlowAbout'));
 const MobileProjectsOverview = lazy(() => import('./pages/MobileProjectsOverview'));
 const MobileUnifiedInbox = lazy(() => import('./pages/MobileUnifiedInbox'));
 const MobilePeopleDirectory = lazy(() => import('./pages/MobilePeopleDirectory'));
+const AvatarStudio = lazy(() => import('./pages/AvatarStudio'));
 
 // Mobile-specific and meetings/downloads workflow pages (lazy-loaded)
 const MobileTriageDeck = lazy(() => import('./pages/MobileTriageDeck'));
@@ -238,6 +239,7 @@ export default function App() {
                             <Route path="/mobile/inbox" element={<MobileUnifiedInbox />} />
                             <Route path="/mobile/people" element={<MobilePeopleDirectory />} />
                             <Route path="/dashboard" element={<Dashboard />} />
+                            <Route path="/avatar-studio" element={<AvatarStudio />} />
 
                             {/* Work routes */}
                             <Route path="/tasks" element={<MyTasks />} />

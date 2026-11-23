@@ -1,15 +1,37 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Mail, MapPin, Globe, Phone, Save, Loader2, Camera, Sparkles, ExternalLink, BadgeCheck, MessageSquare, CheckSquare, Clock, CheckCircle2 
-  
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import {
+  Mail,
+  MapPin,
+  Globe,
+  Phone,
+  Save,
+  Loader2,
+  Camera,
+  Sparkles,
+  ExternalLink,
+  BadgeCheck,
+  MessageSquare,
+  CheckSquare,
+  Clock,
+  CheckCircle2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { toast } from 'sonner';
 import { getGoogleProfilePhoto } from '../../lib/profileAvatar';
-
 import { isSuperAdmin } from '../../lib/constants';
+import AvatarWithFrame, {
+  AVATAR_FRAMES,
+  type AvatarFrameId,
+} from '../components/AvatarWithFrame';
+
+const FRAME_STORAGE_KEY = 'pf_user_avatar_frame';
+
+function normalizeFrameId(value: unknown): AvatarFrameId | null {
+  if (typeof value !== 'string') return null;
+  return AVATAR_FRAMES.some((frame) => frame.id === value) ? (value as AvatarFrameId) : null;
+}
 
 interface UserProfile {
   id: string;
@@ -21,6 +43,7 @@ interface UserProfile {
   website?: string;
   phone?: string;
   avatar?: string;
+  avatar_frame?: AvatarFrameId;
   is_verified?: boolean;
   created_at?: string;
 }
@@ -49,6 +72,7 @@ export default function Profile() {
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('/pfp.jpg');
+  const [selectedFrame, setSelectedFrame] = useState<AvatarFrameId>('blue-sparkles');
   const [googleAvatar, setGoogleAvatar] = useState<string | null>(null);
 
   const avatarOptions = [
@@ -59,7 +83,7 @@ export default function Profile() {
   ];
 
   // 1. Fetch user data & task metrics from Supabase
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const { data: authData } = await supabase.auth.getUser();
       const authUser = authData?.user;
@@ -71,45 +95,62 @@ export default function Profile() {
       const targetUserId = paramUserId || currentId;
       setGoogleAvatar(targetUserId === currentId ? getGoogleProfilePhoto(authUser) : null);
 
-      // Fetch user profile row
       const isSelf = targetUserId === currentId;
-      let data: {
-        email?: string | null;
-        role?: string | null;
-        name?: string | null;
-        bio?: string | null;
-        location?: string | null;
-        website?: string | null;
-        phone?: string | null;
-        avatar?: string | null;
-        is_verified?: boolean | null;
-        created_at?: string | null;
-      } | null = null;
+      let rawData: Record<string, unknown> | null = null;
 
       if (isSelf) {
         const res = await supabase.from('users').select('*').eq('id', targetUserId).maybeSingle();
         if (res.error && res.error.code !== 'PGRST116') throw res.error;
-        data = res.data;
+        rawData = res.data as Record<string, unknown> | null;
       } else {
-        const res = await supabase.from('user_profiles').select('*').eq('id', targetUserId).maybeSingle();
+        const res = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', targetUserId)
+          .maybeSingle();
         if (res.error && res.error.code !== 'PGRST116') throw res.error;
-        data = res.data;
+        rawData = res.data as Record<string, unknown> | null;
       }
-      const email = data?.email || (targetUserId === currentId ? authUser?.email : '') || '';
-      const isSuperAdminAccount = isSuperAdmin(email, data?.role);
+
+      const dbEmail = typeof rawData?.email === 'string' ? rawData.email : '';
+      const dbRole = typeof rawData?.role === 'string' ? rawData.role : null;
+      const email = dbEmail || (targetUserId === currentId ? authUser?.email : '') || '';
+      const isSuperAdminAccount = isSuperAdmin(email, dbRole);
+
+      const localFrame = normalizeFrameId(
+        typeof window !== 'undefined' ? localStorage.getItem(FRAME_STORAGE_KEY) : null
+      );
+      const dbFrame = normalizeFrameId(rawData?.avatar_frame);
+      const resolvedFrame: AvatarFrameId =
+        dbFrame ?? (isSelf && localFrame ? localFrame : 'blue-sparkles');
+
+      const metadataName =
+        typeof authUser?.user_metadata?.full_name === 'string'
+          ? authUser.user_metadata.full_name
+          : 'Member';
+      const metadataAvatar =
+        typeof authUser?.user_metadata?.avatar_url === 'string'
+          ? authUser.user_metadata.avatar_url
+          : '/pfp.jpg';
 
       const loadedProfile: UserProfile = {
         id: targetUserId,
-        name: data?.name || (targetUserId === currentId ? authUser?.user_metadata?.full_name : 'Member') || 'Member',
+        name:
+          (typeof rawData?.name === 'string' && rawData.name) ||
+          (targetUserId === currentId ? metadataName : 'Member'),
         email,
-        role: isSuperAdminAccount ? 'Admin' : (data?.role || 'Member'),
-        bio: data?.bio || '',
-        location: data?.location || '',
-        website: data?.website || '',
-        phone: data?.phone || '',
-         avatar: data?.avatar ?? (targetUserId === currentId ? authUser?.user_metadata?.avatar_url ?? '/pfp.jpg' : '/pfp.jpg'),
-        is_verified: Boolean(data?.is_verified || isSuperAdminAccount),
-       created_at: data?.created_at ?? undefined,
+        role: isSuperAdminAccount ? 'Admin' : dbRole || 'Member',
+        bio: typeof rawData?.bio === 'string' ? rawData.bio : '',
+        location: typeof rawData?.location === 'string' ? rawData.location : '',
+        website: typeof rawData?.website === 'string' ? rawData.website : '',
+        phone: typeof rawData?.phone === 'string' ? rawData.phone : '',
+        avatar:
+          (typeof rawData?.avatar === 'string' && rawData.avatar) ||
+          (targetUserId === currentId ? metadataAvatar : '/pfp.jpg'),
+        avatar_frame: resolvedFrame,
+        is_verified: Boolean(rawData?.is_verified || isSuperAdminAccount),
+        created_at:
+          typeof rawData?.created_at === 'string' ? rawData.created_at : undefined,
       };
 
       setProfile(loadedProfile);
@@ -120,6 +161,7 @@ export default function Profile() {
       setPhone(loadedProfile.phone || '');
       setBio(loadedProfile.bio || '');
       setSelectedAvatar(loadedProfile.avatar || '/pfp.jpg');
+      setSelectedFrame(resolvedFrame);
 
       // Fetch actual task stats for this user
       const { count: completedCount } = await supabase
@@ -138,17 +180,16 @@ export default function Profile() {
         completedTasks: completedCount || 0,
         activeTasks: activeCount || 0,
       });
-
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching profile:', err);
       toast.error('Failed to load profile details');
     } finally {
       setLoading(false);
     }
-  };
+  }, [paramUserId]);
 
   useEffect(() => {
-    loadProfile();
+    void loadProfile();
 
     // Subscribe to realtime updates for this user's profile
     const channel = supabase
@@ -156,14 +197,27 @@ export default function Profile() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'users' },
-        () => loadProfile()
+        () => {
+          void loadProfile();
+        }
       )
       .subscribe();
 
+    const handleFrameSync = (event: Event) => {
+      const customEvent = event as CustomEvent<AvatarFrameId>;
+      if (customEvent.detail && normalizeFrameId(customEvent.detail)) {
+        setSelectedFrame(customEvent.detail);
+      } else {
+        void loadProfile();
+      }
+    };
+
+    window.addEventListener('avatar-frame-updated', handleFrameSync);
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('avatar-frame-updated', handleFrameSync);
     };
-  }, [paramUserId]);
+  }, [paramUserId, loadProfile]);
 
   const isOwnProfile = !paramUserId || paramUserId === currentAuthId;
   const isSuperAdminAccount = isSuperAdmin(profile?.email, profile?.role);
@@ -182,11 +236,12 @@ export default function Profile() {
         phone: phone.trim(),
         bio: bio.trim(),
         avatar: selectedAvatar,
+        avatar_frame: selectedFrame,
       };
 
       const { error } = await supabase
         .from('users')
-        .update(updates)
+        .update(updates as Record<string, unknown>)
         .eq('id', profile.id);
 
       if (error) throw error;
@@ -194,13 +249,16 @@ export default function Profile() {
       // Keep local session storage aligned for global header sync
       localStorage.setItem('pf_user_name', fullName.trim());
       localStorage.setItem('pf_user_avatar', selectedAvatar);
+      localStorage.setItem(FRAME_STORAGE_KEY, selectedFrame);
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new Event('user-profile-updated'));
+      window.dispatchEvent(new CustomEvent('avatar-frame-updated', { detail: selectedFrame }));
 
       setProfile((prev) => (prev ? { ...prev, ...updates } : null));
       toast.success('Profile credentials synchronized!');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update profile');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update profile';
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -223,7 +281,6 @@ export default function Profile() {
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8 text-gray-900 dark:text-gray-200 animate-in fade-in duration-300">
-      
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-6">
         <div className="space-y-1">
@@ -231,7 +288,9 @@ export default function Profile() {
             <h1 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
               {isOwnProfile ? 'My Profile' : 'Team Member Profile'}
             </h1>
-            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 flex items-center gap-1`}>
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 flex items-center gap-1`}
+            >
               <Sparkles size={11} /> {isOwnProfile ? 'Live Identity' : 'Directory View'}
             </span>
           </div>
@@ -265,23 +324,23 @@ export default function Profile() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
         {/* Left Side: Modern Interactive ID Badge */}
         <div className="lg:col-span-5 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl shadow-xl overflow-hidden">
-          
           {/* Cover Art Banner */}
           <div className="h-32 bg-gradient-to-r from-blue-700 via-indigo-600 to-purple-700 relative">
-            {/* Floating Round Avatar */}
+            {/* Floating Circle Avatar with Frame */}
             <div className="absolute left-1/2 -bottom-12 -translate-x-1/2 z-10">
-              <div className="relative">
-                <img
-                  src={isOwnProfile ? selectedAvatar : profile?.avatar}
-                  alt={fullName || 'User'}
-                  className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-[#161b22] shadow-2xl bg-white dark:bg-[#0d1117]"
+              <div className="relative inline-flex items-center justify-center">
+                <AvatarWithFrame
+                  src={isOwnProfile ? selectedAvatar : profile?.avatar || '/pfp.jpg'}
+                  alt={fullName || profile?.name || 'User'}
+                  shape="circle"
+                  frame={isOwnProfile ? selectedFrame : profile?.avatar_frame || 'blue-sparkles'}
+                  size={96}
                 />
-                <span 
-                  className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full shadow-sm" 
-                  title="Active in workspace" 
+                <span
+                  className="absolute bottom-1 right-1 z-10 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full shadow-sm"
+                  title="Active in workspace"
                 />
               </div>
             </div>
@@ -292,7 +351,7 @@ export default function Profile() {
             <div>
               <div className="flex items-center justify-center gap-1.5 flex-wrap">
                 <h2 className="text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-                  {isOwnProfile ? (fullName || 'Workspace Member') : profile?.name}
+                  {isOwnProfile ? fullName || 'Workspace Member' : profile?.name}
                 </h2>
                 {profile?.is_verified && (
                   <span title="Verified Workspace Identity" className="text-blue-500">
@@ -303,7 +362,7 @@ export default function Profile() {
 
               <div className="flex items-center justify-center gap-1.5 mt-1">
                 <span className={`text-xs font-semibold ${theme.textAccent} tracking-wide uppercase`}>
-                  {isOwnProfile ? (role || 'Member') : profile?.role}
+                  {isOwnProfile ? role || 'Member' : profile?.role}
                 </span>
                 {isSuperAdminAccount && (
                   <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/30 text-[10px] font-bold">
@@ -339,9 +398,10 @@ export default function Profile() {
             {/* Bio Callout */}
             <div className="bg-gray-50 dark:bg-[#0d1117]/80 border border-gray-200 dark:border-gray-800/80 rounded-2xl p-4 text-left space-y-3 text-xs shadow-inner">
               <p className="italic text-gray-600 dark:text-gray-300 leading-relaxed text-[11px] border-b border-gray-200 dark:border-gray-800 pb-2">
-                {(isOwnProfile ? bio : profile?.bio) || '"Focused on building performant software applications."'}
+                {(isOwnProfile ? bio : profile?.bio) ||
+                  '"Focused on building performant software applications."'}
               </p>
-              
+
               {/* Contact & Meta Stack */}
               <div className="space-y-2.5 text-gray-600 dark:text-gray-400 text-xs">
                 <div className="flex items-center gap-2.5">
@@ -352,14 +412,18 @@ export default function Profile() {
                 {(isOwnProfile ? phone : profile?.phone) && (
                   <div className="flex items-center gap-2.5">
                     <Phone size={14} className="shrink-0 text-gray-400" />
-                    <span className="truncate select-all">{isOwnProfile ? phone : profile?.phone}</span>
+                    <span className="truncate select-all">
+                      {isOwnProfile ? phone : profile?.phone}
+                    </span>
                   </div>
                 )}
 
                 {(isOwnProfile ? location : profile?.location) && (
                   <div className="flex items-center gap-2.5">
                     <MapPin size={14} className="shrink-0 text-gray-400" />
-                    <span className="truncate">{isOwnProfile ? location : profile?.location}</span>
+                    <span className="truncate">
+                      {isOwnProfile ? location : profile?.location}
+                    </span>
                   </div>
                 )}
 
@@ -367,14 +431,20 @@ export default function Profile() {
                   <div className="flex items-center gap-2.5 pt-1">
                     <Globe size={14} className={`shrink-0 ${theme.textAccent}`} />
                     <a
-                      href={(isOwnProfile ? website : profile?.website)?.startsWith('http') 
-                        ? (isOwnProfile ? website : profile?.website) 
-                        : `https://${isOwnProfile ? website : profile?.website}`}
+                      href={
+                        (isOwnProfile ? website : profile?.website)?.startsWith('http')
+                          ? isOwnProfile
+                            ? website
+                            : profile?.website
+                          : `https://${isOwnProfile ? website : profile?.website}`
+                      }
                       target="_blank"
                       rel="noreferrer"
                       className={`truncate ${theme.textAccent} ${theme.textHover} inline-flex items-center gap-1 transition-colors font-semibold`}
                     >
-                      <span>{(isOwnProfile ? website : profile?.website)?.replace(/^https?:\/\//, '')}</span>
+                      <span>
+                        {(isOwnProfile ? website : profile?.website)?.replace(/^https?:\/\//, '')}
+                      </span>
                       <ExternalLink size={11} />
                     </a>
                   </div>
@@ -386,30 +456,44 @@ export default function Profile() {
 
         {/* Right Side: Edit Form Canvas or Read-Only Directory Summary */}
         <div className="lg:col-span-7 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl p-6 md:p-8 shadow-xl space-y-6">
-          
           {isOwnProfile ? (
             <>
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">Edit Identity Details</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Update how your profile appears across project tasks, code commits, and team channels.</p>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
+                  Edit Identity Details
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Update how your profile appears across project tasks, code commits, and team channels.
+                </p>
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
-                
                 {/* Avatar Selector Tray */}
                 <div className="p-4 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl flex flex-col sm:flex-row items-center gap-4">
-                  <img
+                  <AvatarWithFrame
                     src={selectedAvatar}
                     alt="Selected"
-                    className="w-16 h-16 rounded-2xl object-cover border border-gray-200 dark:border-gray-700 shadow-sm"
+                    shape="square"
+                    frame={selectedFrame}
+                    size={64}
                   />
-                  <div className="space-y-1.5 flex-1 text-center sm:text-left">
-                    <div className="text-xs font-semibold text-gray-900 dark:text-white flex items-center justify-center sm:justify-start gap-1.5">
-                      <Camera size={14} className={theme.textAccent} />
-                      <span>Workspace Avatar</span>
+                  <div className="space-y-2 flex-1 text-center sm:text-left">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2">
+                      <div className="text-xs font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                        <Camera size={14} className={theme.textAccent} />
+                        <span>Workspace Avatar</span>
+                      </div>
+                      <Link
+                        to="/avatar-studio"
+                        className={`text-[11px] font-semibold hover:underline ${theme.textAccent}`}
+                      >
+                        Customize Frame in Studio →
+                      </Link>
                     </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">Choose your active display portrait:</p>
-                    <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-1">
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Choose your active display portrait:
+                    </p>
+                    <div className="flex flex-wrap justify-center sm:justify-start gap-2 pt-0.5">
                       {avatarOptions.map((av) => {
                         const isSelected = selectedAvatar === av.src;
                         return (
@@ -419,7 +503,7 @@ export default function Profile() {
                             onClick={() => setSelectedAvatar(av.src)}
                             className={`text-xs px-3 py-1.5 rounded-xl font-semibold border flex items-center gap-1.5 transition-all ${
                               isSelected
-                                ? `${theme.borderAccent} ${theme.textAccent}${theme.bgSubtle} shadow-sm`
+                                ? `${theme.borderAccent} ${theme.textAccent} ${theme.bgSubtle} shadow-xs`
                                 : 'border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-white dark:bg-[#161b22]'
                             }`}
                           >
@@ -436,7 +520,9 @@ export default function Profile() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {/* Full Name */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Full Name *</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Full Name *
+                    </label>
                     <input
                       type="text"
                       required
@@ -448,7 +534,9 @@ export default function Profile() {
 
                   {/* Role Field */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Job Title / Role</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Job Title / Role
+                    </label>
                     <input
                       type="text"
                       disabled={isSuperAdminAccount}
@@ -462,7 +550,9 @@ export default function Profile() {
 
                   {/* Location */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Location</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Location
+                    </label>
                     <input
                       type="text"
                       value={location}
@@ -474,7 +564,9 @@ export default function Profile() {
 
                   {/* Optional Phone Number */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Phone Number</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Phone Number
+                    </label>
                     <input
                       type="tel"
                       value={phone}
@@ -486,7 +578,9 @@ export default function Profile() {
 
                   {/* Website / Portfolio */}
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Portfolio URL</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Portfolio URL
+                    </label>
                     <input
                       type="url"
                       value={website}
@@ -498,7 +592,9 @@ export default function Profile() {
 
                   {/* Bio Field */}
                   <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Workspace Tagline / Bio</label>
+                    <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      Workspace Tagline / Bio
+                    </label>
                     <textarea
                       rows={2}
                       value={bio}
@@ -525,31 +621,47 @@ export default function Profile() {
           ) : (
             <div className="space-y-6">
               <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">Workspace Activity Overview</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Collaboration history and assignments for {profile?.name}.</p>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Workspace Activity Overview
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Collaboration history and assignments for {profile?.name}.
+                </p>
               </div>
 
               <div className="space-y-4 text-xs">
                 <div className="p-4 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl flex items-center justify-between">
                   <div>
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">Assigned Tasks In-Flight</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      Assigned Tasks In-Flight
+                    </span>
                     <p className="text-[11px] text-gray-500">Currently active on project boards</p>
                   </div>
-                  <span className="text-lg font-bold font-mono text-gray-900 dark:text-white">{stats.activeTasks}</span>
+                  <span className="text-lg font-bold font-mono text-gray-900 dark:text-white">
+                    {stats.activeTasks}
+                  </span>
                 </div>
 
                 <div className="p-4 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl flex items-center justify-between">
                   <div>
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">Completed Deliverables</span>
-                    <p className="text-[11px] text-gray-500">Total closed issues & user stories</p>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      Completed Deliverables
+                    </span>
+                    <p className="text-[11px] text-gray-500">
+                      Total closed issues & user stories
+                    </p>
                   </div>
-                  <span className="text-lg font-bold font-mono text-emerald-500">{stats.completedTasks}</span>
+                  <span className="text-lg font-bold font-mono text-emerald-500">
+                    {stats.completedTasks}
+                  </span>
                 </div>
 
                 {profile?.created_at && (
                   <div className="p-4 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-2xl flex items-center justify-between">
                     <div>
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">Member Since</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        Member Since
+                      </span>
                       <p className="text-[11px] text-gray-500">First joined workspace</p>
                     </div>
                     <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
@@ -570,7 +682,6 @@ export default function Profile() {
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>

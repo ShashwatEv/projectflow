@@ -10,10 +10,21 @@ import { useAuth } from '../../context/AuthContext';
 import { ALL_TEAMS_SCOPE, useWorkspace } from '../../context/WorkspaceContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { useOnlineUsers } from '../../hooks/useOnlineUsers';
+import AvatarWithFrame, {
+  AVATAR_FRAMES,
+  type AvatarFrameId,
+} from '../components/AvatarWithFrame';
 import ProjectInviteModal from '../components/ProjectInviteModal';
 import { toast } from 'sonner';
 
 import { SUPER_ADMIN_EMAIL, isSuperAdmin } from '../../lib/constants';
+
+const FRAME_STORAGE_KEY = 'pf_user_avatar_frame';
+
+function normalizeFrameId(value: unknown): AvatarFrameId | null {
+  if (typeof value !== 'string') return null;
+  return AVATAR_FRAMES.some((frame) => frame.id === value) ? (value as AvatarFrameId) : null;
+}
 
 interface UserData {
   id: string;
@@ -21,6 +32,7 @@ interface UserData {
   email: string;
   role: string;
   avatar: string;
+  avatar_frame?: AvatarFrameId;
   location?: string;
   bio?: string;
   website?: string;
@@ -76,13 +88,32 @@ export default function Team() {
 
       if (error) throw error;
       if (data) {
-        const formattedUsers: UserData[] = data.map((u: any) => ({
-          ...u,
-          name: u.name || 'Member',
-          role: isSuperAdmin(u.email, u.role) ? 'Admin' : (u.role || 'Member'),
-          avatar: u.avatar || '/pfp.jpg',
-          is_verified: Boolean(u.is_verified || isSuperAdmin(u.email, u.role)),
-        }));
+        const localFrame = normalizeFrameId(
+          typeof window !== 'undefined' ? localStorage.getItem(FRAME_STORAGE_KEY) : null
+        );
+        const formattedUsers: UserData[] = data.map((u: unknown) => {
+          const row = u as Record<string, unknown>;
+          const id = String(row.id || '');
+          const email = String(row.email || '');
+          const rawRole = typeof row.role === 'string' ? row.role : null;
+          const dbFrame = normalizeFrameId(row.avatar_frame);
+          const resolvedFrame: AvatarFrameId =
+            dbFrame ??
+            (id && currentUser?.id && id === currentUser.id && localFrame
+              ? localFrame
+              : 'blue-sparkles');
+
+          return {
+            ...(row as unknown as UserData),
+            id,
+            name: typeof row.name === 'string' && row.name ? row.name : 'Member',
+            email,
+            role: isSuperAdmin(email, rawRole) ? 'Admin' : (rawRole || 'Member'),
+            avatar: typeof row.avatar === 'string' && row.avatar ? row.avatar : '/pfp.jpg',
+            avatar_frame: resolvedFrame,
+            is_verified: Boolean(row.is_verified || isSuperAdmin(email, rawRole)),
+          };
+        });
         setUsers(formattedUsers);
       }
 
@@ -103,7 +134,7 @@ export default function Team() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     void fetchUsers();
@@ -116,8 +147,16 @@ export default function Team() {
       })
       .subscribe();
 
+    const handleFrameSync = () => {
+      void fetchUsers();
+    };
+    window.addEventListener('avatar-frame-updated', handleFrameSync);
+    window.addEventListener('user-profile-updated', handleFrameSync);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('avatar-frame-updated', handleFrameSync);
+      window.removeEventListener('user-profile-updated', handleFrameSync);
     };
   }, [fetchUsers]);
 
@@ -141,10 +180,6 @@ export default function Team() {
     navigator.clipboard.writeText(email);
     setActiveMenuId(null);
     toast.success('Email copied to clipboard!');
-  };
-
-  const handleImageError = (e: any) => {
-    e.target.src = `https://ui-avatars.com/api/?name=User&background=6366f1&color=fff`;
   };
 
   const getRoleBadge = (role: string, email?: string) => {
@@ -218,6 +253,7 @@ export default function Team() {
           </p>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddModalOpen(true)}
           className={`flex items-center gap-2 px-5 py-3 ${theme.btnPrimary} font-bold text-xs rounded-xl transition-all shadow-md active:scale-95`}
         >
@@ -277,6 +313,7 @@ export default function Team() {
         {/* Role Filter Menu */}
         <div className="relative" ref={filterRef}>
           <button
+            type="button"
             onClick={() => setIsFilterOpen(!isFilterOpen)}
             className={`px-5 py-2.5 text-xs text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/60 rounded-xl flex items-center gap-2 transition-colors ${
               isFilterOpen ? 'bg-gray-100 dark:bg-gray-800' : ''
@@ -293,6 +330,7 @@ export default function Team() {
                 {uniqueRoles.map(role => (
                   <button
                     key={role}
+                    type="button"
                     onClick={() => { setSelectedRole(role); setIsFilterOpen(false); }}
                     className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
                       selectedRole === role
@@ -332,6 +370,7 @@ export default function Team() {
                 <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
                   <div className="relative">
                     <button
+                      type="button"
                       onClick={() => setActiveMenuId(activeMenuId === user.id ? null : user.id)}
                       className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                     >
@@ -341,18 +380,21 @@ export default function Team() {
                     {activeMenuId === user.id && (
                       <div ref={menuRef} className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#0d1117] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden py-1 text-xs animate-in zoom-in-95 duration-200">
                         <button
+                          type="button"
                           onClick={() => { setActiveMenuId(null); startDM(user.id); }}
                           className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
                         >
                           <MessageSquare size={13} className={theme.textAccent} /> Send Message
                         </button>
                         <button
+                          type="button"
                           onClick={() => { setActiveMenuId(null); navigate(`/profile/${user.id}`); }}
                           className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
                         >
                           <ExternalLink size={13} /> View Profile
                         </button>
                         <button
+                          type="button"
                           onClick={() => copyEmail(user.email)}
                           className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 font-medium"
                         >
@@ -366,14 +408,18 @@ export default function Team() {
                 {/* Identity Header */}
                 <div className="flex items-start gap-4 mb-5">
                   <div className="relative shrink-0">
-                    <img
+                    <AvatarWithFrame
                       src={user.avatar}
-                      onError={handleImageError}
                       alt={user.name}
-                      className="w-14 h-14 rounded-2xl object-cover border-2 border-white dark:border-gray-800 shadow-sm bg-gray-100 dark:bg-gray-800"
+                      shape="square"
+                      frame={user.avatar_frame || 'blue-sparkles'}
+                      size={56}
                     />
                     {isOnline && (
-                      <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full" title="Online" />
+                      <span
+                        className="absolute -bottom-1 -right-1 z-10 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full"
+                        title="Online"
+                      />
                     )}
                   </div>
 
@@ -454,6 +500,7 @@ export default function Team() {
           <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-800">
             {/* Close Button */}
             <button
+              type="button"
               onClick={() => setSelectedUser(null)}
               className="absolute top-4 right-4 p-2 bg-black/30 hover:bg-black/50 text-white rounded-full z-10 transition-colors backdrop-blur-md"
             >
@@ -465,15 +512,19 @@ export default function Team() {
 
             <div className="px-6 pb-6 -mt-14 text-center relative space-y-3">
               {/* Profile Image with Online Pin */}
-              <div className="relative inline-block">
-                <img
+              <div className="relative inline-flex items-center justify-center">
+                <AvatarWithFrame
                   src={selectedUser.avatar}
-                  onError={handleImageError}
                   alt={selectedUser.name}
-                  className="w-28 h-28 rounded-full border-4 border-white dark:border-[#161b22] shadow-xl object-cover bg-white dark:bg-[#0d1117]"
+                  shape="circle"
+                  frame={selectedUser.avatar_frame || 'blue-sparkles'}
+                  size={112}
                 />
                 {onlineUserIds.has(selectedUser.id) && (
-                  <div className="absolute bottom-1 right-1 w-5 h-5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full" title="Online" />
+                  <div
+                    className="absolute bottom-1 right-1 z-10 w-5 h-5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full"
+                    title="Online"
+                  />
                 )}
               </div>
 
@@ -511,6 +562,7 @@ export default function Team() {
               {/* Direct Communication Buttons */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => { setSelectedUser(null); startDM(selectedUser.id); }}
                   className={`py-2.5 px-4 ${theme.btnPrimary} font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95`}
                 >
@@ -518,6 +570,7 @@ export default function Team() {
                   <span>Direct Message</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => { setSelectedUser(null); navigate(`/profile/${selectedUser.id}`); }}
                   className="py-2.5 px-4 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all"
                 >
