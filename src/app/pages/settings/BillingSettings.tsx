@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard,
   Check,
@@ -8,10 +8,29 @@ import {
   Sparkles,
   X,
   FolderKanban,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { useAuth } from '../../../context/AuthContext';
 import { useAccentTheme } from '../../../lib/useAccentTheme';
 import { toast } from 'sonner';
+
+type PlanId = 'free' | 'pro' | 'growth';
+
+interface PlanTier {
+  id: PlanId;
+  name: string;
+  badge: string;
+  description: string;
+  monthlyUsd: number;
+  yearlyUsd: number;
+  monthlyInr: number;
+  yearlyInr: number;
+  seatLimit: number;
+  storageLimitMb: number;
+  features: string[];
+}
 
 interface BillingRecord {
   id: string;
@@ -22,90 +41,257 @@ interface BillingRecord {
   status: 'PAID' | 'FREE' | 'ACTIVE';
 }
 
+const PLAN_TIERS: PlanTier[] = [
+  {
+    id: 'free',
+    name: 'Starter Free',
+    badge: 'Starter',
+    description: 'For individuals and small teams testing ProjectFlow boards and chat.',
+    monthlyUsd: 0,
+    yearlyUsd: 0,
+    monthlyInr: 0,
+    yearlyInr: 0,
+    seatLimit: 5,
+    storageLimitMb: 250,
+    features: [
+      'Up to 5 team members',
+      'Up to 5 active projects',
+      '250 MB file & chat storage',
+      'Realtime boards & team messaging',
+    ],
+  },
+  {
+    id: 'pro',
+    name: 'Pro Team',
+    badge: 'Most Popular',
+    description: 'Reasonable team pricing with unlimited projects, Code Studio, and AI tools.',
+    monthlyUsd: 6,
+    yearlyUsd: 5,
+    monthlyInr: 499,
+    yearlyInr: 399,
+    seatLimit: 50,
+    storageLimitMb: 10240,
+    features: [
+      'Unlimited projects & workflow boards',
+      'Up to 50 team seats',
+      '10 GB storage bucket',
+      'AI Code & Task Advisor + Monaco Studio',
+    ],
+  },
+  {
+    id: 'growth',
+    name: 'Growth Studio',
+    badge: 'Scale',
+    description: 'For growing engineering orgs needing high storage and audit exports.',
+    monthlyUsd: 12,
+    yearlyUsd: 10,
+    monthlyInr: 999,
+    yearlyInr: 799,
+    seatLimit: 250,
+    storageLimitMb: 102400,
+    features: [
+      'Everything in Pro Team',
+      'Up to 250 team seats',
+      '100 GB media & artifact storage',
+      'Audit log exports & priority support',
+    ],
+  },
+];
+
 export default function BillingSettings() {
   const theme = useAccentTheme();
+  const { user } = useAuth();
 
   const [memberCount, setMemberCount] = useState<number>(1);
   const [projectCount, setProjectCount] = useState<number>(0);
   const [storageBytes, setStorageBytes] = useState<number>(0);
   const [loadingMetrics, setLoadingMetrics] = useState<boolean>(true);
-  const [isAnnual, setIsAnnual] = useState<boolean>(false);
+
+  const [activePlanId, setActivePlanId] = useState<PlanId>('free');
+  const [isAnnual, setIsAnnual] = useState<boolean>(true);
+  const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
+  const [billableSeats, setBillableSeats] = useState<number>(3);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState<boolean>(false);
+  const [checkoutPlan, setCheckoutPlan] = useState<PlanTier | null>(null);
+  const [processingCheckout, setProcessingCheckout] = useState<boolean>(false);
   const [billingLedger, setBillingLedger] = useState<BillingRecord[]>([]);
 
-  useEffect(() => {
-    async function loadWorkspaceBillingData() {
-      setLoadingMetrics(true);
-      try {
-        const { count: usersCount } = await supabase
-          .from('users')
-          .select('*', { count: 'exact', head: true });
-        if (usersCount !== null) setMemberCount(usersCount);
+  const loadWorkspaceBillingData = useCallback(async () => {
+    setLoadingMetrics(true);
+    try {
+      const [usersRes, projsRes, storageRes, subRes, invoicesRes, auditRes] =
+        await Promise.all([
+          supabase.from('users').select('*', { count: 'exact', head: true }),
+          supabase.from('projects').select('*', { count: 'exact', head: true }),
+          supabase.storage.from('chat-files').list('', { limit: 100 }),
+          user?.id
+            ? (supabase as unknown as {
+              from: (rel: string) => {
+                select: (cols: string) => {
+                  eq: (col: string, val: string) => {
+                    maybeSingle: () => Promise<{
+                      data: Record<string, unknown> | null;
+                      error: unknown;
+                    }>;
+                  };
+                };
+              };
+            })
+              .from('workspace_subscriptions')
+              .select('*')
+              .eq('user_id', user.id)
+              .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          user?.id
+            ? (supabase as unknown as {
+              from: (rel: string) => {
+                select: (cols: string) => {
+                  eq: (col: string, val: string) => {
+                    order: (
+                      col: string,
+                      opts: { ascending: boolean }
+                    ) => {
+                      limit: (n: number) => Promise<{
+                        data: Array<Record<string, unknown>> | null;
+                        error: unknown;
+                      }>;
+                    };
+                  };
+                };
+              };
+            })
+              .from('billing_invoices')
+              .select('*')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(10)
+            : Promise.resolve({ data: null, error: null }),
+          supabase
+            .from('audit_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(5),
+        ]);
 
-        const { count: projsCount } = await supabase
-          .from('projects')
-          .select('*', { count: 'exact', head: true });
-        if (projsCount !== null) setProjectCount(projsCount);
+      const activeMembers = usersRes.count ?? 1;
+      setMemberCount(activeMembers);
+      setBillableSeats((prev) => Math.max(prev, activeMembers, 1));
 
-        const { data: storageFiles } = await supabase.storage
-          .from('chat-files')
-          .list('', { limit: 100 });
+      if (projsRes.count !== null) setProjectCount(projsRes.count);
 
-        if (storageFiles && storageFiles.length > 0) {
-          const totalBytes = storageFiles.reduce(
-            (acc, file) => acc + (file.metadata?.size || 0),
-            0
-          );
-          setStorageBytes(totalBytes);
+      if (storageRes.data && storageRes.data.length > 0) {
+        const totalBytes = storageRes.data.reduce(
+          (acc, file) => acc + (file.metadata?.size || 0),
+          0
+        );
+        setStorageBytes(totalBytes);
+      }
+
+      const subRow = subRes.data;
+      if (subRow && typeof subRow.plan_tier === 'string') {
+        const tier = subRow.plan_tier as PlanId;
+        if (PLAN_TIERS.some((p) => p.id === tier)) {
+          setActivePlanId(tier);
         }
+        if (subRow.billing_cycle === 'yearly') setIsAnnual(true);
+        if (subRow.billing_cycle === 'monthly') setIsAnnual(false);
+        if (typeof subRow.seats_purchased === 'number' && subRow.seats_purchased > 0) {
+          setBillableSeats(subRow.seats_purchased);
+        }
+      }
 
-        const { data: auditData } = await supabase
-          .from('audit_logs')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(5);
-
-        if (auditData && auditData.length > 0) {
-          const formattedLedger: BillingRecord[] = auditData.map((log: any, idx: number) => ({
-            id: log.id,
-            invoice_number: `REC-${new Date(log.created_at).getFullYear()}-${String(
-              idx + 1
-            ).padStart(3, '0')}`,
-            date: new Date(log.created_at).toLocaleDateString(undefined, {
+      if (invoicesRes.data && invoicesRes.data.length > 0) {
+        const dbInvoices: BillingRecord[] = invoicesRes.data.map((inv, idx) => ({
+          id: String(inv.id || `inv_${idx}`),
+          invoice_number:
+            typeof inv.invoice_number === 'string'
+              ? inv.invoice_number
+              : `INV-2026-${String(idx + 1).padStart(3, '0')}`,
+          date: inv.created_at
+            ? new Date(String(inv.created_at)).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })
+            : new Date().toLocaleDateString(),
+          action:
+            typeof inv.plan_name === 'string'
+              ? `${inv.plan_name} Subscription`
+              : 'Plan Subscription',
+          amount: typeof inv.amount_label === 'string' ? inv.amount_label : '$0.00',
+          status: inv.status === 'PAID' ? 'PAID' : 'ACTIVE',
+        }));
+        setBillingLedger(dbInvoices);
+      } else if (auditRes.data && auditRes.data.length > 0) {
+        const formattedLedger: BillingRecord[] = auditRes.data.map((log: any, idx: number) => ({
+          id: log.id,
+          invoice_number: `REC-${new Date(log.created_at).getFullYear()}-${String(
+            idx + 1
+          ).padStart(3, '0')}`,
+          date: new Date(log.created_at).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+          action: log.action || 'Workspace Verification',
+          amount: '$0.00',
+          status: 'FREE',
+        }));
+        setBillingLedger(formattedLedger);
+      } else {
+        setBillingLedger([
+          {
+            id: 'init_grant',
+            invoice_number: 'REC-2026-001',
+            date: new Date().toLocaleDateString(undefined, {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
             }),
-            action: log.action || 'Workspace Verification',
+            action: 'Starter Free Workspace Grant',
             amount: '$0.00',
             status: 'FREE',
-          }));
-          setBillingLedger(formattedLedger);
-        } else {
-          setBillingLedger([
-            {
-              id: 'init_grant',
-              invoice_number: 'REC-2026-001',
-              date: new Date().toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              }),
-              action: 'Community Lifetime Developer Grant',
-              amount: '$0.00',
-              status: 'FREE',
-            },
-          ]);
-        }
-      } catch (err) {
-        console.warn('Error loading billing telemetry:', err);
-      } finally {
-        setLoadingMetrics(false);
+          },
+        ]);
       }
+    } catch (err) {
+      console.warn('Error loading billing telemetry:', err);
+    } finally {
+      setLoadingMetrics(false);
     }
+  }, [user?.id]);
 
-    loadWorkspaceBillingData();
-  }, []);
+  useEffect(() => {
+    void loadWorkspaceBillingData();
+  }, [loadWorkspaceBillingData]);
+
+  const activePlan =
+    PLAN_TIERS.find((p) => p.id === activePlanId) ?? PLAN_TIERS[0]!;
+
+  const formatUnitPrice = (plan: PlanTier) => {
+    if (plan.id === 'free') return currency === 'INR' ? '₹0' : '$0';
+    if (currency === 'INR') {
+      return `₹${isAnnual ? plan.yearlyInr : plan.monthlyInr}`;
+    }
+    return `$${isAnnual ? plan.yearlyUsd : plan.monthlyUsd}`;
+  };
+
+  const computePlanTotalLabel = (plan: PlanTier, seats: number) => {
+    if (plan.id === 'free') return currency === 'INR' ? '₹0' : '$0.00';
+    const unit =
+      currency === 'INR'
+        ? isAnnual
+          ? plan.yearlyInr
+          : plan.monthlyInr
+        : isAnnual
+          ? plan.yearlyUsd
+          : plan.monthlyUsd;
+    const multiplier = isAnnual ? 12 : 1;
+    const total = unit * Math.max(1, seats) * multiplier;
+    return currency === 'INR'
+      ? `₹${total.toLocaleString('en-IN')}`
+      : `$${total.toFixed(2)}`;
+  };
 
   const formatStorage = (bytes: number) => {
     if (bytes === 0) return '0 MB';
@@ -114,16 +300,14 @@ export default function BillingSettings() {
     return `${mb.toFixed(2)} MB`;
   };
 
-  const FREE_STORAGE_LIMIT_MB = 1024;
   const currentStorageMb = storageBytes / (1024 * 1024);
   const storagePercent = Math.min(
     100,
-    Math.max(1, Math.round((currentStorageMb / FREE_STORAGE_LIMIT_MB) * 100))
+    Math.max(1, Math.round((currentStorageMb / activePlan.storageLimitMb) * 100))
   );
 
-  const SEAT_LIMIT = 10;
-  const seatsRemaining = Math.max(0, SEAT_LIMIT - memberCount);
-  const seatsPercent = Math.min(100, Math.round((memberCount / SEAT_LIMIT) * 100));
+  const seatsRemaining = Math.max(0, activePlan.seatLimit - memberCount);
+  const seatsPercent = Math.min(100, Math.round((memberCount / activePlan.seatLimit) * 100));
 
   const downloadReceipt = (record: BillingRecord) => {
     const receiptContent = `=========================================
@@ -132,9 +316,9 @@ PROJECTFLOW WORKSPACE RECEIPT
 Receipt Number: ${record.invoice_number}
 Date:           ${record.date}
 Activity:       ${record.action}
-Plan:           Developer Community Team (100% Free)
+Plan:           ${activePlan.name} (${isAnnual ? 'Annual' : 'Monthly'})
 Amount:         ${record.amount}
-Status:         ${record.status} (Zero Balance / Active)
+Status:         ${record.status}
 =========================================
 Thank you for building with ProjectFlow!`;
 
@@ -148,12 +332,67 @@ Thank you for building with ProjectFlow!`;
     toast.success(`Downloaded ${record.invoice_number}`);
   };
 
-  const planFeatures = [
-    'Unlimited Projects & Task Columns',
-    `Up to ${SEAT_LIMIT} Team Members`,
-    'Pooled Gemini AI Code & Task Advisor',
-    'Supabase Realtime Broadcast & Presence',
-  ];
+  const handleConfirmPlan = async (plan: PlanTier) => {
+    setProcessingCheckout(true);
+    try {
+      // Optional: when your Edge Function is deployed, redirect to hosted checkout:
+      // const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      //   body: { planId: plan.id, billingCycle: isAnnual ? 'yearly' : 'monthly', seats: billableSeats, currency },
+      // });
+      // if (error) throw error;
+      // if (data?.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
+
+      const totalLabel = computePlanTotalLabel(plan, billableSeats);
+      const invoiceNumber = `INV-2026-${String(Math.floor(100 + Math.random() * 900))}`;
+
+      if (user?.id) {
+        const dbClient = supabase as unknown as {
+          from: (rel: string) => {
+            upsert: (
+              row: Record<string, unknown>,
+              opts: { onConflict: string }
+            ) => Promise<{ error: { message?: string } | null }>;
+            insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+          };
+        };
+
+        await dbClient
+          .from('workspace_subscriptions')
+          .upsert(
+            {
+              user_id: user.id,
+              plan_tier: plan.id,
+              billing_cycle: isAnnual ? 'yearly' : 'monthly',
+              seats_purchased: plan.id === 'free' ? 5 : billableSeats,
+              storage_limit_mb: plan.storageLimitMb,
+              status: 'active',
+            },
+            { onConflict: 'user_id' }
+          );
+
+        if (plan.id !== 'free') {
+          await dbClient.from('billing_invoices').insert({
+            user_id: user.id,
+            invoice_number: invoiceNumber,
+            plan_name: `${plan.name} (${billableSeats} seats, ${isAnnual ? 'Yearly' : 'Monthly'})`,
+            amount_label: totalLabel,
+            status: 'PAID',
+          });
+        }
+      }
+
+      setActivePlanId(plan.id);
+      setCheckoutPlan(null);
+      setIsPlanModalOpen(false);
+      await loadWorkspaceBillingData();
+      toast.success(`Switched workspace to ${plan.name}!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to update subscription';
+      toast.error(msg);
+    } finally {
+      setProcessingCheckout(false);
+    }
+  };
 
   return (
     <div className="max-w-5xl space-y-6 animate-in fade-in duration-300">
@@ -162,24 +401,35 @@ Thank you for building with ProjectFlow!`;
         <div className="h-1 w-full bg-gradient-to-r from-[#4B74FF] via-indigo-500 to-violet-500 absolute inset-x-0 top-0" />
         <div className="flex flex-col items-start justify-between gap-6 pt-1 md:flex-row md:items-center">
           <div className="space-y-3">
-            <div
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
-            >
-              <Sparkles size={12} />
-              <span>Current Plan</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+              >
+                <Sparkles size={12} />
+                <span>Current Plan</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCurrency((c) => (c === 'USD' ? 'INR' : 'USD'))}
+                className="rounded-full border border-gray-200 bg-white/80 px-2.5 py-1 text-[11px] font-bold text-gray-700 transition-colors hover:bg-white dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200"
+                title="Switch display currency"
+              >
+                {currency === 'USD' ? 'USD ($)' : 'INR (₹)'}
+              </button>
             </div>
 
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white md:text-3xl">
-                Developer Team Free
+                {activePlan.name}
               </h2>
               <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                Active lifetime development license • Realtime synchronization enabled
+                {activePlan.description}
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-x-6 gap-y-2 pt-2 text-xs font-medium text-gray-700 dark:text-gray-300 sm:grid-cols-2">
-              {planFeatures.map((feat) => (
+              {activePlan.features.map((feat) => (
                 <div key={feat} className="flex items-center gap-2">
                   <Check size={14} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span>{feat}</span>
@@ -192,11 +442,19 @@ Thank you for building with ProjectFlow!`;
           <div className="flex w-full shrink-0 flex-col items-center gap-3 rounded-2xl border border-gray-200/90 bg-white/90 p-5 shadow-xs backdrop-blur dark:border-gray-800 dark:bg-[#0d1117]/80 md:w-auto md:items-end">
             <div className="text-center md:text-right">
               <div className="flex items-baseline justify-center gap-1 md:justify-end">
-                <span className="text-3xl font-extrabold text-gray-900 dark:text-white">$0</span>
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">/month</span>
+                <span className="text-3xl font-extrabold text-gray-900 dark:text-white">
+                  {formatUnitPrice(activePlan)}
+                </span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {activePlan.id === 'free' ? '/month' : '/seat/mo'}
+                </span>
               </div>
               <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
-                100% Free Forever
+                {activePlan.id === 'free'
+                  ? 'Free Starter Tier'
+                  : isAnnual
+                    ? 'Billed Annually (~17-20% off)'
+                    : 'Billed Monthly'}
               </span>
             </div>
 
@@ -208,14 +466,12 @@ Thank you for building with ProjectFlow!`;
                 aria-checked={isAnnual}
                 aria-label="Toggle yearly billing view"
                 onClick={() => setIsAnnual(!isAnnual)}
-                className={`flex h-5 w-9 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                  isAnnual ? theme.toggleActive : 'bg-gray-300 dark:bg-gray-700'
-                }`}
+                className={`flex h-5 w-9 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${isAnnual ? theme.toggleActive : 'bg-gray-300 dark:bg-gray-700'
+                  }`}
               >
                 <div
-                  className={`h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${
-                    isAnnual ? 'translate-x-4' : 'translate-x-0'
-                  }`}
+                  className={`h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${isAnnual ? 'translate-x-4' : 'translate-x-0'
+                    }`}
                 />
               </button>
               <span>Yearly</span>
@@ -226,7 +482,7 @@ Thank you for building with ProjectFlow!`;
               onClick={() => setIsPlanModalOpen(true)}
               className={`w-full rounded-xl px-5 py-2.5 text-xs font-bold text-white shadow-md transition-all active:scale-95 md:w-auto ${theme.btnPrimary}`}
             >
-              Explore Tiers
+              Manage & Compare Plans
             </button>
           </div>
         </div>
@@ -261,7 +517,7 @@ Thank you for building with ProjectFlow!`;
             </div>
             <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{memberCount} Active</span>
-              <span>{SEAT_LIMIT} Free Max</span>
+              <span>{activePlan.seatLimit} Max</span>
             </div>
           </div>
         </div>
@@ -293,7 +549,11 @@ Thank you for building with ProjectFlow!`;
             </div>
             <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{formatStorage(storageBytes)}</span>
-              <span>1 GB Limit</span>
+              <span>
+                {activePlan.storageLimitMb >= 1024
+                  ? `${(activePlan.storageLimitMb / 1024).toFixed(0)} GB Limit`
+                  : `${activePlan.storageLimitMb} MB Limit`}
+              </span>
             </div>
           </div>
         </div>
@@ -312,7 +572,11 @@ Thank you for building with ProjectFlow!`;
                   Active Projects
                 </h4>
                 <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                  {loadingMetrics ? 'Counting...' : 'Unlimited boards enabled'}
+                  {loadingMetrics
+                    ? 'Counting...'
+                    : activePlan.id === 'free'
+                      ? 'Up to 5 on Free tier'
+                      : 'Unlimited boards enabled'}
                 </p>
               </div>
             </div>
@@ -321,49 +585,57 @@ Thank you for building with ProjectFlow!`;
           <div className="space-y-1.5 pt-1">
             <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
               <div
-                className={`h-full w-[35%] rounded-full transition-all duration-500 ${theme.progressBar}`}
+                className={`h-full rounded-full transition-all duration-500 ${theme.progressBar}`}
+                style={{
+                  width: `${activePlan.id === 'free'
+                      ? Math.min(100, Math.round((projectCount / 5) * 100))
+                      : 35
+                    }%`,
+                }}
               />
             </div>
             <div className="flex justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
               <span>{projectCount} Repos & Boards</span>
-              <span>Unlimited</span>
+              <span>{activePlan.id === 'free' ? '5 Free Max' : 'Unlimited'}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Payment Status */}
+      {/* 3. Payment Method & Checkout Gateway Status */}
       <section className="space-y-3 rounded-2xl border border-gray-200/90 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
-          Payment Method
+          Payment Gateway & Billing Method
         </h4>
 
         <div className="flex flex-col justify-between gap-3 rounded-xl border border-gray-200/80 bg-gray-50/80 p-4 text-xs dark:border-gray-800 dark:bg-[#0d1117] sm:flex-row sm:items-center">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-7 w-10 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            <div className="flex h-8 w-11 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
               <CreditCard size={18} />
             </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-white">No payment required</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {activePlan.id === 'free'
+                  ? 'Free plan active — no card charged'
+                  : `${activePlan.name} (${billableSeats} seats)`}
+              </p>
               <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                Your workspace is operating on the open-access Developer community license.
+                Connect Razorpay (UPI / Cards) or Stripe / Lemon Squeezy via Supabase Edge Functions for live checkout.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() =>
-              toast.info('No card required! All current workspace features are completely free.')
-            }
+            onClick={() => setIsPlanModalOpen(true)}
             className={`text-left text-xs font-semibold hover:underline transition-colors sm:text-right ${theme.textAccent}`}
           >
-            Add Backup Card
+            {activePlan.id === 'free' ? 'Upgrade Plan' : 'Change Plan / Seats'}
           </button>
         </div>
       </section>
 
-      {/* 4. Real Supabase Receipts / Audit Billing Trail */}
+      {/* 4. Invoices & Billing Receipts */}
       <section className="space-y-4 rounded-2xl border border-gray-200/90 bg-white p-6 shadow-xs dark:border-gray-800 dark:bg-[#161b22]">
         <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
           <div>
@@ -371,7 +643,7 @@ Thank you for building with ProjectFlow!`;
               Invoice & Audit Receipts
             </h4>
             <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-              Cryptographic log of workspace subscription grants
+              Workspace billing invoices and grant records
             </p>
           </div>
           <button
@@ -422,116 +694,177 @@ Thank you for building with ProjectFlow!`;
         </div>
       </section>
 
-      {/* --- Plan Information Dialog Modal --- */}
+      {/* --- Plan Comparison & Seat Calculator Modal --- */}
       {isPlanModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/75">
-          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#161b22]">
-            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/90 px-6 py-4 dark:border-gray-800 dark:bg-[#0d1117]/80">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Workspace License Details
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsPlanModalOpen(false)}
-                className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 p-6 text-xs md:grid-cols-2">
-              {/* Free Tier Card */}
-              <div className="flex flex-col justify-between rounded-2xl border-2 border-emerald-500/80 bg-gray-50/70 p-5 dark:bg-[#0d1117]">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">
-                      Developer Community
-                    </span>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-600/20 dark:text-emerald-400">
-                      Active
-                    </span>
-                  </div>
-                  <p className="mb-4 text-[11px] text-gray-600 dark:text-gray-400">
-                    Full workspace access, code studio, pooled Gemini AI, and realtime chat.
-                  </p>
-                  <span className="mb-4 block text-2xl font-extrabold text-gray-900 dark:text-white">
-                    $0{' '}
-                    <span className="text-xs font-normal text-gray-500">/mo forever</span>
-                  </span>
-                  <ul className="space-y-2 text-gray-700 dark:text-gray-300">
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Up to{' '}
-                      {SEAT_LIMIT} team members
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Pooled
-                      Gemini code keys
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Monaco
-                      diff editor & terminal
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> Full
-                      Supabase Realtime sync
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  disabled
-                  className="mt-6 w-full cursor-default rounded-xl bg-gray-200 py-2 text-xs font-bold text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-                >
-                  Active Current Plan
-                </button>
+          <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#161b22]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/90 px-6 py-4 dark:border-gray-800 dark:bg-[#0d1117]/80">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Choose a Workspace Plan
+                </h3>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Transparent per-seat pricing with annual billing savings
+                </p>
               </div>
 
-              {/* Enterprise / Cloud Tier */}
-              <div className="flex flex-col justify-between rounded-2xl border border-gray-200/90 bg-white p-5 opacity-90 transition-opacity hover:opacity-100 dark:border-gray-800 dark:bg-[#0d1117]">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">
-                      Enterprise Dedicated
-                    </span>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                      Custom
-                    </span>
-                  </div>
-                  <p className="mb-4 text-[11px] text-gray-600 dark:text-gray-400">
-                    For multi-tenant organizational compliance and custom SSO integrations.
-                  </p>
-                  <span className="mb-4 block text-2xl font-extrabold text-gray-900 dark:text-white">
-                    $29{' '}
-                    <span className="text-xs font-normal text-gray-500">/seat/mo</span>
-                  </span>
-                  <ul className="space-y-2 text-gray-700 dark:text-gray-300">
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className={theme.textAccent} /> Unlimited organization seats
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className={theme.textAccent} /> Dedicated private GitHub
-                      apps
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check size={13} className={theme.textAccent} /> Custom enterprise SLA &
-                      audit export
-                    </li>
-                  </ul>
-                </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                  <span>Seats:</span>
+                  <input
+                    type="number"
+                    min={Math.max(1, memberCount)}
+                    max={250}
+                    value={billableSeats}
+                    onChange={(e) =>
+                      setBillableSeats(Math.max(1, Number(e.target.value) || 1))
+                    }
+                    className="w-16 rounded-lg border border-gray-200 bg-white px-2 py-1 font-mono text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  />
+                </label>
+
                 <button
                   type="button"
                   onClick={() => {
+                    setCheckoutPlan(null);
                     setIsPlanModalOpen(false);
-                    toast.success(
-                      'Your workspace is already enjoying all features on the Free tier!'
-                    );
                   }}
-                  className={`mt-6 w-full rounded-xl py-2 text-xs font-bold text-white transition-colors ${theme.btnPrimary}`}
+                  className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-200/70 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
                 >
-                  Learn More
+                  <X size={16} />
                 </button>
               </div>
             </div>
+
+            {checkoutPlan ? (
+              <div className="space-y-5 p-6 text-xs">
+                <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-[#0d1117]">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">
+                      {checkoutPlan.name} ({isAnnual ? 'Yearly' : 'Monthly'})
+                    </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {checkoutPlan.id === 'free'
+                        ? 'Starter plan — no charge'
+                        : `${billableSeats} seats × ${formatUnitPrice(checkoutPlan)}/seat/mo${isAnnual ? ' × 12 months' : ''
+                        }`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-extrabold text-gray-900 dark:text-white">
+                      {computePlanTotalLabel(checkoutPlan, billableSeats)}
+                    </p>
+                    <p className="text-[10px] text-gray-500">
+                      {checkoutPlan.id === 'free'
+                        ? 'Free'
+                        : isAnnual
+                          ? 'Billed once per year'
+                          : 'Billed monthly'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  <ShieldCheck size={15} className="shrink-0 text-emerald-500" />
+                  <span>
+                    Subscription state saves to Supabase. Wire `create-checkout-session` Edge Function to launch hosted Razorpay/Stripe checkout.
+                  </span>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutPlan(null)}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={processingCheckout}
+                    onClick={() => void handleConfirmPlan(checkoutPlan)}
+                    className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold text-white shadow-md disabled:opacity-60 ${theme.btnPrimary}`}
+                  >
+                    {processingCheckout && <Loader2 size={14} className="animate-spin" />}
+                    <span>
+                      {processingCheckout
+                        ? 'Updating...'
+                        : checkoutPlan.id === 'free'
+                          ? 'Activate Free Plan'
+                          : `Confirm Plan (${computePlanTotalLabel(checkoutPlan, billableSeats)})`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 p-6 text-xs md:grid-cols-3">
+                {PLAN_TIERS.map((plan) => {
+                  const isCurrent = activePlanId === plan.id;
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`flex flex-col justify-between rounded-2xl border p-5 ${isCurrent
+                          ? 'border-emerald-500/80 bg-gray-50/70 dark:bg-[#0d1117]'
+                          : 'border-gray-200/90 bg-white dark:border-gray-800 dark:bg-[#0d1117]'
+                        }`}
+                    >
+                      <div>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">
+                            {plan.name}
+                          </span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            {isCurrent ? 'Active' : plan.badge}
+                          </span>
+                        </div>
+                        <p className="mb-4 text-[11px] text-gray-600 dark:text-gray-400">
+                          {plan.description}
+                        </p>
+                        <div className="mb-1 flex items-baseline gap-1">
+                          <span className="text-2xl font-extrabold text-gray-900 dark:text-white">
+                            {formatUnitPrice(plan)}
+                          </span>
+                          <span className="text-[11px] text-gray-500">
+                            {plan.id === 'free' ? '/mo' : '/seat/mo'}
+                          </span>
+                        </div>
+                        <p className="mb-4 font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                          Est. {isAnnual ? 'annual' : 'monthly'}:{' '}
+                          {computePlanTotalLabel(plan, billableSeats)}
+                        </p>
+                        <ul className="space-y-2 text-gray-700 dark:text-gray-300">
+                          {plan.features.map((feat) => (
+                            <li key={feat} className="flex items-start gap-2">
+                              <Check
+                                size={13}
+                                className={`mt-0.5 shrink-0 ${theme.textAccent}`}
+                              />
+                              <span>{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isCurrent}
+                        onClick={() => setCheckoutPlan(plan)}
+                        className={`mt-6 w-full rounded-xl py-2 text-xs font-bold transition-colors ${isCurrent
+                            ? 'cursor-default bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                            : `text-white ${theme.btnPrimary}`
+                          }`}
+                      >
+                        {isCurrent
+                          ? 'Current Plan'
+                          : plan.id === 'free'
+                            ? 'Switch to Free'
+                            : `Select ${plan.name}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

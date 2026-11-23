@@ -7,14 +7,12 @@ import {
   Moon,
   Search,
   Settings,
-  Sparkles,
   Sun,
   User,
   Download,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { useOnboardingSandbox } from '../../context/OnboardingSandboxContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useAccentTheme } from '../../lib/useAccentTheme';
 import { supabase } from '../../lib/supabaseClient';
@@ -58,7 +56,6 @@ function readSavedFrame(): AvatarFrameId {
 
 export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
   const { user, signOut } = useAuth();
-  const { startTour } = useOnboardingSandbox();
   const { theme, setTheme } = useTheme();
   const accentTheme = useAccentTheme();
   const navigate = useNavigate();
@@ -466,17 +463,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                   <Settings size={15} />
                   <span>Settings</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    startTour();
-                  }}
-                  className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left ${accentTheme.textAccent} transition-colors hover:bg-[var(--app-accent-light)]`}
-                >
-                  <Sparkles size={15} />
-                  <span>Replay Guided Tour</span>
-                </button>
+                
               </div>
 
               <div className="border-t border-gray-100 p-1.5 dark:border-gray-700">
