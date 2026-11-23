@@ -107,6 +107,7 @@ export default function TaskDetailModal({
   useEffect(() => {
     if (!taskId) {
       setTask(null);
+      setDueDate('');
       return;
     }
 
@@ -135,7 +136,7 @@ export default function TaskDetailModal({
           setDescription(data.description ?? '');
           setStatus((data.status as TaskRecord['status'] | null) || 'todo');
           setPriority((data.priority as TaskRecord['priority'] | null) || 'medium');
-          setDescription(data.description ?? '');
+          setDueDate(data.due_date ? String(data.due_date).slice(0, 10) : '');
         }
       } catch {
         toast.error('Failed to load task details');
@@ -160,7 +161,9 @@ export default function TaskDetailModal({
           return;
         }
         // Filter out users with null names since MentionableUser requires name: string
-        const validUsers = (data || []).filter((user): user is MentionableUser => user.name !== null);
+        const validUsers = (data || []).filter(
+          (candidate): candidate is MentionableUser => candidate.name !== null
+        );
         if (active) setMentionableUsers(validUsers);
       });
     return () => {
@@ -183,7 +186,7 @@ export default function TaskDetailModal({
           description: description.trim(),
           status,
           priority,
-          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+          due_date: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
         })
         .eq('id', taskId);
 
@@ -240,10 +243,15 @@ export default function TaskDetailModal({
       triggerHaptic('success');
 
       const mentionRecipients = mentionedUserIds.filter((id) => id !== user.id);
-      const commentRecipient = task?.assigned_to && task.assigned_to !== user.id && !mentionRecipients.includes(task.assigned_to)
-        ? task.assigned_to
-        : null;
-      const preferenceIds = [...new Set([...mentionRecipients, ...(commentRecipient ? [commentRecipient] : [])])];
+      const commentRecipient =
+        task?.assigned_to &&
+        task.assigned_to !== user.id &&
+        !mentionRecipients.includes(task.assigned_to)
+          ? task.assigned_to
+          : null;
+      const preferenceIds = [
+        ...new Set([...mentionRecipients, ...(commentRecipient ? [commentRecipient] : [])]),
+      ];
       if (preferenceIds.length) {
         const { data: notificationPrefs, error: preferencesError } = await supabase
           .from('user_notification_preferences')
@@ -255,7 +263,9 @@ export default function TaskDetailModal({
           return;
         }
 
-        const preferencesByUser = new Map((notificationPrefs || []).map((preference) => [preference.user_id, preference]));
+        const preferencesByUser = new Map(
+          (notificationPrefs || []).map((preference) => [preference.user_id, preference])
+        );
         const notificationRows = [
           ...mentionRecipients
             .filter((id) => preferencesByUser.get(id)?.mentions !== false)
@@ -267,19 +277,21 @@ export default function TaskDetailModal({
               is_read: false,
             })),
           ...(commentRecipient && preferencesByUser.get(commentRecipient)?.new_comments !== false
-            ? [{
-                user_id: commentRecipient,
-                title: 'New comment on your task',
-                message: `${user.name || 'A teammate'} commented on “${task?.title || 'a task'}”.`,
-                type: 'task',
-                is_read: false,
-              }]
+            ? [
+                {
+                  user_id: commentRecipient,
+                  title: 'New comment on your task',
+                  message: `${user.name || 'A teammate'} commented on “${task?.title || 'a task'}”.`,
+                  type: 'task',
+                  is_read: false,
+                },
+              ]
             : []),
         ];
         if (notificationRows.length) {
-          const { error: notificationError } = await supabase.from('notifications').insert(
-            notificationRows
-          );
+          const { error: notificationError } = await supabase
+            .from('notifications')
+            .insert(notificationRows);
           if (notificationError) {
             console.error('Failed to send task mention notifications:', notificationError);
             toast.warning('Comment posted, but mention notifications could not be sent.');
@@ -418,9 +430,15 @@ export default function TaskDetailModal({
                 </div>
               </div>
 
-              <section className="border-t border-gray-100 pt-4 dark:border-gray-800" aria-labelledby="task-comments-heading">
+              <section
+                className="border-t border-gray-100 pt-4 dark:border-gray-800"
+                aria-labelledby="task-comments-heading"
+              >
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 id="task-comments-heading" className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+                  <h3
+                    id="task-comments-heading"
+                    className="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white"
+                  >
                     <MessageSquare size={15} className="text-indigo-500" />
                     Discussion
                     <span className="text-xs font-medium text-gray-400">{comments.length}</span>
@@ -432,14 +450,21 @@ export default function TaskDetailModal({
                     <p className="text-xs text-gray-400">Loading comments…</p>
                   ) : comments.length ? (
                     comments.map((comment) => (
-                      <article key={comment.id} className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/60">
+                      <article
+                        key={comment.id}
+                        className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/60"
+                      >
                         <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{comment.author_name}</span>
+                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                            {comment.author_name}
+                          </span>
                           <time className="shrink-0 text-[10px] text-gray-400" dateTime={comment.created_at}>
                             {new Date(comment.created_at).toLocaleString()}
                           </time>
                         </div>
-                        <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-600 dark:text-gray-300">{comment.content}</p>
+                        <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                          {comment.content}
+                        </p>
                       </article>
                     ))
                   ) : (
@@ -474,8 +499,15 @@ export default function TaskDetailModal({
                       >
                         <option value="">Mention teammate</option>
                         {mentionableUsers
-                          .filter((member) => member.id !== user?.id && !mentionedUserIds.includes(member.id))
-                          .map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                          .filter(
+                            (member) =>
+                              member.id !== user?.id && !mentionedUserIds.includes(member.id)
+                          )
+                          .map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name}
+                            </option>
+                          ))}
                       </select>
                     </label>
                     <button
@@ -494,7 +526,11 @@ export default function TaskDetailModal({
                           <button
                             key={id}
                             type="button"
-                            onClick={() => setMentionedUserIds((current) => current.filter((value) => value !== id))}
+                            onClick={() =>
+                              setMentionedUserIds((current) =>
+                                current.filter((value) => value !== id)
+                              )
+                            }
                             aria-label={`Remove mention for ${member?.name || 'teammate'}`}
                             className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300"
                           >

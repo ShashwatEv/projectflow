@@ -146,6 +146,7 @@ export default function ProjectWorkflowCanvas({
 }: ProjectWorkflowCanvasProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const isLight = !isDark;
   const [workflow, setWorkflow] = useState<WorkflowData>(EMPTY_WORKFLOW);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -635,7 +636,6 @@ export default function ProjectWorkflowCanvas({
   const profileName = (id: string | null) =>
     profiles.find((profile) => profile.id === id)?.name || (id ? 'Project member' : 'Unassigned');
   const taskTitle = (id: string | null) => tasks.find((task) => task.id === id)?.title || 'Unlinked task';
-  const isLight = !isDark;
 
   if (!projectId) {
     return (
