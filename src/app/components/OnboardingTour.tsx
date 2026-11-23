@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -39,14 +39,88 @@ interface TourStep {
   shortcuts?: { keys: string[]; label: string }[];
 }
 
-const TOUR_STEPS: TourStep[] = [
+const MOBILE_TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Mobile Command Hub',
+    badge: 'Mobile Overview',
+    illustration: `${BASE}illustrations/7.svg`,
+    path: '/dashboard',
+    selector: 'main',
+    description:
+      'Check active initiatives, recent updates, and priority tasks on the go from your mobile command hub.',
+    actionHint: 'Review key metrics and jump straight into mobile workflows.',
+  },
+  {
+    title: 'Mobile Projects Overview',
+    badge: 'Active Projects',
+    illustration: `${BASE}illustrations/2.svg`,
+    path: '/mobile/projects',
+    selector: 'main',
+    description:
+      'Browse your active projects, track milestones, and open project boards cleanly on smaller screens.',
+    actionHint: 'Tap any project card to inspect tasks and progress.',
+  },
+  {
+    title: 'Quick Capture & Unified Inbox',
+    badge: 'Instant Capture',
+    illustration: `${BASE}illustrations/1.svg`,
+    path: '/capture',
+    selector: 'main',
+    description:
+      'Capture tasks, notes, and follow-ups in seconds while moving, and keep incoming updates organized in your inbox.',
+    actionHint: 'Use Quick Capture to log an idea before it slips.',
+  },
+  {
+    title: 'Triage Deck & Standup Stories',
+    badge: 'Rapid Triage',
+    illustration: `${BASE}illustrations/8.svg`,
+    path: '/triage',
+    selector: 'main',
+    description:
+      'Triage task items quickly and catch up on daily standup updates without digging through long tables.',
+    actionHint: 'Swipe or tap through items to prioritize what needs attention today.',
+  },
+  {
+    title: 'People & Workspace Presence',
+    badge: 'Team Directory',
+    illustration: `${BASE}illustrations/10.svg`,
+    path: '/mobile/people',
+    selector: 'main',
+    description:
+      'See who is active across the workspace, check roles, and connect directly with teammates.',
+    actionHint: 'Open the people directory to view teammates and status.',
+  },
+  {
+    title: 'Project Meetings on Mobile',
+    badge: 'Live Calls',
+    illustration: `${BASE}illustrations/11.svg`,
+    path: '/meetings',
+    selector: '[aria-label="Start or join a meeting"], main',
+    description:
+      'Join ongoing project meetings, participate in live call chat, or enter a 16-character meeting invite code.',
+    actionHint: 'Select a room or paste a meeting invite code to join.',
+  },
+  {
+    title: 'Security & Account Settings',
+    badge: 'Identity & 2FA',
+    illustration: `${BASE}illustrations/5.svg`,
+    path: '/settings',
+    selector: 'main',
+    description:
+      'Manage your account verification, two-factor authentication, and notification preferences.',
+    actionHint: 'Verify your account and 2FA to unlock full database write access.',
+  },
+];
+
+const DESKTOP_TOUR_STEPS: TourStep[] = [
   {
     title: 'Workspace Command Hub',
     badge: 'Command Center',
     illustration: `${BASE}illustrations/7.svg`,
     path: '/dashboard',
     selector: 'main',
-    description: 'Your central command center. Monitor overall sprint velocity, active team contributors, and upcoming milestones across desktop and mobile.',
+    description:
+      'Your central command center. Monitor overall sprint velocity, active team contributors, and upcoming milestones at a glance.',
     actionHint: 'Look over top-level metrics and your daily delivery timeline.',
   },
   {
@@ -55,8 +129,10 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/8.svg`,
     path: '/tasks',
     selector: '[data-tour="kanban-board"], main',
-    description: 'Interactive sprint board. As a new user, actions taken here remain in Safe Sandbox Mode until your identity and 2FA are validated.',
-    actionHint: 'Drag demo cards between To Do, In Progress, and Done columns to test real-time state changes.',
+    description:
+      'Interactive sprint board. As a new user, actions taken here remain in Safe Sandbox Mode until your identity and 2FA are validated.',
+    actionHint:
+      'Drag demo cards between To Do, In Progress, and Done columns to test real-time state changes.',
   },
   {
     title: 'Collaborative Projects',
@@ -64,7 +140,8 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/2.svg`,
     path: '/projects',
     selector: 'main',
-    description: 'Organize work into repositories and initiatives. Connect GitHub repositories to synchronize commit trees and branches.',
+    description:
+      'Organize work into repositories and initiatives. Connect GitHub repositories to synchronize commit trees and branches.',
     actionHint: 'Create or inspect workspaces linked with repository remotes.',
   },
   {
@@ -73,8 +150,10 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/11.svg`,
     path: '/meetings',
     selector: '[aria-label="Start or join a meeting"], main',
-    description: 'Start encrypted peer-to-peer video calls, screen shares, and live meeting chats scoped to your projects, or join with a 16-character invite code.',
-    actionHint: 'Select a project to launch a meeting room or paste an invite code to join without exposing workspace files.',
+    description:
+      'Start encrypted peer-to-peer video calls, screen shares, and live meeting chats scoped to your projects, or join with a 16-character invite code.',
+    actionHint:
+      'Select a project to launch a meeting room or paste an invite code to join without exposing workspace files.',
   },
   {
     title: 'In-Browser Code Studio',
@@ -82,7 +161,8 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/3.svg`,
     path: '/code',
     selector: 'main',
-    description: 'Inspect code buffers, review git diffs against remote HEAD, execute sandboxed terminal tasks, and get Gemini AI assistance.',
+    description:
+      'Inspect code buffers, review git diffs against remote HEAD, execute sandboxed terminal tasks, and get Gemini AI assistance.',
     actionHint: 'Test the Monaco editor and the in-memory JS terminal sandbox.',
   },
   {
@@ -91,7 +171,8 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/6.svg`,
     path: '/analytics',
     selector: 'main',
-    description: 'Real-time telemetry showing workload distribution by priority and completion ratios across all active repositories.',
+    description:
+      'Real-time telemetry showing workload distribution by priority and completion ratios across all active repositories.',
     actionHint: 'Inspect velocity charts powered by Supabase realtime feeds.',
   },
   {
@@ -100,7 +181,8 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/10.svg`,
     path: '/team',
     selector: 'main',
-    description: 'Coordinate across engineering pods, assign owners, and collaborate in dedicated project discussion channels.',
+    description:
+      'Coordinate across engineering pods, assign owners, and collaborate in dedicated project discussion channels.',
     actionHint: 'View active team members, roles, and online availability.',
   },
   {
@@ -109,7 +191,8 @@ const TOUR_STEPS: TourStep[] = [
     illustration: `${BASE}illustrations/5.svg`,
     path: '/settings',
     selector: 'main',
-    description: 'Verify your email address and configure two-factor authentication to unlock direct production workspace write permissions.',
+    description:
+      'Verify your email address and configure two-factor authentication to unlock direct production workspace write permissions.',
     actionHint: 'Open Verification or Security tabs to complete your account setup.',
   },
   {
@@ -117,9 +200,12 @@ const TOUR_STEPS: TourStep[] = [
     badge: 'Instant Navigation',
     illustration: `${BASE}illustrations/4.svg`,
     path: '/dashboard',
-    selector: 'button[aria-label="Search projects, people, and pages"], button[aria-label="Open search"]',
-    description: 'Jump to projects, people, and workspace pages from the search palette—or use a shortcut to get there instantly.',
-    actionHint: 'Open Search to explore commands. Shortcuts work anywhere in the workspace except while typing in a field.',
+    selector:
+      'button[aria-label="Search projects, people, and pages"], button[aria-label="Open search"]',
+    description:
+      'Jump to projects, people, and workspace pages from the search palette—or use a shortcut to get there instantly.',
+    actionHint:
+      'Open Search to explore commands. Shortcuts work anywhere in the workspace except while typing in a field.',
     shortcuts: [
       { keys: ['Ctrl', 'K'], label: 'Open search' },
       { keys: ['Alt', 'N'], label: 'New task' },
@@ -150,6 +236,9 @@ export default function OnboardingTour() {
     canMutateDatabase,
   } = useOnboardingSandbox();
 
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+  );
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [hasWatchedGuide, setHasWatchedGuide] = useState<boolean>(false);
   const [guideVideoError, setGuideVideoError] = useState<boolean>(false);
@@ -157,6 +246,24 @@ export default function OnboardingTour() {
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
   const [agreedTerms, setAgreedTerms] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    const syncViewport = () => setIsMobileViewport(window.innerWidth < 1024);
+    syncViewport();
+    window.addEventListener('resize', syncViewport);
+    return () => window.removeEventListener('resize', syncViewport);
+  }, []);
+
+  const tourSteps = useMemo(
+    () => (isMobileViewport ? MOBILE_TOUR_STEPS : DESKTOP_TOUR_STEPS),
+    [isMobileViewport]
+  );
+
+  useEffect(() => {
+    setCurrentStepIndex((prev) =>
+      tourSteps.length > 0 ? Math.min(prev, tourSteps.length - 1) : 0
+    );
+  }, [tourSteps]);
 
   useEffect(() => {
     setHasWatchedGuide(false);
@@ -226,13 +333,13 @@ export default function OnboardingTour() {
   }, [user?.id]);
 
   const goToStep = (index: number) => {
-    if (index >= 0 && index < TOUR_STEPS.length) {
+    if (index >= 0 && index < tourSteps.length) {
       setCurrentStepIndex(index);
-      const targetPath = TOUR_STEPS[index]?.path;
+      const targetPath = tourSteps[index]?.path;
       if (targetPath && location.pathname !== targetPath) {
         navigate(targetPath);
       }
-    } else if (index >= TOUR_STEPS.length) {
+    } else if (index >= tourSteps.length) {
       closeTour();
       setShowTermsModal(true);
     }
@@ -308,7 +415,9 @@ export default function OnboardingTour() {
         }
 
         if (!isPersisted) {
-          toast.error('The tour is complete, but we could not sync it to your account. It may appear again on another device.');
+          toast.error(
+            'The tour is complete, but we could not sync it to your account. It may appear again on another device.'
+          );
         }
       }
 
@@ -316,7 +425,9 @@ export default function OnboardingTour() {
         await promoteUserToLive();
         toast.success('Onboarding complete! Full production workspace active.');
       } else {
-        toast.info('Tour completed! You are in Safe Sandbox mode until 2FA & email verification are verified.');
+        toast.info(
+          'Tour completed! You are in Safe Sandbox mode until 2FA & email verification are verified.'
+        );
       }
 
       setShowTermsModal(false);
@@ -328,7 +439,7 @@ export default function OnboardingTour() {
     }
   };
 
-  const step = TOUR_STEPS[currentStepIndex];
+  const step = tourSteps[currentStepIndex];
 
   return (
     <>
@@ -344,14 +455,16 @@ export default function OnboardingTour() {
               <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-border bg-indigo-50 text-indigo-500 dark:bg-indigo-950/40">
                 <Sparkles size={13} />
               </span>
-              Getting started <span className="text-muted-foreground/60">/</span> Step 1 of 2
+              Getting started <span className="text-muted-foreground/60">/</span>{' '}
+              {isMobileViewport ? 'Mobile Guide' : 'Desktop Guide'} • Step 1 of 2
             </div>
             <DialogHeader className="gap-2 text-left">
               <DialogTitle className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
                 Meet your ProjectFlow workspace
               </DialogTitle>
               <DialogDescription className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Watch this quick beginner guide, then explore the key features in an interactive tour.
+                Watch this quick beginner guide, then explore the{' '}
+                {isMobileViewport ? 'mobile' : 'desktop'} key features in an interactive tour.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -373,7 +486,10 @@ export default function OnboardingTour() {
             </div>
 
             {guideVideoError ? (
-              <div role="alert" className="flex flex-col gap-3 rounded-xl border border-destructive/25 bg-destructive/10 p-3.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+              <div
+                role="alert"
+                className="flex flex-col gap-3 rounded-xl border border-destructive/25 bg-destructive/10 p-3.5 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+              >
                 <span>The guide could not be loaded. Check your connection and try again.</span>
                 <button
                   type="button"
@@ -388,8 +504,18 @@ export default function OnboardingTour() {
                 </button>
               </div>
             ) : (
-              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${hasWatchedGuide ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
-                {hasWatchedGuide ? <CheckCircle2 size={18} className="shrink-0" /> : <CirclePlay size={18} className="shrink-0 text-indigo-500" />}
+              <div
+                className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
+                  hasWatchedGuide
+                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-border bg-muted/40 text-muted-foreground'
+                }`}
+              >
+                {hasWatchedGuide ? (
+                  <CheckCircle2 size={18} className="shrink-0" />
+                ) : (
+                  <CirclePlay size={18} className="shrink-0 text-indigo-500" />
+                )}
                 <span className="leading-relaxed">
                   {hasWatchedGuide
                     ? 'Guide complete. Your interactive tour is ready.'
@@ -405,7 +531,7 @@ export default function OnboardingTour() {
                 disabled={!hasWatchedGuide || guideVideoError}
                 className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none"
               >
-                Continue to interactive tour
+                Continue to {isMobileViewport ? 'mobile' : 'desktop'} tour
                 <CirclePlay size={17} />
               </button>
               <p className="mt-3 text-center text-xs text-muted-foreground">
@@ -425,9 +551,9 @@ export default function OnboardingTour() {
           actionHint={step.actionHint}
           illustration={step.illustration}
           badge={step.badge}
-          shortcuts={step.shortcuts}
+          shortcuts={isMobileViewport ? undefined : step.shortcuts}
           stepIndex={currentStepIndex}
-          totalSteps={TOUR_STEPS.length}
+          totalSteps={tourSteps.length}
           onNext={handleNext}
           onBack={handleBack}
           onSkip={handleSkip}
@@ -436,73 +562,85 @@ export default function OnboardingTour() {
 
       {/* 2. Workspace Access & Collaboration Agreement Modal */}
       {showTermsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl space-y-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/80">
+          <div className="w-full max-w-lg space-y-0 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#161b22]">
             {/* Modal Header */}
-            <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/90 dark:bg-[#0d1117]/80 flex items-center gap-3.5">
-              <div className={`w-11 h-11 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 flex items-center justify-center shrink-0`}>
+            <div className="flex items-center gap-3.5 border-b border-gray-100 bg-gray-50/90 px-6 py-5 dark:border-gray-800 dark:bg-[#0d1117]/80">
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+              >
                 <ShieldCheck size={22} />
               </div>
               <div>
-                <h3 className="font-bold text-base text-gray-900 dark:text-white">Workspace Security & Sandbox Policy</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Understand your access tier and workspace authority</p>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Workspace Security & Sandbox Policy
+                </h3>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Understand your access tier and workspace authority
+                </p>
               </div>
             </div>
 
             {/* Terms Explanations */}
-            <div className="p-6 space-y-4 text-xs text-gray-700 dark:text-gray-300">
-              <div className="bg-gray-50 dark:bg-[#0d1117] p-4 rounded-2xl border border-gray-200 dark:border-gray-800 max-h-52 overflow-y-auto space-y-3 custom-scrollbar text-[11px] leading-relaxed">
+            <div className="space-y-4 p-6 text-xs text-gray-700 dark:text-gray-300">
+              <div className="custom-scrollbar max-h-52 space-y-3 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 p-4 text-[11px] leading-relaxed dark:border-gray-800 dark:bg-[#0d1117]">
                 <div>
-                  <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <p className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
                     <Layers size={13} className={theme.textAccent} />
                     1. Safe Sandbox Isolation
                   </p>
-                  <p className="text-gray-600 dark:text-gray-400 mt-0.5">
-                    New accounts operate in an isolated draft sandbox. Card reordering and draft task edits do not overwrite production team data until you satisfy full account verification and 2FA.
+                  <p className="mt-0.5 text-gray-600 dark:text-gray-400">
+                    New accounts operate in an isolated draft sandbox. Card reordering and draft task
+                    edits do not overwrite production team data until you satisfy full account
+                    verification and 2FA.
                   </p>
                 </div>
 
                 <div>
-                  <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <p className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
                     <Code2 size={13} className={theme.textAccent} />
                     2. Code Studio & Terminal Security
                   </p>
-                  <p className="text-gray-600 dark:text-gray-400 mt-0.5">
-                    Terminal commands run inside a sandboxed browser runtime. Outbound git commits and push requests require personal GitHub tokens and a verified identity badge.
+                  <p className="mt-0.5 text-gray-600 dark:text-gray-400">
+                    Terminal commands run inside a sandboxed browser runtime. Outbound git commits and
+                    push requests require personal GitHub tokens and a verified identity badge.
                   </p>
                 </div>
 
                 <div>
-                  <p className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <p className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white">
                     <Sparkles size={13} className={theme.textAccent} />
                     3. Gemini AI Rate Limits
                   </p>
-                  <p className="text-gray-600 dark:text-gray-400 mt-0.5">
-                    Integrated code review and pull request generation quotas are shared across the team. Automated queries adhere to workspace fair-use policies.
+                  <p className="mt-0.5 text-gray-600 dark:text-gray-400">
+                    Integrated code review and pull request generation quotas are shared across the
+                    team. Automated queries adhere to workspace fair-use policies.
                   </p>
                 </div>
               </div>
 
               {/* Status Warning Pill if unverified */}
               {isSandboxActive && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl flex items-center gap-2.5 text-amber-700 dark:text-amber-400 text-[11px]">
+                <div className="flex items-center gap-2.5 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] text-amber-700 dark:text-amber-400">
                   <ShieldAlert size={16} className="shrink-0" />
                   <span>
-                    Your account is currently in <strong>Safe Sandbox Mode</strong>. Verify your email and configure 2FA in Settings to unlock direct database write authority.
+                    Your account is currently in <strong>Safe Sandbox Mode</strong>. Verify your email
+                    and configure 2FA in Settings to unlock direct database write authority.
                   </span>
                 </div>
               )}
 
               {/* Checkbox */}
-              <label className="flex items-start gap-3 p-3 rounded-2xl bg-gray-50/80 dark:bg-[#0d1117]/60 border border-gray-200 dark:border-gray-800 cursor-pointer hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-[#0d1117]/60 dark:hover:border-gray-700">
                 <input
                   type="checkbox"
                   checked={agreedTerms}
                   onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className={`mt-0.5 w-4 h-4 rounded border-gray-300 dark:border-gray-700 ${theme.toggleActive} focus:ring-0 cursor-pointer`}
+                  className={`mt-0.5 h-4 w-4 cursor-pointer rounded border-gray-300 dark:border-gray-700 ${theme.toggleActive} focus:ring-0`}
                 />
-                <span className="text-xs text-gray-700 dark:text-gray-300 font-medium select-none">
-                  I understand the sandbox security policy and agree to the <strong>Community Terms of Service</strong>.
+                <span className="select-none text-xs font-medium text-gray-700 dark:text-gray-300">
+                  I understand the sandbox security policy and agree to the{' '}
+                  <strong>Community Terms of Service</strong>.
                 </span>
               </label>
 
@@ -511,7 +649,7 @@ export default function OnboardingTour() {
                 type="button"
                 onClick={handleCompleteTerms}
                 disabled={!agreedTerms || submitting}
-                className={`w-full py-3.5 ${theme.btnPrimary} disabled:opacity-40 text-white font-bold rounded-2xl transition-all shadow-md active:scale-95 text-xs flex items-center justify-center gap-2`}
+                className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-xs font-bold text-white shadow-md transition-all active:scale-95 disabled:opacity-40 ${theme.btnPrimary}`}
               >
                 {submitting ? (
                   <Sparkles size={16} className="animate-spin" />
