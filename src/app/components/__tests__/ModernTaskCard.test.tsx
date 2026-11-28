@@ -15,25 +15,50 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
+function createMemoryStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    clear() {
+      map.clear();
+    },
+    getItem(key: string) {
+      return map.has(key) ? map.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(map.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      map.delete(key);
+    },
+    setItem(key: string, value: string) {
+      map.set(String(key), String(value));
+    },
+  };
+}
+
 describe('ModernTaskCard Open in Code Studio', () => {
-  let store: Map<string, string>;
-  let getItemSpy: ReturnType<typeof vi.spyOn<Storage, 'getItem'>>;
-  let setItemSpy: ReturnType<typeof vi.spyOn<Storage, 'setItem'>>;
+  const originalLocalStorage = window.localStorage;
+  let memoryStorage: Storage;
 
   beforeEach(() => {
     mockNavigate.mockReset();
-    store = new Map<string, string>();
-    getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
-      return store.has(key) ? store.get(key)! : null;
-    });
-    setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
-      store.set(key, String(value));
+    memoryStorage = createMemoryStorage();
+    Object.defineProperty(window, 'localStorage', {
+      value: memoryStorage,
+      configurable: true,
+      writable: true,
     });
   });
 
   afterEach(() => {
-    getItemSpy.mockRestore();
-    setItemSpy.mockRestore();
+    Object.defineProperty(window, 'localStorage', {
+      value: originalLocalStorage,
+      configurable: true,
+      writable: true,
+    });
   });
 
   it('navigates to /code with taskId, projectId, and generated branch slug', () => {
@@ -66,8 +91,8 @@ describe('ModernTaskCard Open in Code Studio', () => {
 
     const expectedBranch = buildTaskBranchName(sampleTask.id, sampleTask.title);
     expect(expectedBranch).toBe('feat/task-abcdef-implement-oauth-callback');
-    expect(localStorage.getItem('pf_selected_project_id')).toBe('proj-42');
-    expect(localStorage.getItem('pf_active_repo')).toBe('ShashwatEv/projectflow');
+    expect(window.localStorage.getItem('pf_selected_project_id')).toBe('proj-42');
+    expect(window.localStorage.getItem('pf_active_repo')).toBe('ShashwatEv/projectflow');
     expect(mockNavigate).toHaveBeenCalledWith(
       `/code?taskId=abcdef12-3456-7890&branch=${encodeURIComponent(expectedBranch)}&projectId=proj-42`
     );
