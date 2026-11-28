@@ -78,36 +78,34 @@ export default function SplashScreen({
 
   return (
     <div
-      className={`fixed inset-0 z-[99999] bg-[#090d16] flex flex-col items-center justify-between p-6 select-none transition-opacity duration-300 ${
-        isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      className={`fixed inset-0 z-[99999] flex select-none flex-col items-center justify-between bg-[#090d16] p-6 transition-opacity duration-300 ${
+        isFadingOut ? 'pointer-events-none opacity-0' : 'opacity-100'
       }`}
     >
       {/* Top Header Logo */}
-      <div className="w-full flex items-center justify-between pt-4 max-w-sm">
+      <div className="flex w-full max-w-sm items-center justify-between pt-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[#121726] border border-white/10 flex items-center justify-center shadow-lg">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-[#121726] shadow-lg">
             <Sparkles size={16} className="text-indigo-400" />
           </div>
           <span className="text-sm font-bold tracking-tight text-white">ProjectFlow</span>
         </div>
-        <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500 bg-white/5 px-2.5 py-1 rounded-full border border-white/5">
-          v1.0.0 Mobile
+        <span className="rounded-full border border-white/5 bg-white/5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-gray-500">
+          v1.2.0
         </span>
       </div>
 
       {/* Center Sliding Visual Showcase */}
-      <div className="w-full max-w-sm flex flex-col items-center my-auto">
-        <div className="relative w-full aspect-[4/3] rounded-3xl bg-[#111728] border border-white/10 p-5 shadow-2xl flex flex-col justify-between overflow-hidden">
-          {/* Subtle Ambient Background Gradient */}
+      <div className="my-auto flex w-full max-w-sm flex-col items-center">
+        <div className="relative flex aspect-[4/3] w-full flex-col justify-between overflow-hidden rounded-3xl border border-white/10 bg-[#111728] p-5 shadow-2xl">
           <div
-            className="absolute -right-10 -top-10 w-44 h-44 rounded-full blur-3xl opacity-20 transition-colors duration-500"
+            className="absolute -right-10 -top-10 h-44 w-44 rounded-full opacity-20 blur-3xl transition-colors duration-500"
             style={{ backgroundColor: slide.accentColor }}
           />
 
-          {/* Slide Top Badge */}
           <div className="relative z-10 flex items-center justify-between">
             <span
-              className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border transition-all duration-300"
+              className="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-300"
               style={{
                 color: slide.accentColor,
                 borderColor: `${slide.accentColor}40`,
@@ -116,44 +114,43 @@ export default function SplashScreen({
             >
               {slide.badge}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-gray-300">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/5 text-gray-300">
               <IconComponent size={16} />
             </div>
           </div>
 
-          {/* Dynamic Mockup Card Previews */}
           <div className="relative z-10 space-y-2 py-3">
             {slide.previewType === 'kanban' && (
-              <div className="space-y-2 animate-in fade-in duration-300">
-                <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between">
+              <div className="animate-in fade-in space-y-2 duration-300">
+                <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/5 p-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs text-gray-200 font-semibold">Sprint Backlog Ready</span>
+                    <div className="h-2 w-2 rounded-full bg-emerald-400" />
+                    <span className="text-xs font-semibold text-gray-200">Sprint Backlog Ready</span>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-mono">3 Tasks</span>
+                  <span className="font-mono text-[10px] text-gray-400">3 Tasks</span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between">
+                <div className="flex items-center justify-between rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-2.5">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-indigo-400" />
-                    <span className="text-xs text-indigo-200 font-semibold">Code Review Complete</span>
+                    <div className="h-2 w-2 rounded-full bg-indigo-400" />
+                    <span className="text-xs font-semibold text-indigo-200">Code Review Complete</span>
                   </div>
-                  <span className="text-[10px] text-indigo-300 font-mono">1 Task</span>
+                  <span className="font-mono text-[10px] text-indigo-300">1 Task</span>
                 </div>
               </div>
             )}
 
             {slide.previewType === 'chat' && (
-              <div className="space-y-2 animate-in fade-in duration-300">
+              <div className="animate-in fade-in space-y-2 duration-300">
                 <div className="flex items-start gap-2">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[10px] flex items-center justify-center text-emerald-300 font-bold shrink-0">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-500/40 bg-emerald-500/20 text-[10px] font-bold text-emerald-300">
                     A
                   </div>
-                  <div className="bg-white/5 border border-white/5 p-2 rounded-xl text-[11px] text-gray-200">
+                  <div className="rounded-xl border border-white/5 bg-white/5 p-2 text-[11px] text-gray-200">
                     Branch deployed to staging successfully
                   </div>
                 </div>
-                <div className="flex items-start gap-2 justify-end">
-                  <div className="bg-emerald-500/20 border border-emerald-500/30 p-2 rounded-xl text-[11px] text-emerald-200">
+                <div className="flex items-start justify-end gap-2">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/20 p-2 text-[11px] text-emerald-200">
                     Reviewing telemetry now
                   </div>
                 </div>
@@ -161,61 +158,45 @@ export default function SplashScreen({
             )}
 
             {slide.previewType === 'code' && (
-              <div className="space-y-2 animate-in fade-in duration-300">
-                <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 font-mono text-[11px] text-purple-300 flex items-center justify-between">
+              <div className="animate-in fade-in space-y-2 duration-300">
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/40 p-2.5 font-mono text-[11px] text-purple-300">
                   <span>git pull origin main</span>
-                  <span className="text-[9px] text-emerald-400 font-bold">up to date</span>
+                  <span className="text-[9px] font-bold text-emerald-400">up to date</span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 font-mono text-[11px] text-gray-400 flex items-center justify-between">
+                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/40 p-2.5 font-mono text-[11px] text-gray-400">
                   <span>supabase gen types</span>
-                  <span className="text-[9px] text-indigo-400 font-bold">generated</span>
+                  <span className="text-[9px] font-bold text-indigo-400">generated</span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Slide Information */}
-          <div className="relative z-10 pt-2 border-t border-white/5">
-            <h3 className="text-sm font-bold text-white tracking-tight">{slide.title}</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{slide.subtitle}</p>
+          <div className="relative z-10 border-t border-white/5 pt-2">
+            <h3 className="text-sm font-bold tracking-tight text-white">{slide.title}</h3>
+            <p className="mt-0.5 text-[11px] leading-snug text-gray-400">{slide.subtitle}</p>
           </div>
         </div>
 
         {/* Slide Indicators */}
-        <div className="flex items-center gap-1.5 mt-5">
-          {SLIDES.map((s) => (
-            <div
-              key={s.id}
+        <div className="mt-5 flex items-center gap-2">
+          {SLIDES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-label={`Slide ${item.id + 1}`}
+              onClick={() => setActiveSlide(item.id)}
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                activeSlide === s.id ? 'w-6 bg-indigo-500' : 'w-1.5 bg-white/15'
+                activeSlide === item.id ? 'w-6 bg-indigo-400' : 'w-1.5 bg-white/20'
               }`}
             />
           ))}
         </div>
       </div>
 
-      {/* Bottom Loading Progress Bar */}
-      <div className="w-full max-w-sm pb-6 flex flex-col items-center gap-2.5">
-        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 rounded-full transition-all ease-linear"
-            style={{
-              width: '100%',
-              animation: `splashProgress ${minDurationMs}ms linear forwards`,
-            }}
-          />
-        </div>
-        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
-          Starting Workspace Environment
-        </span>
+      {/* Bottom Footer */}
+      <div className="pb-2 text-center font-mono text-[11px] text-gray-500">
+        Initializing workspace...
       </div>
-
-      <style>{`
-        @keyframes splashProgress {
-          0% { width: 0%; }
-          100% { width: 100%; }
-        }
-      `}</style>
     </div>
   );
 }

@@ -165,6 +165,15 @@ export default function ProjectWorkflowCanvas({
   const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templateNameInput, setTemplateNameInput] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [finishingRunModal, setFinishingRunModal] = useState<{
+    run: WorkflowRun;
+    status: 'completed' | 'failed';
+  } | null>(null);
+  const [runNoteInput, setRunNoteInput] = useState('');
+  const [submittingRunFinish, setSubmittingRunFinish] = useState(false);
   const dragRef = useRef<{
     id: string;
     x: number;
@@ -458,31 +467,44 @@ export default function ProjectWorkflowCanvas({
     toast.success(`${template.name} template added. Save to keep it.`);
   };
 
-  const saveAsTemplate = async () => {
+  const openSaveTemplateModal = () => {
     if (!currentUserId || !workflow.nodes.length) return;
-    const name = window.prompt('Name this workflow template');
-    if (name === null) return;
-    const cleanName = name.trim();
+    setTemplateNameInput('');
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleConfirmSaveTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUserId || !workflow.nodes.length || savingTemplate) return;
+    const cleanName = templateNameInput.trim();
     if (!cleanName) {
       toast.error('Enter a template name.');
       return;
     }
-    const templateData: WorkflowData = {
-      nodes: workflow.nodes.map((node) => ({ ...node, taskId: null, ownerId: null })),
-      edges: workflow.edges,
-    };
-    const { data, error } = await supabase
-      .from('workflow_templates')
-      .insert({ user_id: currentUserId, name: cleanName, workflow_data: templateData })
-      .select('id, name, workflow_data')
-      .single();
-    if (error) {
-      console.error('Could not save workflow template:', error);
-      toast.error('Could not save this template. Apply the workflow history migration and try again.');
-      return;
+
+    setSavingTemplate(true);
+    try {
+      const templateData: WorkflowData = {
+        nodes: workflow.nodes.map((node) => ({ ...node, taskId: null, ownerId: null })),
+        edges: workflow.edges,
+      };
+      const { data, error } = await supabase
+        .from('workflow_templates')
+        .insert({ user_id: currentUserId, name: cleanName, workflow_data: templateData })
+        .select('id, name, workflow_data')
+        .single();
+      if (error) {
+        console.error('Could not save workflow template:', error);
+        toast.error('Could not save this template. Apply the workflow history migration and try again.');
+        return;
+      }
+      setSavedTemplates((items) => [data as SavedTemplate, ...items]);
+      setIsTemplateModalOpen(false);
+      setTemplateNameInput('');
+      toast.success('Workflow template saved to your account.');
+    } finally {
+      setSavingTemplate(false);
     }
-    setSavedTemplates((items) => [data as SavedTemplate, ...items]);
-    toast.success('Workflow template saved to your account.');
   };
 
   const startWorkflowRun = async () => {
@@ -508,32 +530,43 @@ export default function ProjectWorkflowCanvas({
     toast.success('Workflow run started. Track progress by updating the steps.');
   };
 
-  const finishWorkflowRun = async (run: WorkflowRun, status: 'completed' | 'failed') => {
+  const openFinishRunModal = (run: WorkflowRun, status: 'completed' | 'failed') => {
     if (!currentUserId || !canEdit) return;
-    const resultNote = window.prompt(
-      status === 'completed' ? 'Optional completion note' : 'What blocked or failed this run?',
-      ''
-    );
-    if (resultNote === null) return;
-    const { data, error } = await supabase
-      .from('project_workflow_runs')
-      .update({
-        status,
-        result_note: resultNote.trim() || null,
-        finished_by: currentUserId,
-        finished_at: new Date().toISOString(),
-      })
-      .eq('id', run.id)
-      .eq('status', 'running')
-      .select('id, status, workflow_snapshot, result_note, started_at, finished_at, started_by')
-      .single();
-    if (error) {
-      console.error('Could not finish workflow run:', error);
-      toast.error('Could not update this run. Refresh and check its current status.');
-      return;
+    setRunNoteInput('');
+    setFinishingRunModal({ run, status });
+  };
+
+  const handleConfirmFinishRun = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUserId || !canEdit || !finishingRunModal || submittingRunFinish) return;
+
+    const { run, status } = finishingRunModal;
+    setSubmittingRunFinish(true);
+    try {
+      const { data, error } = await supabase
+        .from('project_workflow_runs')
+        .update({
+          status,
+          result_note: runNoteInput.trim() || null,
+          finished_by: currentUserId,
+          finished_at: new Date().toISOString(),
+        })
+        .eq('id', run.id)
+        .eq('status', 'running')
+        .select('id, status, workflow_snapshot, result_note, started_at, finished_at, started_by')
+        .single();
+      if (error) {
+        console.error('Could not finish workflow run:', error);
+        toast.error('Could not update this run. Refresh and check its current status.');
+        return;
+      }
+      setRuns((items) => items.map((item) => (item.id === run.id ? (data as WorkflowRun) : item)));
+      setFinishingRunModal(null);
+      setRunNoteInput('');
+      toast.success(status === 'completed' ? 'Workflow run completed.' : 'Workflow run marked as failed.');
+    } finally {
+      setSubmittingRunFinish(false);
     }
-    setRuns((items) => items.map((item) => item.id === run.id ? data as WorkflowRun : item));
-    toast.success(status === 'completed' ? 'Workflow run completed.' : 'Workflow run marked as failed.');
   };
 
   const restoreVersion = (version: WorkflowVersion) => {
@@ -710,7 +743,7 @@ export default function ProjectWorkflowCanvas({
               </select>
               <button
                 type="button"
-                onClick={saveAsTemplate}
+                onClick={openSaveTemplateModal}
                 disabled={!workflow.nodes.length}
                 className={`rounded-lg border px-2 py-2 text-[11px] font-semibold disabled:opacity-40 ${isLight ? 'border-gray-200 hover:bg-gray-100' : 'border-gray-700 hover:bg-gray-800'}`}
                 title="Save current workflow as a reusable template"
@@ -860,10 +893,10 @@ export default function ProjectWorkflowCanvas({
                           </div>
                           {run.status === 'running' && canEdit && (
                             <div className="flex gap-1.5">
-                              <button type="button" onClick={() => void finishWorkflowRun(run, 'completed')} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white">
+                              <button type="button" onClick={() => openFinishRunModal(run, 'completed')} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white">
                                 <CheckCircle2 size={11} /> Complete
                               </button>
-                              <button type="button" onClick={() => void finishWorkflowRun(run, 'failed')} className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[10px] font-semibold text-white">
+                              <button type="button" onClick={() => openFinishRunModal(run, 'failed')} className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2 py-1 text-[10px] font-semibold text-white">
                                 <Square size={10} /> Fail
                               </button>
                             </div>
@@ -1155,6 +1188,130 @@ export default function ProjectWorkflowCanvas({
           )}
         </aside>
       </div>
+
+      {isTemplateModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => !savingTemplate && setIsTemplateModalOpen(false)}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="save-template-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => void handleConfirmSaveTemplate(e)}
+            className={`w-full max-w-md space-y-4 rounded-2xl border p-5 shadow-2xl ${
+              isLight ? 'border-gray-200 bg-white text-gray-900' : 'border-gray-800 bg-[#161b22] text-gray-100'
+            }`}
+          >
+            <div>
+              <h3 id="save-template-modal-title" className="text-sm font-bold">
+                Save Workflow Template
+              </h3>
+              <p className={`mt-1 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                Reuse this step layout across future projects in your workspace.
+              </p>
+            </div>
+            <input
+              autoFocus
+              required
+              value={templateNameInput}
+              onChange={(e) => setTemplateNameInput(e.target.value)}
+              placeholder="e.g. Release Readiness Checklist"
+              className={`w-full rounded-xl border px-3.5 py-2 text-xs outline-none focus:border-indigo-500 ${
+                isLight ? 'border-gray-200 bg-gray-50 text-gray-900' : 'border-gray-700 bg-[#0d1117] text-white'
+              }`}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={savingTemplate}
+                onClick={() => setIsTemplateModalOpen(false)}
+                className={`rounded-xl px-3.5 py-2 text-xs font-semibold ${
+                  isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!templateNameInput.trim() || savingTemplate}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+              >
+                {savingTemplate && <Loader2 size={13} className="animate-spin" />}
+                <span>Save Template</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {finishingRunModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => !submittingRunFinish && setFinishingRunModal(null)}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finish-run-modal-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => void handleConfirmFinishRun(e)}
+            className={`w-full max-w-md space-y-4 rounded-2xl border p-5 shadow-2xl ${
+              isLight ? 'border-gray-200 bg-white text-gray-900' : 'border-gray-800 bg-[#161b22] text-gray-100'
+            }`}
+          >
+            <div>
+              <h3 id="finish-run-modal-title" className="text-sm font-bold">
+                {finishingRunModal.status === 'completed' ? 'Complete Workflow Run' : 'Mark Workflow Run as Failed'}
+              </h3>
+              <p className={`mt-1 text-xs ${isLight ? 'text-gray-500' : 'text-gray-400'}`}>
+                {finishingRunModal.status === 'completed'
+                  ? 'Add an optional summary note for the run history.'
+                  : 'Describe what blocked or failed this workflow run.'}
+              </p>
+            </div>
+            <textarea
+              autoFocus
+              rows={3}
+              value={runNoteInput}
+              onChange={(e) => setRunNoteInput(e.target.value)}
+              placeholder={
+                finishingRunModal.status === 'completed'
+                  ? 'Optional completion note...'
+                  : 'Blocker or failure details...'
+              }
+              className={`w-full resize-none rounded-xl border px-3.5 py-2 text-xs outline-none focus:border-indigo-500 ${
+                isLight ? 'border-gray-200 bg-gray-50 text-gray-900' : 'border-gray-700 bg-[#0d1117] text-white'
+              }`}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={submittingRunFinish}
+                onClick={() => setFinishingRunModal(null)}
+                className={`rounded-xl px-3.5 py-2 text-xs font-semibold ${
+                  isLight ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-300 hover:bg-gray-800'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submittingRunFinish}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-50 ${
+                  finishingRunModal.status === 'completed'
+                    ? 'bg-emerald-600 hover:bg-emerald-500'
+                    : 'bg-rose-600 hover:bg-rose-500'
+                }`}
+              >
+                {submittingRunFinish && <Loader2 size={13} className="animate-spin" />}
+                <span>{finishingRunModal.status === 'completed' ? 'Complete Run' : 'Mark Failed'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

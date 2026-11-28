@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Paperclip, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '../../lib/supabaseClient';
 
 interface ChatFileButtonProps {
@@ -18,55 +19,47 @@ export default function ChatFileButton({ onUploadComplete }: ChatFileButtonProps
     setUploading(true);
 
     try {
-      // 1. Generate a unique file name (e.g., "123-my-image.png")
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${fileName}`;
 
-      // 2. Upload to Supabase 'chat-files' bucket
       const { error: uploadError } = await supabase.storage
         .from('chat-files')
-        .upload(filePath, file);
+        .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      // 3. Get the Public URL
       const { data } = supabase.storage
         .from('chat-files')
-        .getPublicUrl(filePath);
+        .getPublicUrl(fileName);
 
-      // 4. Determine type (simple check)
       const type = file.type.startsWith('image/') ? 'image' : 'file';
-
-      // 5. Pass URL back to parent
       onUploadComplete(data.publicUrl, type);
-
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload file');
+      toast.error(error instanceof Error ? error.message : 'Failed to upload file');
     } finally {
       setUploading(false);
-      // Reset input so you can select the same file again if needed
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   return (
     <>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileSelect} 
-        className="hidden" 
-        accept="image/*,.pdf,.doc,.docx" // Accept images and docs
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        className="hidden"
+        accept="image/*,.pdf,.doc,.docx"
       />
-      
-      <button 
+
+      <button
         type="button"
         disabled={uploading}
         onClick={() => fileInputRef.current?.click()}
-        className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors disabled:opacity-50"
+        className="rounded-xl p-3 text-gray-400 transition-colors hover:bg-gray-100 hover:text-indigo-600 disabled:opacity-50 dark:hover:bg-gray-700"
         title="Attach file"
+        aria-label="Attach file"
       >
         {uploading ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}
       </button>
