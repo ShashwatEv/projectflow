@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -16,9 +16,24 @@ vi.mock('react-router-dom', async () => {
 });
 
 describe('ModernTaskCard Open in Code Studio', () => {
+  let store: Map<string, string>;
+  let getItemSpy: ReturnType<typeof vi.spyOn<Storage, 'getItem'>>;
+  let setItemSpy: ReturnType<typeof vi.spyOn<Storage, 'setItem'>>;
+
   beforeEach(() => {
     mockNavigate.mockReset();
-    localStorage.clear();
+    store = new Map<string, string>();
+    getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key: string) => {
+      return store.has(key) ? store.get(key)! : null;
+    });
+    setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+      store.set(key, String(value));
+    });
+  });
+
+  afterEach(() => {
+    getItemSpy.mockRestore();
+    setItemSpy.mockRestore();
   });
 
   it('navigates to /code with taskId, projectId, and generated branch slug', () => {
