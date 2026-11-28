@@ -114,98 +114,98 @@ const MOBILE_TOUR_STEPS: TourStep[] = [
 
 const DESKTOP_TOUR_STEPS: TourStep[] = [
   {
-    title: 'Workspace Command Hub',
-    badge: 'Command Center',
+    title: 'Workspace Overview',
+    badge: 'Overview',
     illustration: `${BASE}illustrations/7.svg`,
     path: '/dashboard',
     selector: 'main',
     description:
-      'Your central command center. Monitor overall sprint velocity, active team contributors, and upcoming milestones at a glance.',
-    actionHint: 'Look over top-level metrics and your daily delivery timeline.',
+      'Track sprint progress, active teammates, and upcoming deadlines from one workspace overview.',
+    actionHint: 'Check your daily task summary and recent project activity.',
   },
   {
-    title: 'Safe Sandbox Kanban Board',
-    badge: 'Sprint Tasks',
+    title: 'Sprint Kanban Board',
+    badge: 'Tasks',
     illustration: `${BASE}illustrations/8.svg`,
     path: '/tasks',
     selector: '[data-tour="kanban-board"], main',
     description:
-      'Interactive sprint board. As a new user, actions taken here remain in Safe Sandbox Mode until your identity and 2FA are validated.',
+      'Organize tasks across To Do, In Progress, Review, and Done. New accounts start in Safe Sandbox Mode until email verification and 2FA are enabled.',
     actionHint:
-      'Drag demo cards between To Do, In Progress, and Done columns to test real-time state changes.',
+      'Drag cards across columns or use J/K/H/L and Space to triage tasks.',
   },
   {
-    title: 'Collaborative Projects',
-    badge: 'Repositories & Checklists',
+    title: 'Projects & Repositories',
+    badge: 'Projects',
     illustration: `${BASE}illustrations/2.svg`,
     path: '/projects',
     selector: 'main',
     description:
-      'Organize work into repositories and initiatives. Connect GitHub repositories to synchronize commit trees and branches.',
-    actionHint: 'Create or inspect workspaces linked with repository remotes.',
+      'Group tasks by project and connect GitHub repositories to sync branches and pull requests.',
+    actionHint: 'Create a project or open an existing board to inspect its checklist.',
   },
   {
-    title: 'Project Meetings & Live Calls',
-    badge: 'Live WebRTC Rooms',
+    title: 'Project Meetings & Screen Sharing',
+    badge: 'Meetings',
     illustration: `${BASE}illustrations/11.svg`,
     path: '/meetings',
     selector: '[aria-label="Start or join a meeting"], main',
     description:
-      'Start encrypted peer-to-peer video calls, screen shares, and live meeting chats scoped to your projects, or join with a 16-character invite code.',
+      'Start peer-to-peer video calls, share your screen, and chat live inside project rooms—or join via a 16-character invite code.',
     actionHint:
-      'Select a project to launch a meeting room or paste an invite code to join without exposing workspace files.',
+      'Pick a project room to start a call or enter an invite code to join.',
   },
   {
     title: 'In-Browser Code Studio',
-    badge: 'Engineering Studio',
+    badge: 'Code Studio',
     illustration: `${BASE}illustrations/3.svg`,
     path: '/code',
     selector: 'main',
     description:
-      'Inspect code buffers, review git diffs against remote HEAD, execute sandboxed terminal tasks, and get Gemini AI assistance.',
-    actionHint: 'Test the Monaco editor and the in-memory JS terminal sandbox.',
+      'Browse repository files, review side-by-side diffs, run sandboxed checks, and prepare pull requests without leaving your workspace.',
+    actionHint: 'Open a file from the explorer or launch Code Studio directly from any task card.',
   },
   {
-    title: 'Team Velocity & Analytics',
-    badge: 'Telemetry & Insights',
+    title: 'Sprint Analytics & Velocity',
+    badge: 'Analytics',
     illustration: `${BASE}illustrations/6.svg`,
     path: '/analytics',
     selector: 'main',
     description:
-      'Real-time telemetry showing workload distribution by priority and completion ratios across all active repositories.',
-    actionHint: 'Inspect velocity charts powered by Supabase realtime feeds.',
+      'Monitor task completion rates, priority breakdowns, and sprint velocity across your active projects.',
+    actionHint: 'Filter metrics by project or timeframe to spot bottlenecks early.',
   },
   {
-    title: 'Team Connect & Collaboration',
-    badge: 'People & Channels',
+    title: 'Team Directory & Channels',
+    badge: 'Team',
     illustration: `${BASE}illustrations/10.svg`,
     path: '/team',
     selector: 'main',
     description:
-      'Coordinate across engineering pods, assign owners, and collaborate in dedicated project discussion channels.',
-    actionHint: 'View active team members, roles, and online availability.',
+      'See who is online, check team roles, and collaborate in dedicated project channels.',
+    actionHint: 'Message teammates or filter the directory by team.',
   },
   {
-    title: 'Security & Two-Factor Controls',
-    badge: 'Identity & 2FA',
+    title: 'Verification & Two-Factor Security',
+    badge: 'Security',
     illustration: `${BASE}illustrations/5.svg`,
     path: '/settings',
     selector: 'main',
     description:
-      'Verify your email address and configure two-factor authentication to unlock direct production workspace write permissions.',
-    actionHint: 'Open Verification or Security tabs to complete your account setup.',
+      'Verify your email and enable two-factor authentication to unlock live database writes and repository pushes.',
+    actionHint: 'Open Verification or Security in Settings to complete your setup.',
   },
   {
-    title: 'Search & Keyboard Shortcuts',
-    badge: 'Instant Navigation',
+    title: 'Command Palette & Shortcuts',
+    badge: 'Shortcuts',
     illustration: `${BASE}illustrations/4.svg`,
     path: '/dashboard',
     selector:
       'button[aria-label="Search projects, people, and pages"], button[aria-label="Open search"]',
     description:
-      'Jump to projects, people, and workspace pages from the search palette—or use a shortcut to get there instantly.',
+      'Jump straight to projects, people, and pages from the command palette or with keyboard shortcuts.',
     actionHint:
-      'Open Search to explore commands. Shortcuts work anywhere in the workspace except while typing in a field.',
+      'Press Ctrl+K anywhere to search. Shortcuts work whenever you are not typing in an input field.',
     shortcuts: [
       { keys: ['Ctrl', 'K'], label: 'Open search' },
       { keys: ['Alt', 'N'], label: 'New task' },

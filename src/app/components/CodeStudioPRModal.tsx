@@ -35,41 +35,39 @@ export default function CodeStudioPRModal({
 
   if (!isOpen) return null;
 
-  // AI-Driven Conventional Commit and Markdown PR Summary
+  const fileLabel = activeFile ? activeFile.split('/').pop() || activeFile : 'workspace changes';
+
   const handleGenerateAiSummary = async () => {
     setIsGeneratingAi(true);
 
-    const prompt = `
-You are a Principal Software Engineer drafting a GitHub Pull Request.
-Repository: ${repo}
-Comparing Branch: ${currentBranch} into ${baseBranch}
-Active Edited File: ${activeFile || 'Multiple workspace edits'}
-
-Code Context:
-${activeFileContent.slice(0, 3000) || '// Standard workspace update'}
-
-Return pure JSON without markdown backticks:
-{
-  "title": "feat(scope): concise conventional commit title",
-  "body": "## Overview\\nSummary of changes.\\n\\n## Key Improvements\\n- Bullet item 1\\n- Bullet item 2\\n\\n## Verification\\n- [ ] Code builds cleanly\\n- [ ] Edge cases handled"
-}
-`;
+    const prompt = [
+      `Draft a GitHub pull request title and description for ${repo} (${currentBranch} -> ${baseBranch}).`,
+      activeFile ? `Primary file: ${activeFile}` : '',
+      'Code snippet:',
+      activeFileContent.slice(0, 3000) || '// No file content provided',
+      'Respond with valid JSON only (no markdown fences):',
+      '{"title":"type(scope): short summary","body":"## Summary\\n- What changed\\n\\n## Testing\\n- [ ] Verified locally"}',
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     try {
       const raw = await askGeminiCodeAssistant(prompt, activeFileContent, 'pull_request.json');
-      const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(clean);
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw) as {
+        title?: string;
+        body?: string;
+      };
 
-      if (parsed.title) setTitle(parsed.title);
-      if (parsed.body) setBody(parsed.body);
-      toast.success('Generated PR Title & Summary with Gemini!');
+      if (parsed.title?.trim()) setTitle(parsed.title.trim());
+      if (parsed.body?.trim()) setBody(parsed.body.trim());
+      toast.success('Drafted PR title and summary');
     } catch {
-      // Clean fallback if model returns raw text or parse fails
-      setTitle(`feat: update ${activeFile || 'project module'}`);
+      setTitle(`chore: update ${fileLabel}`);
       setBody(
-        `## Overview\nAutomated updates committed via ProjectFlow Code Studio.\n\n## Verification\n- [ ] Staging verified\n- [ ] No regression detected`
+        `## Summary\n- Update \`${activeFile || currentBranch}\` from Code Studio\n\n## Testing\n- [ ] Verified changes locally`
       );
-      toast.info('Applied standardized PR template.');
+      toast.info('Applied starter PR template');
     } finally {
       setIsGeneratingAi(false);
     }
@@ -89,42 +87,44 @@ Return pure JSON without markdown backticks:
     setLoading(true);
     try {
       const pr = await createPullRequest(repo, token, currentBranch, baseBranch, title, body);
-      toast.success(`Pull Request #${pr.number} created!`);
+      toast.success(`Pull Request #${pr.number} created`);
       onClose();
       setTitle('');
       setBody('');
-    } catch (err: any) {
-      toast.error(err.message || 'Error creating PR');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error creating PR');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-gray-800 bg-[#161b22] shadow-2xl">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-[#0d1117]/80">
+        <div className="flex items-center justify-between border-b border-gray-800 bg-[#0d1117]/80 px-6 py-4">
           <div className="flex items-center gap-2.5 text-indigo-400">
-            <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-2">
               <GitPullRequest size={18} />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-white">Create Pull Request</h3>
+              <h3 className="text-sm font-bold text-white">Create Pull Request</h3>
               <p className="text-[11px] text-gray-400">Targeting {repo}</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition-colors"
+            aria-label="Close pull request modal"
+            className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
           >
             <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-6 text-xs">
           {/* Branch Comparator */}
-          <div className="bg-[#0d1117] p-3 rounded-2xl border border-gray-800 font-mono text-[11px] text-gray-400 flex items-center justify-between">
+          <div className="flex items-center justify-between rounded-2xl border border-gray-800 bg-[#0d1117] p-3 font-mono text-[11px] text-gray-400">
             <span>
               base: <strong className="text-indigo-400">{baseBranch}</strong>
             </span>
@@ -139,21 +139,21 @@ Return pure JSON without markdown backticks:
             <button
               type="button"
               disabled={isGeneratingAi}
-              onClick={handleGenerateAiSummary}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs font-bold transition-all disabled:opacity-50"
+              onClick={() => void handleGenerateAiSummary()}
+              className="flex items-center gap-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs font-bold text-purple-400 transition-all hover:bg-purple-500/20 disabled:opacity-50"
             >
               {isGeneratingAi ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : (
                 <Wand2 size={13} />
               )}
-              <span>{isGeneratingAi ? 'Analyzing Diff...' : 'AI Auto-Fill Title & Body'}</span>
+              <span>{isGeneratingAi ? 'Drafting...' : 'Draft Title & Description'}</span>
             </button>
           </div>
 
           {/* Title Field */}
           <div>
-            <label className="block text-gray-300 font-semibold mb-1">
+            <label className="mb-1 block font-semibold text-gray-300">
               Pull Request Title *
             </label>
             <input
@@ -162,37 +162,37 @@ Return pure JSON without markdown backticks:
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. feat(auth): enforce OTP verification gates"
-              className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-3.5 py-2.5 text-white outline-none ${theme.ringAccent} font-mono`}
+              className={`w-full rounded-xl border border-gray-800 bg-[#0d1117] px-3.5 py-2.5 font-mono text-white outline-none ${theme.ringAccent}`}
             />
           </div>
 
           {/* Body Field */}
           <div>
-            <label className="block text-gray-300 font-semibold mb-1">
+            <label className="mb-1 block font-semibold text-gray-300">
               Description (Markdown Supported)
             </label>
             <textarea
               rows={6}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Detailed description of architectural changes, tests, and screenshots..."
-              className={`w-full bg-[#0d1117] border border-gray-800 rounded-xl px-3.5 py-2.5 text-white outline-none ${theme.ringAccent} resize-none font-mono text-[11px] leading-relaxed custom-scrollbar`}
+              placeholder="Summarize what changed, why it was needed, and how it was tested..."
+              className={`custom-scrollbar w-full resize-none rounded-xl border border-gray-800 bg-[#0d1117] px-3.5 py-2.5 font-mono text-[11px] leading-relaxed text-white outline-none ${theme.ringAccent}`}
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="flex justify-end gap-2.5 pt-3 border-t border-gray-800/80">
+          <div className="flex justify-end gap-2.5 border-t border-gray-800/80 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 text-xs font-semibold transition-colors"
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className={`flex items-center gap-1.5 px-5 py-2 rounded-xl ${theme.btnPrimary} text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50`}
+              className={`flex items-center gap-1.5 rounded-xl px-5 py-2 text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50 ${theme.btnPrimary}`}
             >
               {loading && <Loader2 size={13} className="animate-spin" />}
               <span>Create Pull Request</span>
