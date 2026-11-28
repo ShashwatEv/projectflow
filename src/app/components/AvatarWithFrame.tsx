@@ -125,7 +125,13 @@ export default function AvatarWithFrame({
           100% { transform: rotate(360deg); }
         }
         .pf-anim-cw {
-          animation: pfFrameSpinCw 3.6s linear infinite !important;
+          animation-name: pfFrameSpinCw !important;
+          animation-duration: 3.6s !important;
+          animation-timing-function: linear !important;
+          animation-iteration-count: infinite !important;
+          animation-direction: normal !important;
+          animation-fill-mode: none !important;
+          animation-play-state: running !important;
           transform-origin: center center;
           will-change: transform;
         }
@@ -228,7 +234,13 @@ export default function AvatarWithFrame({
                     marginLeft: `${-pxSize / 2}px`,
                     marginTop: `${-pxSize / 2}px`,
                     opacity: star.opacity,
-                    animation: `pfFrameSpinCw 4.8s linear infinite`,
+                    animationName: 'pfFrameSpinCw',
+                    animationDuration: '4.8s',
+                    animationTimingFunction: 'linear',
+                    animationIterationCount: 'infinite',
+                    animationDirection: 'normal',
+                    animationFillMode: 'none',
+                    animationPlayState: 'running',
                   }}
                   className="pf-anim-cw absolute"
                 >

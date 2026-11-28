@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Loader2, ShieldAlert, Keyboard, LayoutGrid, Rows } from 'lucide-react';
+import { Loader2, ShieldAlert, Keyboard, LayoutGrid, Rows, Plus, X } from 'lucide-react';
 import { ModernKanbanColumn } from './ModernKanbanColumn';
 import { ModernTask } from './ModernTaskCard';
 import { supabase } from '../../lib/supabaseClient';
@@ -17,8 +17,16 @@ export interface ExtendedModernTask extends ModernTask {
 }
 
 type ColumnType = 'todo' | 'inProgress' | 'review' | 'done';
+type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
 
 const COLUMN_KEYS: ColumnType[] = ['todo', 'inProgress', 'review', 'done'];
+
+const COLUMN_LABELS: Record<ColumnType, string> = {
+  todo: 'To Do',
+  inProgress: 'In Progress',
+  review: 'Review',
+  done: 'Done',
+};
 
 interface ColumnData {
   todo: ExtendedModernTask[];
@@ -29,6 +37,30 @@ interface ColumnData {
 
 interface ModernKanbanBoardProps {
   projectId?: string;
+}
+
+interface RawTaskRow {
+  id: string;
+  title: string;
+  description?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  due_date?: string | null;
+  comments_count?: number | null;
+  tags?: string[] | null;
+  project_id?: string | null;
+  blocked_by?: string | null;
+  assigned_user?: { id?: string; name?: string | null; avatar?: string | null } | null;
+  blocker?: { id?: string; title?: string | null; status?: string | null } | null;
+}
+
+function normalizePriority(raw: unknown): TaskPriority {
+  if (typeof raw !== 'string') return 'medium';
+  const lower = raw.toLowerCase();
+  if (lower === 'urgent' || lower === 'high' || lower === 'medium' || lower === 'low') {
+    return lower;
+  }
+  return 'medium';
 }
 
 export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
@@ -52,9 +84,12 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
   const [quickAddColumn, setQuickAddColumn] = useState<ColumnType | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [quickAddPriority, setQuickAddPriority] = useState<TaskPriority>('medium');
   const [creatingTask, setCreatingTask] = useState(false);
 
-  const fetchTasks = async () => {
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchTasks = useCallback(async () => {
     if (isSandboxActive) {
       const grouped: ColumnData = {
         todo: [],
@@ -64,15 +99,19 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       };
 
       sandboxTasks.forEach((t) => {
+        const taskWithProject: ExtendedModernTask = {
+          ...t,
+          projectId: t.projectId || projectId,
+        };
         const hasTag = (tag: string) => t.tags.includes(tag);
         if (hasTag('inProgress') || hasTag('in_progress')) {
-          grouped.inProgress.push(t);
+          grouped.inProgress.push(taskWithProject);
         } else if (hasTag('review')) {
-          grouped.review.push(t);
+          grouped.review.push(taskWithProject);
         } else if (hasTag('done')) {
-          grouped.done.push(t);
+          grouped.done.push(taskWithProject);
         } else {
-          grouped.todo.push(t);
+          grouped.todo.push(taskWithProject);
         }
       });
 
@@ -101,8 +140,8 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
         done: [],
       };
 
-      (data || []).forEach((t: any) => {
-        const rawStatus = (t.status || 'todo') as string;
+      ((data || []) as RawTaskRow[]).forEach((t) => {
+        const rawStatus = t.status || 'todo';
         const colKey: ColumnType =
           rawStatus === 'in_progress' || rawStatus === 'inProgress'
             ? 'inProgress'
@@ -116,54 +155,80 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
           id: t.id,
           title: t.title,
           description: t.description || '',
-          priority: (t.priority?.toLowerCase() || 'medium') as any,
+          priority: normalizePriority(t.priority),
           assignees: t.assigned_user
-            ? [{ name: t.assigned_user.name || 'User', avatar: t.assigned_user.avatar || '/pfp.jpg' }]
+            ? [
+                {
+                  name: t.assigned_user.name || 'User',
+                  avatar: t.assigned_user.avatar || '/pfp.jpg',
+                },
+              ]
             : [],
-          dueDate: t.due_date ? new Date(t.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No date',
+          dueDate: t.due_date
+            ? new Date(t.due_date).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+              })
+            : 'No date',
           comments: t.comments_count || 0,
           attachments: 0,
-          tags: t.tags || [t.priority || 'Task'],
+          tags: t.tags && t.tags.length > 0 ? t.tags : [t.priority || 'Task'],
+          projectId: t.project_id || projectId,
           blocked_by: t.blocked_by || null,
           blocker_title: t.blocker?.title || null,
           blocker_status: t.blocker?.status || null,
         };
 
-        if (grouped[colKey]) {
-          grouped[colKey].push(taskItem);
-        } else {
-          grouped.todo.push(taskItem);
-        }
+        grouped[colKey].push(taskItem);
       });
 
       setColumns(grouped);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load board tasks:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSandboxActive, projectId, sandboxTasks]);
 
   useEffect(() => {
-    fetchTasks();
+    void fetchTasks();
+  }, [fetchTasks]);
 
+  useEffect(() => {
     if (isSandboxActive) return;
 
+    const scheduleRefresh = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        void fetchTasks();
+      }, 150);
+    };
+
+    const channelName = `kanban_realtime_stream_${projectId || 'all'}`;
     const channel = supabase
-      .channel('kanban_realtime_stream')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        fetchTasks();
-      })
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          ...(projectId ? { filter: `project_id=eq.${projectId}` } : {}),
+        },
+        scheduleRefresh
+      )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      void supabase.removeChannel(channel);
     };
-  }, [projectId, isSandboxActive, sandboxTasks]);
+  }, [fetchTasks, isSandboxActive, projectId]);
 
   const handleOpenQuickAdd = (col: ColumnType) => {
     setQuickAddColumn(col);
     setQuickAddTitle('');
+    setQuickAddPriority('medium');
   };
 
   const handleQuickCreateTask = async (e: React.FormEvent) => {
@@ -176,7 +241,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
     try {
       if (isSandboxActive) {
-        toast.info(`Draft "${cleanTitle}" noted for ${quickAddColumn} in Safe Sandbox.`);
+        toast.info(`Draft "${cleanTitle}" noted for ${COLUMN_LABELS[quickAddColumn]} in Safe Sandbox.`);
         setQuickAddTitle('');
         setQuickAddColumn(null);
         return;
@@ -185,7 +250,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       const { error } = await supabase.from('tasks').insert({
         title: cleanTitle,
         status: dbStatus,
-        priority: 'medium',
+        priority: quickAddPriority,
         ...(projectId ? { project_id: projectId } : {}),
       });
 
@@ -193,7 +258,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
       setQuickAddTitle('');
       setQuickAddColumn(null);
-      toast.success('Task added to column');
+      toast.success(`Added to ${COLUMN_LABELS[quickAddColumn]}`);
       await fetchTasks();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create task';
@@ -227,7 +292,9 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
     if (targetColumn === 'done' && taskToCheck.blocked_by) {
       if (taskToCheck.blocker_status !== 'done') {
         toast.error('Task Dependency Blocker', {
-          description: `Cannot mark "${taskToCheck.title}" as Done until blocker "${taskToCheck.blocker_title || 'predecessor'}" is completed first.`,
+          description: `Cannot mark "${taskToCheck.title}" as Done until blocker "${
+            taskToCheck.blocker_title || 'predecessor'
+          }" is completed first.`,
         });
         return;
       }
@@ -242,19 +309,16 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
     try {
       const dbStatus = targetColumn === 'inProgress' ? 'in_progress' : targetColumn;
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: dbStatus })
-        .eq('id', taskId);
+      const { error } = await supabase.from('tasks').update({ status: dbStatus }).eq('id', taskId);
 
       if (error) throw error;
     } catch {
       toast.error('Failed to update task status');
-      fetchTasks();
+      void fetchTasks();
     }
   };
 
-  const handlePriorityUpdate = async (taskId: string, newPriority: 'urgent' | 'high' | 'medium' | 'low') => {
+  const handlePriorityUpdate = async (taskId: string, newPriority: TaskPriority) => {
     setColumns((prev) => {
       const next = { ...prev };
       Object.keys(next).forEach((k) => {
@@ -271,7 +335,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
         return;
       }
 
@@ -324,41 +388,67 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
   if (loading) {
     return (
-      <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
+      <div className="flex flex-col items-center justify-center space-y-3 py-24 text-gray-400">
         <Loader2 size={30} className={`animate-spin ${theme.textAccent}`} />
         <p className="text-xs">Synchronizing Kanban board...</p>
       </div>
     );
   }
 
+  const totalTasks =
+    columns.todo.length +
+    columns.inProgress.length +
+    columns.review.length +
+    columns.done.length;
+
   return (
     <div data-tour="kanban-board" className="space-y-4">
-      {/* Top Controls Toolbar with Density Toggle and Shortcuts */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-gray-500 bg-white dark:bg-[#161b22] px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xs">
-        <div className="flex items-center gap-2.5">
+      {/* Top Controls Toolbar with Density Toggle, Total Count, and Shortcuts */}
+      <div className="flex flex-col justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-2.5 font-mono text-xs text-gray-500 shadow-xs dark:border-gray-800 dark:bg-[#161b22] sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Keyboard size={15} className={theme.textAccent} />
-          <span>Triage Keys:</span>
+          <span className="rounded-md bg-gray-100 px-2 py-0.5 font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+            {totalTasks} {totalTasks === 1 ? 'card' : 'cards'}
+          </span>
+          <span className="text-gray-300 dark:text-gray-700">|</span>
           <span className="text-gray-800 dark:text-gray-200">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">J</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">K</kbd> move
+            <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-bold dark:border-gray-700 dark:bg-gray-800">
+              J
+            </kbd>{' '}
+            /{' '}
+            <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-bold dark:border-gray-700 dark:bg-gray-800">
+              K
+            </kbd>{' '}
+            move
           </span>
           <span className="text-gray-400">•</span>
           <span className="text-gray-800 dark:text-gray-200">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">H</kbd> / <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">L</kbd> column
+            <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-bold dark:border-gray-700 dark:bg-gray-800">
+              H
+            </kbd>{' '}
+            /{' '}
+            <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-bold dark:border-gray-700 dark:bg-gray-800">
+              L
+            </kbd>{' '}
+            column
           </span>
           <span className="text-gray-400">•</span>
           <span className="text-gray-800 dark:text-gray-200">
-            <kbd className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-bold border border-gray-200 dark:border-gray-700">Space</kbd> inspect
+            <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-bold dark:border-gray-700 dark:bg-gray-800">
+              Space
+            </kbd>{' '}
+            inspect
           </span>
         </div>
 
         {/* Density View Switcher */}
-        <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#0d1117] p-1 rounded-xl border border-gray-200 dark:border-gray-800 self-end sm:self-auto">
+        <div className="flex items-center gap-1 self-end rounded-xl border border-gray-200 bg-gray-100 p-1 dark:border-gray-800 dark:bg-[#0d1117] sm:self-auto">
           <button
             type="button"
             onClick={() => setDensity('comfort')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
               density === 'comfort'
-                ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-xs'
+                ? 'bg-white text-gray-900 shadow-xs dark:bg-[#161b22] dark:text-white'
                 : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title="Comfort card density"
@@ -369,9 +459,9 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
           <button
             type="button"
             onClick={() => setDensity('compact')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
               density === 'compact'
-                ? 'bg-white dark:bg-[#161b22] text-gray-900 dark:text-white shadow-xs'
+                ? 'bg-white text-gray-900 shadow-xs dark:bg-[#161b22] dark:text-white'
                 : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title="Compact high density"
@@ -384,14 +474,14 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
       {/* Sandbox Isolation Header Banner */}
       {isSandboxActive && (
-        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-500 dark:text-amber-400">
+        <div className="flex items-center justify-between rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-500 dark:text-amber-400">
           <div className="flex items-center gap-2">
             <ShieldAlert size={16} className="shrink-0" />
             <span>
               Safe Sandbox Active: Tasks shown are isolated mock drafts. Drag and test without affecting the team.
             </span>
           </div>
-          <span className="text-[10px] font-bold font-mono uppercase bg-amber-500/20 px-2 py-0.5 rounded-lg shrink-0">
+          <span className="shrink-0 rounded-lg bg-amber-500/20 px-2 py-0.5 font-mono text-[10px] font-bold uppercase">
             Isolated
           </span>
         </div>
@@ -399,7 +489,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
       {/* Horizontal Snap Scroll Container */}
       <DndProvider backend={HTML5Backend}>
-        <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar snap-x snap-mandatory scroll-smooth">
+        <div className="custom-scrollbar flex snap-x snap-mandatory gap-6 overflow-x-auto scroll-smooth pb-6">
           <ModernKanbanColumn
             title="To Do"
             tasks={columns.todo}
@@ -457,49 +547,100 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
 
       {/* Quick Add Task Modal */}
       {quickAddColumn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => {
+            if (!creatingTask) setQuickAddColumn(null);
+          }}
+        >
           <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-add-modal-title"
+            onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => void handleQuickCreateTask(e)}
-            className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-gray-800 dark:bg-[#161b22] space-y-4"
+            className="w-full max-w-md space-y-4 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-150 dark:border-gray-800 dark:bg-[#161b22]"
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Add Task to{' '}
-                {quickAddColumn === 'inProgress'
-                  ? 'In Progress'
-                  : quickAddColumn.charAt(0).toUpperCase() + quickAddColumn.slice(1)}
-              </h3>
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <span className={`flex h-6 w-6 items-center justify-center rounded-lg ${theme.bgSubtle} ${theme.textAccent}`}>
+                  <Plus size={14} />
+                </span>
+                <h3 id="quick-add-modal-title" className="text-sm font-bold text-gray-900 dark:text-white">
+                  Add Task to {COLUMN_LABELS[quickAddColumn]}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setQuickAddColumn(null)}
-                className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                disabled={creatingTask}
+                aria-label="Close quick add modal"
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-white"
               >
-                Esc / Close
+                <X size={16} />
               </button>
             </div>
-            <input
-              autoFocus
-              required
-              value={quickAddTitle}
-              onChange={(e) => setQuickAddTitle(e.target.value)}
-              placeholder="Task title..."
-              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-[#0d1117] dark:text-white"
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setQuickAddColumn(null)}
-                className="rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={!quickAddTitle.trim() || creatingTask}
-                className={`rounded-xl px-4 py-2 text-xs font-bold text-white disabled:opacity-50 ${theme.btnPrimary}`}
-              >
-                {creatingTask ? 'Adding...' : 'Add Task'}
-              </button>
+
+            <div className="space-y-3.5 px-5">
+              <div>
+                <label
+                  htmlFor="quick-task-title"
+                  className="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300"
+                >
+                  Task Title
+                </label>
+                <input
+                  id="quick-task-title"
+                  autoFocus
+                  required
+                  value={quickAddTitle}
+                  onChange={(e) => setQuickAddTitle(e.target.value)}
+                  placeholder="e.g. Refine Kanban drag & drop states"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-xs text-gray-900 outline-none transition-colors focus:border-indigo-500 dark:border-gray-700 dark:bg-[#0d1117] dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="quick-task-priority"
+                  className="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300"
+                >
+                  Priority
+                </label>
+                <select
+                  id="quick-task-priority"
+                  value={quickAddPriority}
+                  onChange={(e) => setQuickAddPriority(normalizePriority(e.target.value))}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs font-medium text-gray-900 outline-none transition-colors focus:border-indigo-500 dark:border-gray-700 dark:bg-[#0d1117] dark:text-white"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/70 px-5 py-3.5 dark:border-gray-800 dark:bg-[#0d1117]/60">
+              <span className="font-mono text-[10px] text-gray-400">Press Esc to cancel</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickAddColumn(null)}
+                  disabled={creatingTask}
+                  className="rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-200/70 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!quickAddTitle.trim() || creatingTask}
+                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-50 ${theme.btnPrimary}`}
+                >
+                  {creatingTask && <Loader2 size={13} className="animate-spin" />}
+                  <span>{creatingTask ? 'Adding...' : 'Add Task'}</span>
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -509,7 +650,7 @@ export function ModernKanbanBoard({ projectId }: ModernKanbanBoardProps) {
       <TaskDetailModal
         taskId={activeModalTaskId}
         onClose={() => setActiveModalTaskId(null)}
-        onUpdate={fetchTasks}
+        onUpdate={() => void fetchTasks()}
       />
     </div>
   );

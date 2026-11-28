@@ -1,9 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, UserPlus, Filter, MoreHorizontal, Mail, MessageSquare,
-  Loader2, Users, X, MapPin, Globe, Check, Copy,
-  ExternalLink, BadgeCheck, Users as UsersIcon
+  Search,
+  UserPlus,
+  Filter,
+  MoreHorizontal,
+  Mail,
+  MessageSquare,
+  Loader2,
+  Users,
+  X,
+  MapPin,
+  Globe,
+  Check,
+  Copy,
+  ExternalLink,
+  BadgeCheck,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -54,9 +67,9 @@ export default function Team() {
 
   // State
   const [users, setUsers] = useState<UserData[]>([]);
-  const [teamMemberUserIdsByTeam, setTeamMemberUserIdsByTeam] = useState<Map<string, Set<string>>>(
-    () => new Map()
-  );
+  const [teamMemberUserIdsByTeam, setTeamMemberUserIdsByTeam] = useState<
+    Map<string, Set<string>>
+  >(() => new Map());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('All');
@@ -69,19 +82,21 @@ export default function Team() {
 
   const filterRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const syncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
       const [{ data, error }, teamMembersRes] = await Promise.all([
-        supabase
-          .from('user_profiles')
-          .select('*')
-          .order('name', { ascending: true }),
-        (supabase as unknown as {
-          from: (relation: string) => {
-            select: (columns: string) => Promise<{ data: unknown[] | null; error: { message?: string } | null }>;
-          };
-        })
+        supabase.from('user_profiles').select('*').order('name', { ascending: true }),
+        (
+          supabase as unknown as {
+            from: (relation: string) => {
+              select: (
+                columns: string
+              ) => Promise<{ data: unknown[] | null; error: { message?: string } | null }>;
+            };
+          }
+        )
           .from('team_members')
           .select('team_id, user_id, role'),
       ]);
@@ -108,7 +123,7 @@ export default function Team() {
             id,
             name: typeof row.name === 'string' && row.name ? row.name : 'Member',
             email,
-            role: isSuperAdmin(email, rawRole) ? 'Admin' : (rawRole || 'Member'),
+            role: isSuperAdmin(email, rawRole) ? 'Admin' : rawRole || 'Member',
             avatar: typeof row.avatar === 'string' && row.avatar ? row.avatar : '/pfp.jpg',
             avatar_frame: resolvedFrame,
             is_verified: Boolean(row.is_verified || isSuperAdmin(email, rawRole)),
@@ -139,35 +154,57 @@ export default function Team() {
   useEffect(() => {
     void fetchUsers();
 
-    // Subscribe to realtime user updates
+    const scheduleSync = () => {
+      if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+      syncDebounceRef.current = setTimeout(() => {
+        void fetchUsers();
+      }, 200);
+    };
+
     const channel = supabase
       .channel('team_page_users_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
-        void fetchUsers();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleSync)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'team_members' },
+        scheduleSync
+      )
       .subscribe();
 
-    const handleFrameSync = () => {
-      void fetchUsers();
-    };
-    window.addEventListener('avatar-frame-updated', handleFrameSync);
-    window.addEventListener('user-profile-updated', handleFrameSync);
+    window.addEventListener('avatar-frame-updated', scheduleSync);
+    window.addEventListener('user-profile-updated', scheduleSync);
 
     return () => {
-      supabase.removeChannel(channel);
-      window.removeEventListener('avatar-frame-updated', handleFrameSync);
-      window.removeEventListener('user-profile-updated', handleFrameSync);
+      if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
+      void supabase.removeChannel(channel);
+      window.removeEventListener('avatar-frame-updated', scheduleSync);
+      window.removeEventListener('user-profile-updated', scheduleSync);
     };
   }, [fetchUsers]);
 
-  // Close menus when clicking outside
+  // Close menus when clicking outside or pressing Escape
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) setIsFilterOpen(false);
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setActiveMenuId(null);
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setActiveMenuId(null);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsFilterOpen(false);
+        setActiveMenuId(null);
+        setSelectedUser(null);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const startDM = (otherUserId: string) => {
@@ -177,7 +214,7 @@ export default function Team() {
   };
 
   const copyEmail = (email: string) => {
-    navigator.clipboard.writeText(email);
+    void navigator.clipboard.writeText(email);
     setActiveMenuId(null);
     toast.success('Email copied to clipboard!');
   };
@@ -211,9 +248,9 @@ export default function Team() {
     return membersInTeam.has(u.id);
   });
 
-  const uniqueRoles = ['All', ...Array.from(new Set(teamScopedUsers.map(u => u.role)))];
+  const uniqueRoles = ['All', ...Array.from(new Set(teamScopedUsers.map((u) => u.role)))];
 
-  const filteredUsers = teamScopedUsers.filter(u => {
+  const filteredUsers = teamScopedUsers.filter((u) => {
     const matchesSearch =
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
       u.role?.toLowerCase().includes(search.toLowerCase()) ||
@@ -222,31 +259,32 @@ export default function Team() {
     return matchesSearch && matchesRole;
   });
 
-  const verifiedCount = teamScopedUsers.filter(u => u.is_verified).length;
-  const onlineCount = teamScopedUsers.filter(u => onlineUserIds.has(u.id)).length;
+  const verifiedCount = teamScopedUsers.filter((u) => u.is_verified).length;
+  const onlineCount = teamScopedUsers.filter((u) => onlineUserIds.has(u.id)).length;
 
   return (
-    <div className="p-6 md:p-8 h-full overflow-y-auto animate-in fade-in duration-300 relative max-w-7xl mx-auto space-y-8">
-
+    <div className="relative mx-auto h-full max-w-7xl space-y-8 overflow-y-auto p-6 animate-in fade-in duration-300 md:p-8">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-gray-200 dark:border-gray-800 pb-6">
+      <div className="flex flex-col items-start justify-between gap-6 border-b border-gray-200 pb-6 dark:border-gray-800 md:flex-row md:items-center">
         <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
-              <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+              <div
+                className={`rounded-2xl border p-2.5 shadow-sm ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+              >
                 <UsersIcon size={24} />
               </div>
               <span>Team Directory</span>
             </h1>
             {(activeTeam || (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE)) && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+              <span className="rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
                 {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams
                   ? `All Teams (${teams.length})`
                   : activeTeam?.name}
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             {activeTeam
               ? `Find ${activeTeam.name} teammates, see who is online, and start conversations.`
               : 'Find teammates, see who is online, and start conversations.'}
@@ -255,7 +293,7 @@ export default function Team() {
         <button
           type="button"
           onClick={() => setIsAddModalOpen(true)}
-          className={`flex items-center gap-2 px-5 py-3 ${theme.btnPrimary} font-bold text-xs rounded-xl transition-all shadow-md active:scale-95`}
+          className={`flex items-center gap-2 rounded-xl px-5 py-3 text-xs font-bold shadow-md transition-all active:scale-95 ${theme.btnPrimary}`}
         >
           <UserPlus size={16} />
           <span>Invite to Project</span>
@@ -263,59 +301,78 @@ export default function Team() {
       </div>
 
       {/* KPI STATS RIBBON */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Members</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{teamScopedUsers.length}</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Total Members
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+              {teamScopedUsers.length}
+            </h3>
           </div>
-          <div className={`p-2.5 rounded-xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30`}>
+          <div
+            className={`rounded-xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <UsersIcon size={18} />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Active Online</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{onlineCount}</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Active Online
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+              {onlineCount}
+            </h3>
           </div>
-          <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 border border-emerald-200 dark:border-emerald-800/40">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse block" />
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-500 dark:border-emerald-800/40 dark:bg-emerald-950/40">
+            <span className="block h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Verified Identities</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{verifiedCount}</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Verified Identities
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+              {verifiedCount}
+            </h3>
           </div>
-          <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-500 border border-blue-200 dark:border-blue-800/40">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-blue-500 dark:border-blue-800/40 dark:bg-blue-950/40">
             <BadgeCheck size={20} />
           </div>
         </div>
       </div>
 
       {/* SEARCH & FILTERS TOOLBAR */}
-      <div className="flex flex-col sm:flex-row gap-4 bg-white dark:bg-[#161b22] p-2 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 z-20 relative">
-        <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-3.5 text-gray-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
+      <div className="relative z-20 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-800 dark:bg-[#161b22] sm:flex-row">
+        <div className="group relative flex-1">
+          <Search
+            className="absolute left-4 top-3.5 text-gray-400 transition-colors group-focus-within:text-indigo-500"
+            size={18}
+          />
           <input
             type="text"
+            aria-label="Search team members"
             placeholder="Search by name, role, or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-transparent border-none outline-none text-xs text-gray-900 dark:text-white placeholder-gray-400"
+            className="w-full rounded-xl border-none bg-transparent py-2.5 pl-11 pr-4 text-xs text-gray-900 placeholder-gray-400 outline-none dark:text-white"
           />
         </div>
 
-        <div className="w-px bg-gray-200 dark:border-gray-800 hidden sm:block"></div>
+        <div className="hidden w-px bg-gray-200 dark:border-gray-800 sm:block" />
 
         {/* Role Filter Menu */}
         <div className="relative" ref={filterRef}>
           <button
             type="button"
+            aria-expanded={isFilterOpen}
             onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`px-5 py-2.5 text-xs text-gray-600 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-800/60 rounded-xl flex items-center gap-2 transition-colors ${
+            className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/60 ${
               isFilterOpen ? 'bg-gray-100 dark:bg-gray-800' : ''
             }`}
           >
@@ -324,18 +381,23 @@ export default function Team() {
           </button>
 
           {isFilterOpen && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-[#0d1117] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden z-30 animate-in zoom-in-95 duration-200">
-              <div className="p-2 space-y-1">
-                <p className="text-[10px] font-bold text-gray-400 uppercase px-2 py-1">Select Role</p>
-                {uniqueRoles.map(role => (
+            <div className="animate-in zoom-in-95 absolute right-0 top-full z-30 mt-2 w-48 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl duration-200 dark:border-gray-800 dark:bg-[#0d1117]">
+              <div className="space-y-1 p-2">
+                <p className="px-2 py-1 text-[10px] font-bold uppercase text-gray-400">
+                  Select Role
+                </p>
+                {uniqueRoles.map((role) => (
                   <button
                     key={role}
                     type="button"
-                    onClick={() => { setSelectedRole(role); setIsFilterOpen(false); }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-colors ${
+                    onClick={() => {
+                      setSelectedRole(role);
+                      setIsFilterOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs transition-colors ${
                       selectedRole === role
                         ? `${theme.bgSubtle}${theme.textAccent} font-bold`
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        : 'text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800'
                     }`}
                   >
                     <span>{role}</span>
@@ -350,138 +412,165 @@ export default function Team() {
 
       {/* GRID OF TEAM CARDS */}
       {loading ? (
-        <div className="flex flex-col justify-center items-center py-24 space-y-3">
+        <div className="flex flex-col items-center justify-center space-y-3 py-24">
           <Loader2 className={`animate-spin ${theme.textAccent}`} size={32} />
           <p className="text-xs text-gray-400">Loading verified team registry...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-8">
-          {filteredUsers.length > 0 ? filteredUsers.map((user) => {
-            const isRootAdmin = isSuperAdmin(user.email, user.role);
-            const isOnline = onlineUserIds.has(user.id);
+        <div className="grid grid-cols-1 gap-6 pb-8 md:grid-cols-2 xl:grid-cols-3">
+          {filteredUsers.length > 0 ? (
+            filteredUsers.map((user) => {
+              const isRootAdmin = isSuperAdmin(user.email, user.role);
+              const isOnline = onlineUserIds.has(user.id);
 
-            return (
-              <div
-                key={user.id}
-                onClick={() => setSelectedUser(user)}
-                className="group relative bg-white dark:bg-[#161b22] rounded-3xl p-6 border border-gray-200 dark:border-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
-              >
-                {/* Top Action Options */}
-                <div className="absolute top-4 right-4 z-10" onClick={(e) => e.stopPropagation()}>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setActiveMenuId(activeMenuId === user.id ? null : user.id)}
-                      className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
+              return (
+                <div
+                  key={user.id}
+                  onClick={() => setSelectedUser(user)}
+                  className="group relative flex cursor-pointer flex-col justify-between rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-xl dark:border-gray-800/80 dark:bg-[#161b22] dark:hover:border-gray-700"
+                >
+                  {/* Top Action Options */}
+                  <div
+                    className="absolute right-4 top-4 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setActiveMenuId(activeMenuId === user.id ? null : user.id)}
+                        aria-label={`Member options for ${user.name}`}
+                        aria-expanded={activeMenuId === user.id}
+                        className="rounded-xl p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
 
-                    {activeMenuId === user.id && (
-                      <div ref={menuRef} className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#0d1117] rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 overflow-hidden py-1 text-xs animate-in zoom-in-95 duration-200">
-                        <button
-                          type="button"
-                          onClick={() => { setActiveMenuId(null); startDM(user.id); }}
-                          className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
+                      {activeMenuId === user.id && (
+                        <div
+                          ref={menuRef}
+                          className="animate-in zoom-in-95 absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 text-xs shadow-2xl duration-200 dark:border-gray-800 dark:bg-[#0d1117]"
                         >
-                          <MessageSquare size={13} className={theme.textAccent} /> Send Message
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setActiveMenuId(null); navigate(`/profile/${user.id}`); }}
-                          className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 font-medium"
-                        >
-                          <ExternalLink size={13} /> View Profile
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => copyEmail(user.email)}
-                          className="w-full text-left px-3.5 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 font-medium"
-                        >
-                          <Copy size={13} /> Copy Email
-                        </button>
-                      </div>
-                    )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              startDM(user.id);
+                            }}
+                            className="flex w-full items-center gap-2 px-3.5 py-2 text-left font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            <MessageSquare size={13} className={theme.textAccent} /> Send Message
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              navigate(`/profile/${user.id}`);
+                            }}
+                            className="flex w-full items-center gap-2 px-3.5 py-2 text-left font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            <ExternalLink size={13} /> View Profile
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => copyEmail(user.email)}
+                            className="flex w-full items-center gap-2 border-t border-gray-100 px-3.5 py-2 text-left font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-gray-800"
+                          >
+                            <Copy size={13} /> Copy Email
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Identity Header */}
-                <div className="flex items-start gap-4 mb-5">
-                  <div className="relative shrink-0">
-                    <AvatarWithFrame
-                      src={user.avatar}
-                      alt={user.name}
-                      shape="square"
-                      frame={user.avatar_frame || 'blue-sparkles'}
-                      size={56}
-                    />
-                    {isOnline && (
-                      <span
-                        className="absolute -bottom-1 -right-1 z-10 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full"
-                        title="Online"
+                  {/* Identity Header */}
+                  <div className="mb-5 flex items-start gap-4">
+                    <div className="relative shrink-0">
+                      <AvatarWithFrame
+                        src={user.avatar}
+                        alt={user.name}
+                        shape="square"
+                        frame={user.avatar_frame || 'blue-sparkles'}
+                        size={56}
                       />
+                      {isOnline && (
+                        <span
+                          className="absolute -bottom-1 -right-1 z-10 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-[#161b22]"
+                          title="Online"
+                        />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h3 className="truncate text-base font-bold text-gray-900 transition-colors group-hover:text-indigo-400 dark:text-white">
+                          {user.name}
+                        </h3>
+                        {user.is_verified && (
+                          <span title="Verified Member" className="shrink-0 text-blue-500">
+                            <BadgeCheck size={17} className="fill-blue-500/20" />
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${getRoleBadge(
+                            user.role,
+                            user.email
+                          )}`}
+                        >
+                          {user.role}
+                        </span>
+                        {isRootAdmin && (
+                          <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-500">
+                            Root Admin
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-5 min-h-14 space-y-2 text-xs">
+                    {user.bio ? (
+                      <p className="line-clamp-2 leading-relaxed text-gray-600 dark:text-gray-400">
+                        {user.bio}
+                      </p>
+                    ) : (
+                      <p className="text-gray-400 dark:text-gray-500">No bio added yet.</p>
+                    )}
+                    {user.location && (
+                      <p className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                        <MapPin size={13} className="shrink-0" />
+                        <span className="truncate">{user.location}</span>
+                      </p>
                     )}
                   </div>
 
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="text-base font-bold text-gray-900 dark:text-white truncate group-hover:text-indigo-400 transition-colors">
-                        {user.name}
-                      </h3>
-                      {user.is_verified && (
-                        <span title="Verified Member" className="shrink-0 text-blue-500">
-                          <BadgeCheck size={17} className="fill-blue-500/20" />
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${getRoleBadge(user.role, user.email)}`}>
-                        {user.role}
+                  {/* Footer Strip */}
+                  <div className="flex items-center justify-between border-t border-gray-100 pt-4 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                    <div className="flex items-center gap-1.5">
+                      <Users size={13} className="text-gray-400" />
+                      <span className="max-w-[130px] truncate font-medium">
+                        {activeTeam?.name || 'Workspace member'}
                       </span>
-                      {isRootAdmin && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30">
-                          Root Admin
-                        </span>
-                      )}
                     </div>
-                  </div>
-                </div>
 
-                <div className="mb-5 min-h-14 space-y-2 text-xs">
-                  {user.bio ? (
-                    <p className="line-clamp-2 leading-relaxed text-gray-600 dark:text-gray-400">{user.bio}</p>
-                  ) : (
-                    <p className="text-gray-400 dark:text-gray-500">No bio added yet.</p>
-                  )}
-                  {user.location && (
-                    <p className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                      <MapPin size={13} className="shrink-0" />
-                      <span className="truncate">{user.location}</span>
-                    </p>
-                  )}
-                </div>
-
-                {/* Footer Strip */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
-                  <div className="flex items-center gap-1.5">
-                    <Users size={13} className="text-gray-400" />
-                    <span className="truncate max-w-[130px] font-medium">
-                      {activeTeam?.name || 'Workspace member'}
+                    <span
+                      className={`flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5 ${theme.textAccent}`}
+                    >
+                      Inspect Profile →
                     </span>
                   </div>
-
-                  <span className={`font-semibold ${theme.textAccent} group-hover:translate-x-0.5 transition-transform flex items-center gap-1`}>
-                    Inspect Profile →
-                  </span>
                 </div>
-              </div>
-            );
-          }) : (
-            <div className="col-span-full flex flex-col items-center justify-center py-20 bg-white dark:bg-[#161b22] border border-dashed border-gray-200 dark:border-gray-800 rounded-3xl text-center space-y-2">
-              <Search className="text-gray-400 mb-2" size={32} />
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">No members found</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm">
+              );
+            })
+          ) : (
+            <div className="col-span-full flex flex-col items-center justify-center space-y-2 rounded-3xl border border-dashed border-gray-200 bg-white py-20 text-center dark:border-gray-800 dark:bg-[#161b22]">
+              <Search className="mb-2 text-gray-400" size={32} />
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                No members found
+              </h3>
+              <p className="max-w-sm text-xs text-gray-500 dark:text-gray-400">
                 Try adjusting your search criteria or resetting the role filter.
               </p>
             </div>
@@ -493,16 +582,22 @@ export default function Team() {
       {selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            className="animate-in fade-in fixed inset-0 bg-black/60 backdrop-blur-sm duration-200"
             onClick={() => setSelectedUser(null)}
           />
 
-          <div className="relative w-full max-w-md bg-white dark:bg-[#161b22] rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200 dark:border-gray-800">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedUser.name} profile details`}
+            className="animate-in zoom-in-95 relative w-full max-w-md overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl duration-200 dark:border-gray-800 dark:bg-[#161b22]"
+          >
             {/* Close Button */}
             <button
               type="button"
               onClick={() => setSelectedUser(null)}
-              className="absolute top-4 right-4 p-2 bg-black/30 hover:bg-black/50 text-white rounded-full z-10 transition-colors backdrop-blur-md"
+              aria-label="Close member profile modal"
+              className="absolute right-4 top-4 z-10 rounded-full bg-black/30 p-2 text-white backdrop-blur-md transition-colors hover:bg-black/50"
             >
               <X size={16} />
             </button>
@@ -510,7 +605,7 @@ export default function Team() {
             {/* Gradient Header Banner */}
             <div className="h-32 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600" />
 
-            <div className="px-6 pb-6 -mt-14 text-center relative space-y-3">
+            <div className="relative -mt-14 space-y-3 px-6 pb-6 text-center">
               {/* Profile Image with Online Pin */}
               <div className="relative inline-flex items-center justify-center">
                 <AvatarWithFrame
@@ -522,7 +617,7 @@ export default function Team() {
                 />
                 {onlineUserIds.has(selectedUser.id) && (
                   <div
-                    className="absolute bottom-1 right-1 z-10 w-5 h-5 bg-emerald-500 border-2 border-white dark:border-[#161b22] rounded-full"
+                    className="absolute bottom-1 right-1 z-10 h-5 w-5 rounded-full border-2 border-white bg-emerald-500 dark:border-[#161b22]"
                     title="Online"
                   />
                 )}
@@ -541,12 +636,17 @@ export default function Team() {
                   )}
                 </div>
 
-                <div className="flex items-center justify-center gap-1.5 mt-1">
-                  <span className={`px-2.5 py-0.5 rounded-md text-xs font-bold border ${getRoleBadge(selectedUser.role, selectedUser.email)}`}>
+                <div className="mt-1 flex items-center justify-center gap-1.5">
+                  <span
+                    className={`rounded-md border px-2.5 py-0.5 text-xs font-bold ${getRoleBadge(
+                      selectedUser.role,
+                      selectedUser.email
+                    )}`}
+                  >
                     {selectedUser.role}
                   </span>
                   {isSuperAdmin(selectedUser.email, selectedUser.role) && (
-                    <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-500/10 text-amber-500 border border-amber-500/30">
+                    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-500">
                       Root Admin
                     </span>
                   )}
@@ -554,8 +654,8 @@ export default function Team() {
               </div>
 
               {selectedUser.bio && (
-                <p className="text-gray-500 dark:text-gray-400 text-xs italic px-4 leading-relaxed">
-                  "{selectedUser.bio}"
+                <p className="px-4 text-xs italic leading-relaxed text-gray-500 dark:text-gray-400">
+                  &ldquo;{selectedUser.bio}&rdquo;
                 </p>
               )}
 
@@ -563,37 +663,48 @@ export default function Team() {
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setSelectedUser(null); startDM(selectedUser.id); }}
-                  className={`py-2.5 px-4 ${theme.btnPrimary} font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95`}
+                  onClick={() => {
+                    setSelectedUser(null);
+                    startDM(selectedUser.id);
+                  }}
+                  className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold shadow-md transition-all active:scale-95 ${theme.btnPrimary}`}
                 >
                   <MessageSquare size={15} />
                   <span>Direct Message</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setSelectedUser(null); navigate(`/profile/${selectedUser.id}`); }}
-                  className="py-2.5 px-4 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all"
+                  onClick={() => {
+                    setSelectedUser(null);
+                    navigate(`/profile/${selectedUser.id}`);
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gray-100 px-4 py-2.5 text-xs font-bold text-gray-900 transition-all hover:bg-gray-200 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700"
                 >
                   <span>Full Profile</span>
                 </button>
               </div>
 
               {/* Contact Info List */}
-              <div className="pt-3 space-y-2 text-left text-xs">
-                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#0d1117] border border-gray-100 dark:border-gray-800 rounded-2xl text-gray-600 dark:text-gray-300">
+              <div className="space-y-2 pt-3 text-left text-xs">
+                <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-gray-600 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-300">
                   <Mail className="text-gray-400" size={16} />
                   <span className="truncate">{selectedUser.email}</span>
                 </div>
                 {selectedUser.location && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#0d1117] border border-gray-100 dark:border-gray-800 rounded-2xl text-gray-600 dark:text-gray-300">
+                  <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-gray-600 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-300">
                     <MapPin className="text-gray-400" size={16} />
                     <span>{selectedUser.location}</span>
                   </div>
                 )}
                 {selectedUser.website && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#0d1117] border border-gray-100 dark:border-gray-800 rounded-2xl text-gray-600 dark:text-gray-300">
+                  <div className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 p-3 text-gray-600 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-300">
                     <Globe className="text-gray-400" size={16} />
-                    <a href={selectedUser.website} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline truncate">
+                    <a
+                      href={selectedUser.website}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-blue-500 hover:underline"
+                    >
                       {selectedUser.website}
                     </a>
                   </div>
@@ -610,7 +721,6 @@ export default function Team() {
         onClose={() => setIsAddModalOpen(false)}
         onAccessGranted={() => void fetchUsers()}
       />
-
     </div>
   );
 }

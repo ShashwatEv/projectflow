@@ -54,7 +54,11 @@ function readSavedFrame(): AvatarFrameId {
   return normalizeFrameId(localStorage.getItem(FRAME_STORAGE_KEY)) ?? 'blue-sparkles';
 }
 
-export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSidebar }: ModernHeaderProps) {
+export function ModernHeader({
+  onMenuClick,
+  isSidebarOpen = true,
+  onToggleSidebar,
+}: ModernHeaderProps) {
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
   const accentTheme = useAccentTheme();
@@ -74,6 +78,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const notifDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accentHoverClasses =
     'hover:border-[var(--app-accent)]/40 hover:bg-[var(--app-accent-light)] hover:text-[var(--app-accent)]';
@@ -88,7 +93,8 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   }, [user]);
 
   useEffect(() => {
-    if (!user?.id) {
+    const activeUserId = user?.id;
+    if (!activeUserId) {
       setRecentNotifs([]);
       setUnreadCount(0);
       return;
@@ -100,13 +106,13 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           supabase
             .from('notifications')
             .select('id, title, message, type, is_read, created_at')
-            .eq('user_id', user.id)
+            .eq('user_id', activeUserId)
             .order('created_at', { ascending: false })
             .limit(5),
           supabase
             .from('notifications')
             .select('*', { count: 'exact', head: true })
-            .eq('user_id', user.id)
+            .eq('user_id', activeUserId)
             .eq('is_read', false),
           supabase.rpc('workspace_unread_counts'),
         ]);
@@ -118,9 +124,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         const unreadNotifications = typeof notifCount === 'number' ? notifCount : 0;
         const unreadMessages = Array.isArray(roomUnreads)
           ? (roomUnreads as RoomUnreadRow[]).reduce(
-            (sum, row) => sum + (Number(row.unread_count) || 0),
-            0
-          )
+              (sum, row) => sum + (Number(row.unread_count) || 0),
+              0
+            )
           : 0;
 
         setUnreadCount(unreadNotifications + unreadMessages);
@@ -131,53 +137,58 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
 
     void fetchNotifications();
 
+    const scheduleNotifRefresh = () => {
+      if (notifDebounceRef.current) clearTimeout(notifDebounceRef.current);
+      notifDebounceRef.current = setTimeout(() => {
+        void fetchNotifications();
+      }, 200);
+    };
+
     const channel = supabase
-      .channel(`header_notifs_count_${user.id}`)
+      .channel(`header_notifs_count_${activeUserId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
-        () => {
-          void fetchNotifications();
-        }
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${activeUserId}` },
+        scheduleNotifRefresh
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
-        () => {
-          void fetchNotifications();
-        }
+        scheduleNotifRefresh
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'workspace_channel_reads', filter: `user_id=eq.${user.id}` },
-        () => {
-          void fetchNotifications();
-        }
+        { event: '*', schema: 'public', table: 'workspace_channel_reads', filter: `user_id=eq.${activeUserId}` },
+        scheduleNotifRefresh
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (notifDebounceRef.current) clearTimeout(notifDebounceRef.current);
+      void supabase.removeChannel(channel);
     };
   }, [user?.id]);
 
   useEffect(() => {
+    const activeUserId = user?.id;
+    let cancelled = false;
+
     const syncProfile = async () => {
       const localFrame = readSavedFrame();
-      setCurrentFrame(localFrame);
+      if (!cancelled) setCurrentFrame(localFrame);
       const cachedAvatar = localStorage.getItem('pf_user_avatar');
-      if (cachedAvatar) {
+      if (cachedAvatar && !cancelled) {
         setCurrentAvatar(cachedAvatar);
       }
 
-      if (!user?.id) return;
+      if (!activeUserId) return;
       const { data } = await supabase
         .from('users')
         .select('*')
-        .eq('id', user.id)
+        .eq('id', activeUserId)
         .single();
 
-      if (data) {
+      if (data && !cancelled) {
         const userRow = data as Record<string, unknown>;
         setCurrentAvatar((userRow.avatar as string) || '/pfp.jpg');
         setCurrentName((userRow.name as string) || 'Guest');
@@ -201,11 +212,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
     window.addEventListener('user-profile-updated', syncProfile);
     window.addEventListener('avatar-frame-updated', handleFrameUpdated);
     return () => {
+      cancelled = true;
       window.removeEventListener('storage', syncProfile);
       window.removeEventListener('user-profile-updated', syncProfile);
       window.removeEventListener('avatar-frame-updated', handleFrameUpdated);
     };
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -235,7 +247,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
   };
 
   return (
-    <header className="app-header relative z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 text-gray-900 transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900 dark:text-white">
+    <header className="app-header relative z-30 flex h-16 items-center justify-between border-b border-gray-200/90 bg-white/95 px-4 text-gray-900 backdrop-blur-md transition-colors duration-200 dark:border-gray-800/90 dark:bg-gray-900/95 dark:text-white sm:px-6">
       {/* Left Block: Hamburger button, breadcrumb, team switcher, clickable mobile logo */}
       <div className="flex items-center gap-2 sm:gap-3">
         <button
@@ -251,12 +263,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         <Link
           to="/about"
           aria-label="About ProjectFlow"
-          className="flex items-center select-none md:hidden hover:opacity-85 transition-opacity"
+          className="flex select-none items-center transition-opacity hover:opacity-85 md:hidden"
         >
-          <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2 shrink-0 overflow-hidden">
-            <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
+          <div className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs dark:border-gray-700/60">
+            <img src="/favicon.ico" alt="Logo" className="h-full w-full object-contain" />
           </div>
-          <span className="text-sm font-bold text-gray-900 dark:text-white tracking-tight">
+          <span className="text-sm font-bold tracking-tight text-gray-900 dark:text-white">
             ProjectFlow
           </span>
         </Link>
@@ -267,14 +279,14 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             type="button"
             onClick={onToggleSidebar}
             title={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            className={`flex items-center gap-1 text-gray-900 dark:text-white font-bold tracking-tight ${accentTextHoverClasses} transition-colors select-none cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 ${accentTheme.ringAccent}`}
+            className={`flex cursor-pointer select-none items-center gap-1 rounded-md font-bold tracking-tight text-gray-900 transition-colors ${accentTextHoverClasses} focus-visible:outline-none focus-visible:ring-2 ${accentTheme.ringAccent} dark:text-white`}
           >
             Workspace
           </button>
-          <ChevronRight size={14} className="mx-2 opacity-50 text-gray-400" />
+          <ChevronRight size={14} className="mx-2 text-gray-400 opacity-50" />
           <Link
             to={location.pathname}
-            className={`transition-colors ${accentTextHoverClasses} font-medium text-xs text-gray-500 dark:text-gray-400`}
+            className={`text-xs font-medium text-gray-500 transition-colors ${accentTextHoverClasses} dark:text-gray-400`}
           >
             {getPageTitle()}
           </Link>
@@ -287,12 +299,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
       <Link
         to="/about"
         aria-label="About ProjectFlow"
-        className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 items-center select-none hover:opacity-85 transition-opacity cursor-pointer"
+        className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-pointer select-none items-center transition-opacity hover:opacity-85"
       >
-        <div className="w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-gray-200 dark:border-gray-700/60 flex items-center justify-center mr-2.5 shrink-0 overflow-hidden">
-          <img src="/favicon.ico" alt="Logo" className="w-full h-full object-contain" />
+        <div className="mr-2.5 flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white p-0.5 shadow-2xs dark:border-gray-700/60">
+          <img src="/favicon.ico" alt="Logo" className="h-full w-full object-contain" />
         </div>
-        <span className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
+        <span className="text-base font-bold tracking-tight text-gray-900 dark:text-white">
           ProjectFlow
         </span>
       </Link>
@@ -324,7 +336,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
         <Link
           to="/downloads"
           aria-label="Download ProjectFlow apps"
-          className={`hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50  text-gray-500 transition-colors ${accentHoverClasses} focus-visible:outline-none focus-visible:ring-2 ${accentTheme.ringAccent} dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 sm:inline-flex`}
+          className={`hidden h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition-colors ${accentHoverClasses} focus-visible:outline-none focus-visible:ring-2 ${accentTheme.ringAccent} dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 sm:inline-flex`}
           title="Download ProjectFlow apps"
         >
           <Download size={17} aria-hidden="true" />
@@ -360,7 +372,7 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             {unreadCount > 0 && (
               <span
                 data-testid="header-unread-badge"
-                className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full border-2 border-white ${accentTheme.toggleActive} text-[10px] font-bold text-white flex items-center justify-center dark:border-gray-900 shadow-sm`}
+                className={`absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white px-1 text-[10px] font-bold text-white shadow-xs dark:border-gray-900 ${accentTheme.toggleActive}`}
               >
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
@@ -368,19 +380,21 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           </button>
 
           {isNotifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-800 z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-2.5 border-b border-gray-100 dark:border-gray-700/60 px-1">
-                <span className="font-bold text-xs text-gray-900 dark:text-white">Notifications</span>
+            <div className="animate-in fade-in zoom-in-95 absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl duration-150 dark:border-gray-700 dark:bg-gray-800 sm:w-80">
+              <div className="flex items-center justify-between border-b border-gray-100 px-1 pb-2.5 dark:border-gray-700/60">
+                <span className="text-xs font-bold text-gray-900 dark:text-white">
+                  Notifications
+                </span>
                 <Link
                   to="/notifications"
                   onClick={() => setIsNotifOpen(false)}
-                  className={`text-xs ${accentTheme.textAccent} hover:underline font-medium`}
+                  className={`text-xs font-medium ${accentTheme.textAccent} hover:underline`}
                 >
                   View All
                 </Link>
               </div>
 
-              <div className="max-h-64 overflow-y-auto py-2 divide-y divide-gray-100 dark:divide-gray-700/50 custom-scrollbar">
+              <div className="custom-scrollbar max-h-64 divide-y divide-gray-100 overflow-y-auto py-2 dark:divide-gray-700/50">
                 {recentNotifs.length === 0 ? (
                   <div className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
                     No new notifications right now.
@@ -393,12 +407,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                         setIsNotifOpen(false);
                         navigate('/notifications');
                       }}
-                      className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl transition-colors cursor-pointer"
+                      className="cursor-pointer rounded-xl p-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
                     >
-                      <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      <p className="truncate text-xs font-semibold text-gray-900 dark:text-gray-100">
                         {item.title}
                       </p>
-                      <p className="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-1 mt-0.5">
+                      <p className="mt-0.5 line-clamp-1 text-[11px] text-gray-600 dark:text-gray-400">
                         {item.message}
                       </p>
                     </div>
@@ -421,7 +435,9 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
             className={`flex items-center gap-2 rounded-xl p-1 transition-all hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 ${accentTheme.ringAccent} dark:hover:bg-gray-800`}
           >
             <div className="hidden text-right md:block">
-              <p className="text-xs font-bold leading-none text-gray-900 dark:text-white">{currentName}</p>
+              <p className="text-xs font-bold leading-none text-gray-900 dark:text-white">
+                {currentName}
+              </p>
               <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{currentRole}</p>
             </div>
 
@@ -435,10 +451,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800 animate-in fade-in zoom-in-95 duration-150">
+            <div className="animate-in fade-in zoom-in-95 absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl duration-150 dark:border-gray-700 dark:bg-gray-800">
               <div className="border-b border-gray-100 p-3 dark:border-gray-700 md:hidden">
-                <p className="font-bold text-xs text-gray-900 dark:text-white">{currentName}</p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">{currentName}</p>
+                <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">
+                  {user?.email}
+                </p>
               </div>
               <div className="space-y-1 p-1.5 text-xs">
                 <button
@@ -463,13 +481,12 @@ export function ModernHeader({ onMenuClick, isSidebarOpen = true, onToggleSideba
                   <Settings size={15} />
                   <span>Settings</span>
                 </button>
-                
               </div>
 
               <div className="border-t border-gray-100 p-1.5 dark:border-gray-700">
                 <button
                   type="button"
-                  onClick={handleLogout}
+                  onClick={() => void handleLogout()}
                   className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                 >
                   <LogOut size={15} />

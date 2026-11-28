@@ -63,8 +63,8 @@ const Downloads = lazy(() => import('./pages/Downloads'));
 const ApiPlayground = lazy(() =>
   import('./pages/ApiPlayground').catch(() => ({
     default: () => (
-      <div className="p-8 max-w-4xl mx-auto space-y-3 animate-in fade-in duration-200">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+      <div className="mx-auto max-w-4xl space-y-3 p-8 animate-in fade-in duration-200">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
           API Console & Webhook Tester
         </h1>
         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -130,34 +130,47 @@ function Layout() {
   }, []);
 
   useEffect(() => {
-    if (session?.user?.email_confirmed_at && user?.id && !user?.is_verified) {
-      (supabase as any)
-        .from('users')
-        .update({ is_verified: true })
-        .eq('id', user.id)
-        .then(() => {
-          window.dispatchEvent(new CustomEvent('user-profile-updated'));
-        });
+    if (!session?.user?.email_confirmed_at || !user?.id || user?.is_verified) {
+      return;
     }
+
+    let cancelled = false;
+    void (supabase as any)
+      .from('users')
+      .update({ is_verified: true })
+      .eq('id', user.id)
+      .then(() => {
+        if (!cancelled) {
+          window.dispatchEvent(new CustomEvent('user-profile-updated'));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [session?.user?.email_confirmed_at, user?.id, user?.is_verified]);
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-gray-50 transition-colors duration-200 dark:bg-gray-900">
+    <div className="flex h-[100dvh] flex-col bg-gray-50/90 transition-colors duration-200 dark:bg-[#0b0f17]">
       <CommandMenu />
       <OnboardingTour />
       <NetworkStatusPill />
 
       {!isVerified && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 font-medium z-30">
+        <div
+          role="status"
+          className="z-30 flex items-center justify-between border-b border-amber-500/25 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-700 backdrop-blur-xs dark:text-amber-300"
+        >
           <div className="flex items-center gap-2 truncate">
-            <ShieldAlert size={15} className="shrink-0" />
+            <ShieldAlert size={15} className="shrink-0 text-amber-500" />
             <span className="truncate">
               Your account is unverified. Advanced features are locked.
             </span>
           </div>
           <button
+            type="button"
             onClick={() => navigate('/settings')}
-            className="flex items-center gap-1 font-bold underline hover:text-amber-500 dark:hover:text-amber-300 transition-colors ml-4 shrink-0"
+            className="ml-4 flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-bold underline transition-colors hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-200"
           >
             <span>Verify Email</span>
             <ArrowRight size={13} />
@@ -166,7 +179,7 @@ function Layout() {
       )}
 
       <ModernHeader
-        onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        onMenuClick={() => setIsMobileMenuOpen((prev) => !prev)}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
@@ -180,7 +193,7 @@ function Layout() {
           }}
         />
 
-        <main className="app-main min-h-0 w-full flex-1 overflow-y-auto bg-gray-50 text-gray-900 transition-all duration-300 ease-in-out dark:bg-gray-900 dark:text-gray-100">
+        <main className="app-main custom-scrollbar min-h-0 w-full flex-1 overflow-y-auto bg-gray-50/80 text-gray-900 transition-all duration-300 ease-in-out dark:bg-[#0b0f17] dark:text-gray-100">
           <Suspense fallback={<PageLoader />}>
             <Outlet />
           </Suspense>

@@ -1,15 +1,43 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { ensureMonacoConfigured } from '../../lib/monacoConfig';
 
 ensureMonacoConfigured();
-import { 
-  Code2, GitBranch, Workflow, FileCode, Save, RefreshCw, Key,
-  Loader2, Laptop, Sparkles, Bot, Send, X, Copy, Check, 
-  GitPullRequest, Lock, Unlock, FileDiff, Users, User,
-  Plus, ArrowDownToLine, GitFork, WandSparkles, Search, ChevronDown, GripVertical,
-  FilePlus2, FolderPlus, Trash2, RotateCcw
+import {
+  Code2,
+  GitBranch,
+  Workflow,
+  FileCode,
+  Save,
+  RefreshCw,
+  Key,
+  Loader2,
+  Laptop,
+  Sparkles,
+  Bot,
+  Send,
+  X,
+  Copy,
+  Check,
+  GitPullRequest,
+  Lock,
+  Unlock,
+  FileDiff,
+  Users,
+  User,
+  Plus,
+  ArrowDownToLine,
+  GitFork,
+  WandSparkles,
+  Search,
+  ChevronDown,
+  GripVertical,
+  FilePlus2,
+  FolderPlus,
+  Trash2,
+  RotateCcw,
+  CheckSquare,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { askGeminiCodeAssistant, generateCodeEdits, type ProposedCodeEdit } from '../../lib/geminiClient';
@@ -68,6 +96,45 @@ interface OpenTab {
   isDirty: boolean;
 }
 
+interface LinkedTaskContext {
+  id: string;
+  title?: string;
+  branch?: string;
+  projectId?: string | null;
+  githubRepo?: string | null;
+}
+
+function readInitialLinkedTask(search: string): LinkedTaskContext | null {
+  const params = new URLSearchParams(search);
+  const queryTaskId = params.get('taskId')?.trim() || '';
+  const queryBranch = params.get('branch')?.trim() || '';
+  const queryProjectId = params.get('projectId')?.trim() || '';
+
+  let stored: LinkedTaskContext | null = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('pf_active_task_context');
+      if (raw) {
+        stored = JSON.parse(raw) as LinkedTaskContext;
+      }
+    } catch {
+      stored = null;
+    }
+  }
+
+  const resolvedId = queryTaskId || stored?.id || '';
+  const resolvedBranch = queryBranch || stored?.branch || '';
+  if (!resolvedId && !resolvedBranch) return null;
+
+  return {
+    id: resolvedId || 'task',
+    title: stored?.title,
+    branch: resolvedBranch || undefined,
+    projectId: queryProjectId || stored?.projectId || null,
+    githubRepo: stored?.githubRepo || null,
+  };
+}
+
 function isAssistantExcludedPath(path: string) {
   const filename = path.split('/').pop()?.toLowerCase() || '';
   return filename === '.env' || filename.startsWith('.env.');
@@ -88,13 +155,33 @@ function getGitHubHeaders(token: string): Record<string, string> {
 
 export default function CodeStudio() {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useAccentTheme();
   const { theme: colorMode } = useTheme();
   const { user, session } = useAuth();
-  const workflowQuery = new URLSearchParams(window.location.search);
+  const workflowQuery = new URLSearchParams(location.search);
   const requestedWorkflowProject = workflowQuery.get('workflowProject');
   const isWorkflowViewLink = workflowQuery.get('workflowView') === '1';
   const hasTeamChatAssistantHandoff = workflowQuery.get('assistantHandoff') === '1';
+
+  const [linkedTask, setLinkedTask] = useState<LinkedTaskContext | null>(() =>
+    readInitialLinkedTask(location.search)
+  );
+
+  useEffect(() => {
+    const nextLinked = readInitialLinkedTask(location.search);
+    if (nextLinked) {
+      setLinkedTask(nextLinked);
+      if (nextLinked.projectId) {
+        setSelectedProjectId(nextLinked.projectId);
+        localStorage.setItem('pf_selected_project_id', nextLinked.projectId);
+      }
+      if (nextLinked.githubRepo) {
+        setRepoInput(nextLinked.githubRepo);
+        localStorage.setItem('pf_active_repo', nextLinked.githubRepo);
+      }
+    }
+  }, [location.search]);
 
   const isSuperAdmin = checkIsSuperAdmin(user?.email, user?.role);
   const isVerified = isUserVerified(user, session);
@@ -107,10 +194,15 @@ export default function CodeStudio() {
 
   // Persisted state from localStorage
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
-    return requestedWorkflowProject || localStorage.getItem('pf_selected_project_id') || '';
+    return (
+      requestedWorkflowProject ||
+      linkedTask?.projectId ||
+      localStorage.getItem('pf_selected_project_id') ||
+      ''
+    );
   });
   const [repoInput, setRepoInput] = useState<string>(() => {
-    return localStorage.getItem('pf_active_repo') || '';
+    return linkedTask?.githubRepo || localStorage.getItem('pf_active_repo') || '';
   });
   const [githubToken, setGithubToken] = useState<string>(
     localStorage.getItem('pf_github_token') || ''
@@ -265,8 +357,13 @@ export default function CodeStudio() {
       if (!error && data && data.length > 0) {
         setProjects(data);
 
-        const savedProjectId = requestedWorkflowProject || localStorage.getItem('pf_selected_project_id');
-        const activeProj = data.find((p) => p.id === savedProjectId) || (requestedWorkflowProject ? undefined : data[0]);
+        const savedProjectId =
+          requestedWorkflowProject ||
+          linkedTask?.projectId ||
+          localStorage.getItem('pf_selected_project_id');
+        const activeProj =
+          data.find((p) => p.id === savedProjectId) ||
+          (requestedWorkflowProject ? undefined : data[0]);
 
         if (activeProj) {
           setSelectedProjectId(activeProj.id);
@@ -281,8 +378,8 @@ export default function CodeStudio() {
       }
     }
 
-    loadProjects();
-  }, [requestedWorkflowProject]);
+    void loadProjects();
+  }, [requestedWorkflowProject, linkedTask?.projectId]);
 
   // 2. Real-time Cursor Broadcast Listener
   useEffect(() => {
@@ -302,7 +399,7 @@ export default function CodeStudio() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(cursorChannel);
+      void supabase.removeChannel(cursorChannel);
     };
   }, [selectedProjectId, user?.id]);
 
@@ -339,7 +436,7 @@ export default function CodeStudio() {
     editor.onDidChangeCursorPosition((e: any) => {
       if (!selectedProjectId || !user?.id || !activeFile) return;
 
-      supabase.channel(`studio_cursor_${selectedProjectId}`).send({
+      void supabase.channel(`studio_cursor_${selectedProjectId}`).send({
         type: 'broadcast',
         event: 'cursor_move',
         payload: {
@@ -375,7 +472,7 @@ export default function CodeStudio() {
   };
 
   useEffect(() => {
-    loadBranches();
+    void loadBranches();
   }, [repoInput, githubToken]);
 
   // 4. Fetch Repository Tree with defensive headers
@@ -425,13 +522,12 @@ export default function CodeStudio() {
 
   useEffect(() => {
     if (repoInput && selectedBranch) {
-      fetchRepoFiles(repoInput, selectedBranch);
+      void fetchRepoFiles(repoInput, selectedBranch);
     }
   }, [repoInput, selectedBranch, githubToken]);
 
   // 5. Open / Load File Content into Multi-Tab System
   const loadFileContent = async (item: FileTreeItem) => {
-    // If file is already open in tabs, just switch to it
     const existing = openTabs.find((t) => t.path === item.path);
     if (existing) {
       setActiveFile(existing.path);
@@ -701,7 +797,6 @@ export default function CodeStudio() {
     const [owner, repo] = repoInput.split('/');
 
     try {
-      // 1. Get SHA of base branch
       const refRes = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${selectedBranch || 'main'}`,
         { headers: getGitHubHeaders(githubToken) }
@@ -711,7 +806,6 @@ export default function CodeStudio() {
       const refData = await refRes.json();
       const baseSha = refData.object?.sha;
 
-      // 2. Create new branch ref
       const createRes = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/git/refs`,
         {
@@ -841,7 +935,6 @@ export default function CodeStudio() {
         toast.success(`Committed & pushed ${activeFile}!`);
         const newSha = resData.content?.sha || activeFileSha;
 
-        // Reset dirty status on tab
         setOpenTabs((prev) =>
           prev.map((t) =>
             t.path === activeFile
@@ -1036,7 +1129,6 @@ export default function CodeStudio() {
       return;
     }
 
-    // Strip markdown code fences if present
     const cleanSnippet = rawSnippet.replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
 
     const selection = editorRef.current.getSelection();
@@ -1048,17 +1140,34 @@ export default function CodeStudio() {
       },
     ]);
 
-    // Update active tab content state immediately
     const updated = editorRef.current.getValue();
     handleContentChange(updated);
     toast.success('Applied snippet to editor buffer!');
   };
 
   const copyMessageText = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
+    void navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
     toast.success('Copied to clipboard');
+  };
+
+  const handleDismissLinkedTask = () => {
+    setLinkedTask(null);
+    try {
+      localStorage.removeItem('pf_active_task_context');
+    } catch {
+      // Ignore storage restrictions
+    }
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('taskId');
+    nextUrl.searchParams.delete('branch');
+    nextUrl.searchParams.delete('projectId');
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+    );
   };
 
   const getLanguageFromPath = (filePath: string) => {
@@ -1082,9 +1191,9 @@ export default function CodeStudio() {
     <div className="code-studio-page flex flex-col h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] bg-[#0d1117] text-gray-200 overflow-hidden" data-theme={colorMode}>
       {/* Top Studio Bar */}
       <div className="code-studio-topbar h-14 border-b border-gray-800 bg-[#161b22] px-4 flex items-center justify-between gap-3 shrink-0 z-10">
-        <div className="flex items-center gap-2.5">
-          <Code2 className="text-indigo-400" size={20} />
-          <h2 className="font-bold text-sm text-white hidden md:block">Code Studio</h2>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Code2 className="text-indigo-400 shrink-0" size={20} />
+          <h2 className="font-bold text-sm text-white hidden md:block shrink-0">Code Studio</h2>
 
           {/* Project Selector */}
           <select
@@ -1110,7 +1219,7 @@ export default function CodeStudio() {
             ))}
           </select>
 
-          <div className="flex items-center rounded-lg border border-gray-700 bg-[#0d1117] p-0.5">
+          <div className="flex items-center rounded-lg border border-gray-700 bg-[#0d1117] p-0.5 shrink-0">
             <button
               type="button"
               onClick={() => setStudioMode('editor')}
@@ -1160,7 +1269,11 @@ export default function CodeStudio() {
               ))}
             </select>
             <button
-              onClick={() => setShowNewBranchModal(true)}
+              type="button"
+              onClick={() => {
+                if (linkedTask?.branch) setNewBranchName(linkedTask.branch);
+                setShowNewBranchModal(true);
+              }}
               title="Create new branch from current base"
               className="p-1 hover:text-white text-gray-400 hover:bg-gray-800 rounded transition-colors"
             >
@@ -1169,7 +1282,7 @@ export default function CodeStudio() {
           </div>
 
           {/* Active Repository Owner Avatar & Collaborator Presence */}
-          <div className="flex items-center gap-2 pl-2.5 border-l border-gray-700/80">
+          <div className="flex items-center gap-2 pl-2.5 border-l border-gray-700/80 shrink-0">
             {repoOwnerAvatar ? (
               <a
                 href={`https://github.com/${repoInput.split('/')[0]}`}
@@ -1196,7 +1309,6 @@ export default function CodeStudio() {
               />
             )}
 
-            {/* Active Collaborators */}
             {activePeers.length > 0 && (
               <div className="hidden xl:flex items-center gap-1.5 pl-1.5 border-l border-gray-700/60">
                 <Users size={13} className="text-emerald-400" />
@@ -1217,11 +1329,11 @@ export default function CodeStudio() {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
-          {/* File Lock Lease Toggle */}
+        <div className="flex items-center gap-2 shrink-0">
           {activeFile && (
             <button
-              onClick={handleToggleFileLock}
+              type="button"
+              onClick={() => void handleToggleFileLock()}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
                 activeProject?.locked_file === activeFile
                   ? 'bg-amber-950/40 border-amber-800 text-amber-400'
@@ -1236,8 +1348,8 @@ export default function CodeStudio() {
             </button>
           )}
 
-          {/* Review Diff Button */}
           <button
+            type="button"
             onClick={() => setIsDiffModalOpen(true)}
             disabled={!activeFile}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-purple-400 border border-gray-700 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50"
@@ -1247,8 +1359,8 @@ export default function CodeStudio() {
             <span className="hidden sm:inline">Review Diff</span>
           </button>
 
-          {/* Create PR Button */}
           <button
+            type="button"
             onClick={() => {
               if (!isVerified) {
                 toast.error('Identity Verification Required', {
@@ -1267,12 +1379,12 @@ export default function CodeStudio() {
             {!isVerified && <Lock size={11} className="opacity-70 ml-0.5" />}
           </button>
 
-          {/* AI Assist Button */}
           <button
+            type="button"
             onClick={() => setShowAiDrawer(!showAiDrawer)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all active:scale-95 ${
-              showAiDrawer 
-                ? 'bg-purple-600/30 border-purple-500 text-purple-300 shadow-sm shadow-purple-900/40' 
+              showAiDrawer
+                ? 'bg-purple-600/30 border-purple-500 text-purple-300 shadow-sm shadow-purple-900/40'
                 : 'bg-purple-950/30 border-purple-800/80 text-purple-400 hover:bg-purple-900/30'
             }`}
           >
@@ -1280,8 +1392,8 @@ export default function CodeStudio() {
             <span className="hidden sm:inline">AI Assist</span>
           </button>
 
-          {/* Local VS Code Deep Link */}
           <button
+            type="button"
             onClick={openInLocalVSCode}
             title="Open repository in desktop VS Code"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 text-xs font-semibold transition-all active:scale-95"
@@ -1290,9 +1402,9 @@ export default function CodeStudio() {
             <span className="hidden lg:inline">VS Code</span>
           </button>
 
-          {/* Commit & Push Button */}
           <button
-            onClick={handleCommitAndPush}
+            type="button"
+            onClick={() => void handleCommitAndPush()}
             disabled={savingFile || !activeFile || isFileLockedByOther}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 active:scale-95"
             title={!isVerified ? 'Verification required to commit & push changes' : 'Commit & push file'}
@@ -1307,13 +1419,13 @@ export default function CodeStudio() {
             <span>Push</span>
           </button>
 
-          {/* Token Toggle Button */}
           <button
+            type="button"
             onClick={() => setShowTokenInput(!showTokenInput)}
             title="Configure GitHub Personal Access Token"
             className={`p-1.5 rounded-lg border text-xs transition-colors ${
-              githubToken 
-                ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' 
+              githubToken
+                ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400'
                 : 'bg-amber-950/40 border-amber-800 text-amber-400 animate-pulse'
             }`}
           >
@@ -1321,6 +1433,56 @@ export default function CodeStudio() {
           </button>
         </div>
       </div>
+
+      {/* Linked Task Context Bar (from Task Card -> Open in Code Studio) */}
+      {linkedTask && (
+        <div className="bg-indigo-950/35 border-b border-indigo-500/25 px-4 py-1.5 flex items-center justify-between gap-3 text-xs shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <CheckSquare size={14} className="text-indigo-400 shrink-0" />
+            <span className="font-semibold text-indigo-200 truncate">
+              {linkedTask.title || `Task ${linkedTask.id}`}
+            </span>
+            {linkedTask.branch && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(linkedTask.branch!);
+                  toast.success('Copied suggested task branch');
+                }}
+                className="hidden sm:inline-flex items-center gap-1 rounded-md bg-indigo-500/15 border border-indigo-400/25 px-2 py-0.5 font-mono text-[11px] text-indigo-300 hover:bg-indigo-500/25 transition-colors"
+                title="Copy suggested task branch"
+              >
+                <GitBranch size={11} />
+                <span>{linkedTask.branch}</span>
+                <Copy size={10} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {linkedTask.branch && selectedBranch !== linkedTask.branch && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewBranchName(linkedTask.branch!);
+                  setShowNewBranchModal(true);
+                }}
+                className="rounded-md bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-400/30 px-2 py-0.5 text-[11px] font-semibold text-indigo-200 transition-colors"
+              >
+                Use Branch
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleDismissLinkedTask}
+              aria-label="Dismiss linked task context"
+              className="rounded-md p-1 text-indigo-300/70 hover:bg-indigo-900/40 hover:text-white transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* GitHub Token Config Dropdown */}
       {showTokenInput && (
@@ -1336,6 +1498,7 @@ export default function CodeStudio() {
               className="bg-[#0d1117] border border-gray-700 rounded-lg px-2.5 py-1 text-white font-mono w-64 outline-none focus:border-indigo-500"
             />
             <button
+              type="button"
               onClick={() => handleSaveToken(githubToken)}
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg"
             >
@@ -1357,7 +1520,7 @@ export default function CodeStudio() {
                 <GitFork size={16} />
                 <span>Create New Branch</span>
               </div>
-              <button onClick={() => setShowNewBranchModal(false)} className="text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setShowNewBranchModal(false)} className="text-gray-400 hover:text-white">
                 <X size={16} />
               </button>
             </div>
@@ -1366,7 +1529,7 @@ export default function CodeStudio() {
               Branching from <strong className="text-white font-mono">{selectedBranch}</strong> in <strong className="text-white font-mono">{repoInput}</strong>.
             </p>
 
-            <form onSubmit={handleCreateBranch} className="space-y-4 text-xs">
+            <form onSubmit={(e) => void handleCreateBranch(e)} className="space-y-4 text-xs">
               <div>
                 <label className="block text-gray-300 font-semibold mb-1">Branch Name</label>
                 <input
@@ -1515,7 +1678,7 @@ export default function CodeStudio() {
           <div className="border-b border-gray-800 p-2.5 shrink-0">
             <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-gray-400">
               <span>Files ({files.length})</span>
-              <button onClick={() => fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white" title="Refresh tree">
+              <button type="button" onClick={() => void fetchRepoFiles(repoInput, selectedBranch)} className="hover:text-white" title="Refresh tree">
                 <RefreshCw size={13} className={loadingFiles ? 'animate-spin' : ''} />
               </button>
             </div>
@@ -1554,7 +1717,7 @@ export default function CodeStudio() {
             {pendingDeletes.length > 0 && (
               <button
                 type="button"
-                onClick={handlePushStagedDeletes}
+                onClick={() => void handlePushStagedDeletes()}
                 disabled={isPushingDeletes}
                 className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-rose-700/80 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-rose-600 disabled:opacity-50"
               >
@@ -1580,7 +1743,8 @@ export default function CodeStudio() {
                 return (
                   <div key={`${file.path}-${file.sha}`} className="group flex items-center gap-1">
                     <button
-                      onClick={() => !isPendingDelete && loadFileContent(file)}
+                      type="button"
+                      onClick={() => !isPendingDelete && void loadFileContent(file)}
                       disabled={isPendingDelete}
                       className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left truncate transition-colors ${
                         isPendingDelete
@@ -1613,7 +1777,7 @@ export default function CodeStudio() {
 
         {/* Editor + Multi-Tab Strip + Terminal Workspace */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          
+
           {/* Multi-File Tab Bar */}
           <div className="h-9 bg-[#161b22] border-b border-gray-800 flex items-center px-2 gap-1 overflow-x-auto custom-scrollbar select-none shrink-0">
             {openTabs.length === 0 ? (
@@ -1634,11 +1798,11 @@ export default function CodeStudio() {
                     }`}
                   >
                     <span>{fileName}</span>
-                    {/* Unsaved Changes Dirty Indicator */}
                     {tab.isDirty && (
                       <span className="w-2 h-2 rounded-full bg-amber-400" title="Unsaved changes" />
                     )}
                     <button
+                      type="button"
                       onClick={(e) => handleCloseTab(e, tab.path)}
                       className="p-0.5 rounded hover:bg-gray-700/60 text-gray-500 hover:text-white"
                       title="Close tab"
@@ -1715,7 +1879,6 @@ export default function CodeStudio() {
             style={{ width: `${assistantWidth}px`, maxWidth: '70vw' }}
             className={`flex shrink-0 flex-col border-l border-gray-800 bg-[#161b22] shadow-2xl min-h-0 ${isResizingAssistant ? 'select-none' : 'animate-in slide-in-from-right-10 duration-200'}`}
           >
-            {/* Drawer Header */}
             <div className="p-3.5 border-b border-gray-800 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-purple-400 text-xs font-bold">
                 <Bot size={16} />
@@ -1849,7 +2012,6 @@ export default function CodeStudio() {
               </section>
             )}
 
-            {/* Conversation Messages Viewport */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar min-h-0 text-xs">
               {messages.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 space-y-2">
@@ -1890,9 +2052,9 @@ export default function CodeStudio() {
 
                           {msg.sender === 'assistant' && (
                             <>
-                              {/* Apply to Editor Button */}
                               {!aiEditMode && activeFile && !isAssistantExcludedPath(activeFile) && (
                                 <button
+                                  type="button"
                                   onClick={() => handleApplySnippetToEditor(msg.text)}
                                   className="px-1.5 py-0.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded flex items-center gap-1 text-[10px] font-semibold"
                                   title="Insert or replace active editor buffer"
@@ -1902,8 +2064,8 @@ export default function CodeStudio() {
                                 </button>
                               )}
 
-                              {/* Copy Button */}
                               <button
+                                type="button"
                                 onClick={() => copyMessageText(msg.id, msg.text)}
                                 className="opacity-60 hover:opacity-100 transition-opacity p-0.5"
                                 title="Copy response"
@@ -1946,8 +2108,7 @@ export default function CodeStudio() {
               <div ref={chatBottomRef} />
             </div>
 
-            {/* Prompt Input Form */}
-            <form onSubmit={(e) => handleAskAi(e)} className="space-y-2 border-t border-gray-800 bg-[#0d1117] p-3 shrink-0">
+            <form onSubmit={(e) => void handleAskAi(e)} className="space-y-2 border-t border-gray-800 bg-[#0d1117] p-3 shrink-0">
               <div className="flex flex-wrap gap-1">
                 {(aiEditMode
                   ? ['Fix bugs in these files', 'Add tests for this code', 'Refactor for readability']
@@ -2000,7 +2161,7 @@ export default function CodeStudio() {
         filePath={activeFile}
         originalContent={originalShaContent}
         modifiedContent={activeFileContent}
-        onConfirmPush={handleCommitAndPush}
+        onConfirmPush={() => void handleCommitAndPush()}
         isPushing={savingFile}
       />
 

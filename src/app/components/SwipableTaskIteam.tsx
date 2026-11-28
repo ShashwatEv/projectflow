@@ -70,11 +70,11 @@ export default function SwipeableTaskItem({
             : 'bg-transparent'
         }`}
       >
-        <div className="flex items-center gap-2 font-bold text-xs">
+        <div className="flex items-center gap-2 text-xs font-bold">
           <Check size={18} />
           <span>{isDone ? 'Mark To Do' : 'Complete'}</span>
         </div>
-        <div className="flex items-center gap-2 font-bold text-xs">
+        <div className="flex items-center gap-2 text-xs font-bold">
           <span>Delete</span>
           <Trash2 size={18} />
         </div>
@@ -89,7 +89,7 @@ export default function SwipeableTaskItem({
           transform: `translateX(${offsetX}px)`,
           transition: isSwipingRef.current ? 'none' : 'transform 0.2s ease-out',
         }}
-        className={`relative bg-white dark:bg-[#161b22] border border-gray-200/80 dark:border-gray-800 p-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs ${
+        className={`relative flex items-center justify-between gap-3 rounded-2xl border border-gray-200/80 bg-white p-3.5 shadow-xs dark:border-gray-800 dark:bg-[#161b22] ${
           isDone ? 'opacity-60' : 'opacity-100'
         }`}
       >
@@ -101,10 +101,11 @@ export default function SwipeableTaskItem({
               triggerHaptic('tap');
               onToggleDone(task.id, !isDone);
             }}
-            className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+            aria-label={isDone ? `Mark "${task.title}" as to do` : `Mark "${task.title}" as done`}
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-lg border transition-colors ${
               isDone
-                ? 'bg-emerald-500 border-emerald-500 text-white'
-                : 'border-gray-300 dark:border-gray-700 bg-transparent'
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-gray-300 bg-transparent dark:border-gray-700'
             }`}
           >
             {isDone && <Check size={13} />}
@@ -112,14 +113,14 @@ export default function SwipeableTaskItem({
 
           <div className="truncate">
             <h4
-              className={`text-xs font-semibold text-gray-900 dark:text-gray-100 truncate ${
-                isDone ? 'line-through text-gray-400 dark:text-gray-500' : ''
+              className={`truncate text-xs font-semibold text-gray-900 dark:text-gray-100 ${
+                isDone ? 'text-gray-400 line-through dark:text-gray-500' : ''
               }`}
             >
               {task.title}
             </h4>
-            <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-400 font-mono">
-              <span className="uppercase font-bold text-indigo-500 dark:text-indigo-400">
+            <div className="mt-1 flex items-center gap-2 font-mono text-[10px] text-gray-400">
+              <span className="font-bold uppercase text-indigo-500 dark:text-indigo-400">
                 {task.priority}
               </span>
               {task.due_date && (
@@ -133,7 +134,7 @@ export default function SwipeableTaskItem({
         </div>
 
         {task.comments_count ? (
-          <div className="flex items-center gap-1 text-[11px] text-gray-400 font-mono shrink-0">
+          <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-gray-400">
             <MessageSquare size={12} />
             <span>{task.comments_count}</span>
           </div>

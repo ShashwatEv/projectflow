@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDrag } from 'react-dnd';
 import {
   Calendar,
@@ -9,6 +10,7 @@ import {
   Copy,
   ArrowRight,
   ShieldAlert,
+  Code2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AvatarWithFrame, { type AvatarFrameId } from './AvatarWithFrame';
@@ -29,6 +31,8 @@ export interface ModernTask {
   comments: number;
   attachments: number;
   tags: string[];
+  projectId?: string;
+  githubRepo?: string;
   blocked_by?: string | null;
   blocker_title?: string | null;
   blocker_status?: string | null;
@@ -63,6 +67,15 @@ const priorityStyles = {
     'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 ring-1 ring-gray-200 dark:ring-gray-700',
 };
 
+export function buildTaskBranchName(taskId: string, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return `feat/task-${taskId.slice(0, 6)}-${slug || 'work'}`;
+}
+
 export function ModernTaskCard({
   task,
   density = 'comfort',
@@ -73,6 +86,7 @@ export function ModernTaskCard({
   onPriorityChange,
   onClick,
 }: ModernTaskCardProps) {
+  const navigate = useNavigate();
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -90,12 +104,15 @@ export function ModernTaskCard({
         setContextMenuPos(null);
       }
     };
+    const handleScroll = () => setContextMenuPos(null);
+
     if (contextMenuPos) {
       window.addEventListener('mousedown', handleOutsideClick);
-      window.addEventListener('scroll', () => setContextMenuPos(null), true);
+      window.addEventListener('scroll', handleScroll, true);
     }
     return () => {
       window.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [contextMenuPos]);
 
@@ -106,19 +123,52 @@ export function ModernTaskCard({
 
   const copyBranchName = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const branch = `feat/task-${task.id.slice(0, 6)}-${task.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')}`;
-    navigator.clipboard.writeText(branch);
+    const branch = buildTaskBranchName(task.id, task.title);
+    void navigator.clipboard.writeText(branch);
     toast.success('Git branch name copied to clipboard');
     setContextMenuPos(null);
   };
 
   const copyTaskLink = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(`${window.location.origin}/tasks?id=${task.id}`);
+    void navigator.clipboard.writeText(`${window.location.origin}/tasks?taskId=${task.id}`);
     toast.success('Task link copied to clipboard');
     setContextMenuPos(null);
+  };
+
+  const handleOpenInCodeStudio = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setContextMenuPos(null);
+
+    const branch = buildTaskBranchName(task.id, task.title);
+    try {
+      if (task.projectId) {
+        localStorage.setItem('pf_selected_project_id', task.projectId);
+      }
+      if (task.githubRepo) {
+        localStorage.setItem('pf_active_repo', task.githubRepo);
+      }
+      localStorage.setItem(
+        'pf_active_task_context',
+        JSON.stringify({
+          id: task.id,
+          title: task.title,
+          branch,
+          projectId: task.projectId || null,
+          githubRepo: task.githubRepo || null,
+        })
+      );
+    } catch {
+      // Ignore storage restrictions
+    }
+
+    const params = new URLSearchParams({
+      taskId: task.id,
+      branch,
+    });
+    if (task.projectId) params.set('projectId', task.projectId);
+
+    navigate(`/code?${params.toString()}`);
   };
 
   const handleCyclePriority = (e: React.MouseEvent) => {
@@ -143,11 +193,11 @@ export function ModernTaskCard({
       onContextMenu={handleContextMenu}
       onMouseEnter={() => onHover && onHover(task.id)}
       onMouseLeave={() => onHover && onHover(null)}
-      className={`group cursor-pointer rounded-2xl border border-gray-200/80 bg-white shadow-xs transition-all duration-200 select-none relative dark:border-gray-800/80 dark:bg-[#161b22] ${
+      className={`group relative cursor-pointer select-none rounded-2xl border border-gray-200/80 bg-white shadow-xs transition-all duration-200 dark:border-gray-800/80 dark:bg-[#161b22] ${
         priorityLeftAccents[task.priority]
       } ${
         isDragging
-          ? 'opacity-30 scale-95 rotate-1'
+          ? 'rotate-1 scale-95 opacity-30'
           : 'opacity-100 hover:border-indigo-500/40 hover:shadow-xl'
       } ${isDimmed ? 'opacity-30 filter grayscale' : ''} ${
         isHighlighted ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/20' : ''
@@ -166,29 +216,40 @@ export function ModernTaskCard({
       {/* Header and Title */}
       <div className="mb-2 flex items-start justify-between gap-2">
         <h4
-          className={`font-semibold leading-snug text-gray-900 line-clamp-2 dark:text-gray-100 ${
+          className={`line-clamp-2 font-semibold leading-snug text-gray-900 dark:text-gray-100 ${
             density === 'compact' ? 'text-xs' : 'text-sm'
           }`}
         >
           {task.title}
         </h4>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setContextMenuPos({ x: e.clientX, y: e.clientY });
-          }}
-          aria-label={`Task actions for ${task.title}`}
-          title="Task actions"
-          className="shrink-0 rounded-lg p-1 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100 dark:hover:bg-gray-800"
-        >
-          <Ellipsis size={15} />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={handleOpenInCodeStudio}
+            aria-label={`Open ${task.title} in Code Studio`}
+            title="Open in Code Studio"
+            className="rounded-lg p-1 text-gray-400 opacity-0 transition-all hover:bg-indigo-50 hover:text-indigo-600 group-hover:opacity-100 focus-visible:opacity-100 dark:hover:bg-indigo-950/50 dark:hover:text-indigo-400"
+          >
+            <Code2 size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setContextMenuPos({ x: e.clientX, y: e.clientY });
+            }}
+            aria-label={`Task actions for ${task.title}`}
+            title="Task actions"
+            className="rounded-lg p-1 text-gray-400 opacity-0 transition-opacity hover:bg-gray-100 group-hover:opacity-100 focus-visible:opacity-100 dark:hover:bg-gray-800"
+          >
+            <Ellipsis size={15} />
+          </button>
+        </div>
       </div>
 
       {/* Description in Comfort Mode Only */}
       {density === 'comfort' && task.description && (
-        <p className="mb-3 text-xs leading-relaxed text-gray-500 line-clamp-2 dark:text-gray-400">
+        <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
           {task.description}
         </p>
       )}
@@ -270,11 +331,20 @@ export function ModernTaskCard({
         <div
           ref={contextMenuRef}
           style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
-          className="fixed z-50 w-52 space-y-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-xs text-gray-700 shadow-2xl animate-in fade-in zoom-in-95 duration-100 dark:border-gray-700/80 dark:bg-[#1c2128] dark:text-gray-200"
+          className="animate-in fade-in zoom-in-95 fixed z-50 w-52 space-y-1 rounded-2xl border border-gray-200 bg-white p-1.5 text-xs text-gray-700 shadow-2xl duration-100 dark:border-gray-700/80 dark:bg-[#1c2128] dark:text-gray-200"
         >
           <div className="border-b border-gray-100 px-2.5 py-1 text-[10px] font-bold uppercase text-gray-400 dark:border-gray-800">
             Quick Triage
           </div>
+
+          <button
+            type="button"
+            onClick={handleOpenInCodeStudio}
+            className="flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+          >
+            <Code2 size={13} />
+            <span>Open in Code Studio</span>
+          </button>
 
           <button
             type="button"

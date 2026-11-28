@@ -8,6 +8,19 @@ interface TerminalLog {
   text: string;
 }
 
+interface WorkerExecutionError extends Error {
+  logs?: string[];
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg) return msg;
+  }
+  return fallback;
+}
+
 function runInIsolatedWorker(
   source: string,
   isExpression: boolean,
@@ -61,12 +74,14 @@ function runInIsolatedWorker(
       reject(new Error(`Execution timed out after ${timeoutMs / 1000}s (possible infinite loop)`));
     }, timeoutMs);
 
-    worker.onmessage = (event: MessageEvent<{ ok: boolean; logs: string[]; result?: string; error?: string }>) => {
+    worker.onmessage = (
+      event: MessageEvent<{ ok: boolean; logs: string[]; result?: string; error?: string }>
+    ) => {
       cleanup();
       if (event.data.ok) {
         resolve({ logs: event.data.logs, result: event.data.result });
       } else {
-        const err = new Error(event.data.error || 'Execution error') as Error & { logs?: string[] };
+        const err = new Error(event.data.error || 'Execution error') as WorkerExecutionError;
         err.logs = event.data.logs;
         reject(err);
       }
@@ -94,7 +109,10 @@ export default function StudioTerminal({
 }) {
   const [logs, setLogs] = useState<TerminalLog[]>([
     { type: 'system', text: 'ProjectFlow Isolated Worker Shell v2.1 (No DOM/Storage access)' },
-    { type: 'system', text: 'Type "help" for built-in CLI commands (git, npm test, ai, audit) or "run" to evaluate active buffer.' },
+    {
+      type: 'system',
+      text: 'Type "help" for built-in CLI commands (git, npm test, ai, audit) or "run" to evaluate active buffer.',
+    },
   ]);
   const [command, setCommand] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
@@ -180,12 +198,18 @@ Changes staged for review:
         return;
       }
       setIsExecuting(true);
-      setLogs((prev) => [...prev, { type: 'system', text: 'Gemini analyzing query with active file context...' }]);
+      setLogs((prev) => [
+        ...prev,
+        { type: 'system', text: 'Gemini analyzing query with active file context...' },
+      ]);
       try {
         const res = await askGeminiCodeAssistant(prompt, activeCode, activeFilePath);
         setLogs((prev) => [...prev, { type: 'success', text: `[Gemini AI Response]:\n${res}` }]);
-      } catch (err: any) {
-        setLogs((prev) => [...prev, { type: 'error', text: `AI Error: ${err.message || 'Request failed'}` }]);
+      } catch (err: unknown) {
+        setLogs((prev) => [
+          ...prev,
+          { type: 'error', text: `AI Error: ${getErrorMessage(err, 'Request failed')}` },
+        ]);
       } finally {
         setIsExecuting(false);
       }
@@ -202,7 +226,12 @@ Changes staged for review:
 
         if (auditData && auditData.length > 0) {
           const formatted = auditData
-            .map((a) => `[${new Date(a.created_at).toLocaleTimeString()}] [${a.category || 'system'}] ${a.action}`)
+            .map(
+              (a) =>
+                `[${new Date(a.created_at).toLocaleTimeString()}] [${
+                  a.category || 'system'
+                }] ${a.action}`
+            )
             .join('\n');
           setLogs((prev) => [...prev, { type: 'output', text: `Recent Audit Trail:\n${formatted}` }]);
         } else {
@@ -229,12 +258,13 @@ Changes staged for review:
             { type: 'output', text: '[Program executed in isolated worker with exit status 0]' },
           ]);
         }
-      } catch (err: any) {
-        const priorLogs: string[] = Array.isArray(err?.logs) ? err.logs : [];
+      } catch (err: unknown) {
+        const workerErr = err as WorkerExecutionError;
+        const priorLogs: string[] = Array.isArray(workerErr?.logs) ? workerErr.logs : [];
         setLogs((prev) => [
           ...prev,
           ...priorLogs.map((text) => ({ type: 'output' as const, text })),
-          { type: 'error', text: `Runtime Error: ${err.message}` },
+          { type: 'error', text: `Runtime Error: ${getErrorMessage(err, 'Execution failed')}` },
         ]);
       } finally {
         setIsExecuting(false);
@@ -250,10 +280,13 @@ Changes staged for review:
         ...workerLogs.map((text) => ({ type: 'output' as const, text })),
         ...(result !== undefined ? [{ type: 'output' as const, text: result }] : []),
       ]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLogs((prev) => [
         ...prev,
-        { type: 'error', text: `Command or evaluation error: ${err.message}` },
+        {
+          type: 'error',
+          text: `Command or evaluation error: ${getErrorMessage(err, 'Evaluation failed')}`,
+        },
       ]);
     } finally {
       setIsExecuting(false);
@@ -262,15 +295,19 @@ Changes staged for review:
 
   return (
     <div
-      className={`border-t border-gray-800 bg-[#0d1117] flex flex-col shrink-0 transition-all duration-300 z-10 ${
+      className={`z-10 flex shrink-0 flex-col border-t border-gray-800 bg-[#0d1117] transition-all duration-300 ${
         isOpen ? 'h-60' : 'h-9'
       }`}
     >
-      <div className="h-9 px-4 bg-[#161b22] border-b border-gray-800 flex items-center justify-between text-xs select-none shrink-0">
-        <div className="flex items-center gap-2 cursor-pointer text-gray-300" onClick={onToggle}>
+      <div className="flex h-9 shrink-0 select-none items-center justify-between border-b border-gray-800 bg-[#161b22] px-4 text-xs">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex cursor-pointer items-center gap-2 text-gray-300 hover:text-white"
+        >
           <TerminalIcon size={14} className="text-emerald-400" />
-          <span className="font-mono font-bold text-[11px]">Interactive Workspace Shell</span>
-        </div>
+          <span className="font-mono text-[11px] font-bold">Interactive Workspace Shell</span>
+        </button>
 
         <div className="flex items-center gap-2">
           {isOpen && (
@@ -278,8 +315,8 @@ Changes staged for review:
               <button
                 type="button"
                 disabled={isExecuting}
-                onClick={() => executeCommand('run')}
-                className="px-2.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-50"
+                onClick={() => void executeCommand('run')}
+                className="flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 transition-colors hover:bg-emerald-500/30 disabled:opacity-50"
                 title="Evaluate active file in isolated worker"
               >
                 <Play size={10} /> Run Buffer
@@ -287,37 +324,44 @@ Changes staged for review:
               <button
                 type="button"
                 onClick={() => setLogs([])}
-                className="p-1 hover:text-rose-400 text-gray-400 transition-colors"
+                aria-label="Clear terminal logs"
+                className="p-1 text-gray-400 transition-colors hover:text-rose-400"
                 title="Clear Logs"
               >
                 <Trash2 size={13} />
               </button>
             </>
           )}
-          <button type="button" onClick={onToggle} className="text-gray-400 hover:text-white p-1">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={isOpen ? 'Collapse terminal' : 'Expand terminal'}
+            title={isOpen ? 'Collapse terminal' : 'Expand terminal'}
+            className="p-1 text-gray-400 transition-colors hover:text-white"
+          >
             {isOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>
         </div>
       </div>
 
       {isOpen && (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             ref={logContainerRef}
-            className="flex-1 p-3 overflow-y-auto font-mono text-[11px] space-y-1 custom-scrollbar min-h-0 whitespace-pre-wrap"
+            className="custom-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto whitespace-pre-wrap p-3 font-mono text-[11px]"
           >
             {logs.map((log, i) => (
               <div
                 key={i}
                 className={
                   log.type === 'input'
-                    ? 'text-indigo-400 font-semibold'
+                    ? 'font-semibold text-indigo-400'
                     : log.type === 'error'
-                    ? 'text-rose-400 font-bold'
+                    ? 'font-bold text-rose-400'
                     : log.type === 'success'
                     ? 'text-emerald-400'
                     : log.type === 'system'
-                    ? 'text-gray-500 italic'
+                    ? 'italic text-gray-500'
                     : 'text-gray-200'
                 }
               >
@@ -329,18 +373,19 @@ Changes staged for review:
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              executeCommand(command);
+              void executeCommand(command);
             }}
-            className="h-9 border-t border-gray-800/80 px-3 flex items-center gap-2 bg-[#0d1117] shrink-0"
+            className="flex h-9 shrink-0 items-center gap-2 border-t border-gray-800/80 bg-[#0d1117] px-3"
           >
-            <span className="text-emerald-400 font-mono text-xs font-bold">$</span>
+            <span className="font-mono text-xs font-bold text-emerald-400">$</span>
             <input
               type="text"
               disabled={isExecuting}
               value={command}
               onChange={(e) => setCommand(e.target.value)}
+              aria-label="Terminal command input"
               placeholder="Type CLI command (e.g. 'help', 'git status', 'ai explain', 'run')..."
-              className="flex-1 bg-transparent text-white font-mono text-xs outline-none disabled:opacity-50"
+              className="flex-1 bg-transparent font-mono text-xs text-white outline-none disabled:opacity-50"
             />
           </form>
         </div>

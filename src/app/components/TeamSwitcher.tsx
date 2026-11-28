@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Check, ChevronDown, Globe, ShieldCheck, Users } from 'lucide-react';
+import { Check, ChevronDown, Globe, Plus, ShieldCheck, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { useTheme } from '../../context/ThemeContext';
+import { supabase } from '../../lib/supabaseClient';
 import { ALL_TEAMS_SCOPE, useWorkspace, type TeamScopeId } from '../../context/WorkspaceContext';
 
 interface TeamSwitcherProps {
@@ -18,6 +20,7 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
     activeTeam,
     isOrgAdmin,
     canViewAllTeams,
+    refreshWorkspace,
   } = useWorkspace();
 
   const { theme } = useTheme();
@@ -25,11 +28,19 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
 
   const [open, setOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setShowCreateForm(false);
+      setNewTeamName('');
+      return;
+    }
 
     const handlePointerDown = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -39,7 +50,11 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpen(false);
+        if (showCreateForm) {
+          setShowCreateForm(false);
+        } else {
+          setOpen(false);
+        }
       }
     };
 
@@ -49,12 +64,63 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open]);
+  }, [open, showCreateForm]);
 
   const handleSelectScope = (scopeId: TeamScopeId, label: string) => {
     setSelectedTeamId(scopeId);
     setAnnouncement(`Switched workspace view to ${label}.`);
     setOpen(false);
+  };
+
+  const handleCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newTeamName.trim();
+    if (!cleanName || !activeOrganization?.id || creatingTeam) return;
+
+    setCreatingTeam(true);
+    try {
+      const slug = cleanName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const client = supabase as unknown as {
+        from: (relation: string) => {
+          insert: (values: Record<string, unknown>) => {
+            select: () => {
+              single: () => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+            };
+          };
+        };
+      };
+
+      const { data, error } = await client
+        .from('teams')
+        .insert({
+          organization_id: activeOrganization.id,
+          name: cleanName,
+          slug: slug || `team-${Date.now()}`,
+          description: null,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message || 'Failed to create team');
+
+      await refreshWorkspace();
+      if (data?.id) {
+        setSelectedTeamId(data.id);
+      }
+      setAnnouncement(`Created and switched to team ${cleanName}.`);
+      toast.success(`Team "${cleanName}" created`);
+      setNewTeamName('');
+      setShowCreateForm(false);
+      setOpen(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create team');
+    } finally {
+      setCreatingTeam(false);
+    }
   };
 
   if (loading) {
@@ -103,10 +169,10 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
         aria-controls={listboxId}
         aria-label={`Select active team. Current view: ${currentLabel}`}
         onClick={() => setOpen((prev) => !prev)}
-        className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-2xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           isDarkTheme
-            ? 'border-zinc-700/90 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-            : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'
+            ? 'border-zinc-700/90 bg-zinc-900 text-zinc-100 hover:border-zinc-600 hover:bg-zinc-800'
+            : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
         }`}
       >
         {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams ? (
@@ -131,7 +197,9 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
 
         <ChevronDown
           size={14}
-          className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 text-slate-400 transition-transform duration-150 ${
+            open ? 'rotate-180' : ''
+          }`}
           aria-hidden="true"
         />
       </button>
@@ -141,7 +209,7 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
           id={listboxId}
           role="listbox"
           aria-label="Teams and workspace scope"
-          className={`absolute left-0 z-50 mt-2 w-72 overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl ${
+          className={`animate-in fade-in zoom-in-95 absolute left-0 z-50 mt-2 w-72 overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl duration-150 ${
             isDarkTheme
               ? 'border-zinc-700/90 bg-zinc-900/95 text-zinc-100'
               : 'border-slate-200 bg-white/95 text-slate-900'
@@ -238,6 +306,63 @@ export default function TeamSwitcher({ className = '', compact = false }: TeamSw
               })
             )}
           </div>
+
+          {isOrgAdmin && activeOrganization && (
+            <div
+              className={`border-t p-2 ${
+                isDarkTheme ? 'border-zinc-800 bg-zinc-900' : 'border-slate-100 bg-slate-50/70'
+              }`}
+            >
+              {showCreateForm ? (
+                <form onSubmit={(e) => void handleCreateTeam(e)} className="space-y-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                    placeholder="New team name..."
+                    className={`w-full rounded-lg border px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      isDarkTheme
+                        ? 'border-zinc-700 bg-zinc-950 text-white'
+                        : 'border-slate-200 bg-white text-slate-900'
+                    }`}
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setNewTeamName('');
+                      }}
+                      className="rounded-lg px-2.5 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-200/60 dark:hover:bg-zinc-800"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!newTeamName.trim() || creatingTeam}
+                      className="rounded-lg bg-indigo-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {creatingTeam ? 'Creating...' : 'Create'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(true)}
+                  className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition ${
+                    isDarkTheme
+                      ? 'text-indigo-300 hover:bg-zinc-800'
+                      : 'text-indigo-600 hover:bg-indigo-50'
+                  }`}
+                >
+                  <Plus size={14} aria-hidden="true" />
+                  <span>Create new team</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

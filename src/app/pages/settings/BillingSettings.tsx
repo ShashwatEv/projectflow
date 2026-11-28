@@ -335,12 +335,26 @@ Thank you for building with ProjectFlow!`;
   const handleConfirmPlan = async (plan: PlanTier) => {
     setProcessingCheckout(true);
     try {
-      // Optional: when your Edge Function is deployed, redirect to hosted checkout:
-      // const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-      //   body: { planId: plan.id, billingCycle: isAnnual ? 'yearly' : 'monthly', seats: billableSeats, currency },
-      // });
-      // if (error) throw error;
-      // if (data?.checkoutUrl) { window.location.href = data.checkoutUrl; return; }
+      if (plan.id !== 'free') {
+        const { data: checkoutData, error: checkoutError } = await supabase.functions.invoke(
+          'create-checkout-session',
+          {
+            body: {
+              planId: plan.id,
+              billingCycle: isAnnual ? 'yearly' : 'monthly',
+              seats: billableSeats,
+              currency,
+              userId: user?.id,
+              email: user?.email,
+            },
+          }
+        );
+
+        if (!checkoutError && checkoutData?.checkoutUrl && typeof window !== 'undefined') {
+          window.location.assign(String(checkoutData.checkoutUrl));
+          return;
+        }
+      }
 
       const totalLabel = computePlanTotalLabel(plan, billableSeats);
       const invoiceNumber = `INV-2026-${String(Math.floor(100 + Math.random() * 900))}`;

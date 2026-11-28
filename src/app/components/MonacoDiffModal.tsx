@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DiffEditor } from '@monaco-editor/react';
 import { X, GitCommit, FileDiff, Columns2, AlignJustify } from 'lucide-react';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -25,6 +25,17 @@ export default function MonacoDiffModal({
   const theme = useAccentTheme();
   const [renderSideBySide, setRenderSideBySide] = useState<boolean>(true);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isPushing) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isPushing, onClose]);
+
   if (!isOpen) return null;
 
   const getLanguageFromPath = (path: string) => {
@@ -39,33 +50,50 @@ export default function MonacoDiffModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#161b22] border border-gray-800 rounded-3xl w-full max-w-6xl h-[88vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+      onClick={() => {
+        if (!isPushing) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="monaco-diff-modal-title"
+        onClick={(e) => e.stopPropagation()}
+        className="flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-gray-800 bg-[#161b22] shadow-2xl animate-in zoom-in-95 duration-200"
+      >
         {/* Modal Top Bar with Split or Unified View Switcher */}
-        <div className="h-14 border-b border-gray-800 px-6 flex items-center justify-between shrink-0 bg-[#0d1117]">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-gray-800 bg-[#0d1117] px-6">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+            <div className="rounded-xl border border-purple-500/20 bg-purple-500/10 p-2 text-purple-400">
               <FileDiff size={18} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white font-mono">{filePath}</h3>
-                <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
+                <h3
+                  id="monaco-diff-modal-title"
+                  className="font-mono text-sm font-bold text-white"
+                >
+                  {filePath}
+                </h3>
+                <span className="rounded bg-gray-800 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
                   Diff Review
                 </span>
               </div>
-              <p className="text-[11px] text-gray-400">Comparing Base GitHub SHA against Local Staging</p>
+              <p className="text-[11px] text-gray-400">
+                Comparing Base GitHub SHA against Local Staging
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Split vs Inline Toggle */}
-            <div className="flex items-center bg-[#161b22] border border-gray-800 rounded-xl p-0.5 mr-2">
+            <div className="mr-2 flex items-center rounded-xl border border-gray-800 bg-[#161b22] p-0.5">
               <button
                 type="button"
                 onClick={() => setRenderSideBySide(true)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   renderSideBySide
                     ? 'bg-gray-800 text-white shadow-xs'
                     : 'text-gray-400 hover:text-white'
@@ -78,7 +106,7 @@ export default function MonacoDiffModal({
               <button
                 type="button"
                 onClick={() => setRenderSideBySide(false)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
                   !renderSideBySide
                     ? 'bg-gray-800 text-white shadow-xs'
                     : 'text-gray-400 hover:text-white'
@@ -91,22 +119,29 @@ export default function MonacoDiffModal({
             </div>
 
             <button
+              type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+              disabled={isPushing}
+              className="rounded-xl px-4 py-2 text-xs font-semibold text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={onConfirmPush}
               disabled={isPushing}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50`}
+              className={`flex items-center gap-2 rounded-xl px-5 py-2 text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50 ${theme.btnPrimary}`}
             >
               <GitCommit size={15} />
               <span>{isPushing ? 'Committing...' : 'Confirm & Commit Push'}</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white rounded-lg transition-colors ml-1"
+              disabled={isPushing}
+              aria-label="Close diff review"
+              title="Close diff review"
+              className="ml-1 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white disabled:opacity-50"
             >
               <X size={18} />
             </button>
@@ -114,7 +149,7 @@ export default function MonacoDiffModal({
         </div>
 
         {/* Diff Editor Body */}
-        <div className="flex-1 overflow-hidden p-2 bg-[#0d1117]">
+        <div className="flex-1 overflow-hidden bg-[#0d1117] p-2">
           <DiffEditor
             height="100%"
             theme="vs-dark"
@@ -132,18 +167,18 @@ export default function MonacoDiffModal({
         </div>
 
         {/* Legend Footer */}
-        <div className="h-9 border-t border-gray-800 px-6 flex items-center justify-between text-[11px] font-mono text-gray-400 bg-[#0d1117]">
+        <div className="flex h-9 items-center justify-between border-t border-gray-800 bg-[#0d1117] px-6 font-mono text-[11px] text-gray-400">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 text-rose-400">
-              <span className="w-2 h-2 rounded-full bg-rose-500" /> Red: Remote Base on GitHub
+              <span className="h-2 w-2 rounded-full bg-rose-500" /> Red: Remote Base on GitHub
             </span>
             <span className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Green: Staged Workspace Edits
+              <span className="h-2 w-2 rounded-full bg-emerald-500" /> Green: Staged Workspace Edits
             </span>
           </div>
           <span>Review diff thoroughly prior to remote push</span>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

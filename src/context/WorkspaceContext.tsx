@@ -152,15 +152,42 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     () => readStoredValue(TEAM_STORAGE_KEY) || ALL_TEAMS_SCOPE
   );
 
+  const activeOrganization = useMemo(
+    () => organizations.find((o) => o.id === activeOrganizationId) || organizations[0] || null,
+    [activeOrganizationId, organizations]
+  );
+
+  const isOrgAdmin = activeOrganization?.role === 'org_admin';
+  const canViewAllTeams = Boolean(isOrgAdmin);
+
   const setActiveOrganizationId = useCallback((orgId: string) => {
     setActiveOrganizationIdState(orgId);
     writeStoredValue(ORG_STORAGE_KEY, orgId);
   }, []);
 
-  const setSelectedTeamId = useCallback((teamId: TeamScopeId) => {
-    setSelectedTeamIdState(teamId);
-    writeStoredValue(TEAM_STORAGE_KEY, teamId);
-  }, []);
+  const setSelectedTeamId = useCallback(
+    (teamId: TeamScopeId) => {
+      if (teamId === ALL_TEAMS_SCOPE) {
+        if (!canViewAllTeams && teams.length > 0) {
+          const fallbackTeamId = teams[0]!.id;
+          setSelectedTeamIdState(fallbackTeamId);
+          writeStoredValue(TEAM_STORAGE_KEY, fallbackTeamId);
+          return;
+        }
+        setSelectedTeamIdState(ALL_TEAMS_SCOPE);
+        writeStoredValue(TEAM_STORAGE_KEY, ALL_TEAMS_SCOPE);
+        return;
+      }
+
+      if (teams.length > 0 && !teams.some((t) => t.id === teamId)) {
+        return;
+      }
+
+      setSelectedTeamIdState(teamId);
+      writeStoredValue(TEAM_STORAGE_KEY, teamId);
+    },
+    [canViewAllTeams, teams]
+  );
 
   const refreshWorkspace = useCallback(async () => {
     if (!user?.id) {
@@ -270,14 +297,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshWorkspace();
   }, [refreshWorkspace]);
-
-  const activeOrganization = useMemo(
-    () => organizations.find((o) => o.id === activeOrganizationId) || organizations[0] || null,
-    [activeOrganizationId, organizations]
-  );
-
-  const isOrgAdmin = activeOrganization?.role === 'org_admin';
-  const canViewAllTeams = Boolean(isOrgAdmin);
 
   const activeTeam = useMemo(
     () =>

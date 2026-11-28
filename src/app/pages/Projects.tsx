@@ -1,10 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FolderKanban, Plus, ArrowRight, MoreVertical,
-  Trash2, Loader2, Search, Code2, Sparkles, Github,
-  CheckCircle2, PauseCircle, PlayCircle, Lock, LayoutGrid, List, Columns3, CalendarDays,
-  Milestone, Target
+  FolderKanban,
+  Plus,
+  ArrowRight,
+  MoreVertical,
+  Trash2,
+  Loader2,
+  Search,
+  Code2,
+  Sparkles,
+  Github,
+  CheckCircle2,
+  PauseCircle,
+  PlayCircle,
+  Lock,
+  LayoutGrid,
+  List,
+  Columns3,
+  CalendarDays,
+  Milestone,
+  Target,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAccentTheme } from '../../lib/useAccentTheme';
@@ -13,7 +29,6 @@ import { ALL_TEAMS_SCOPE, useWorkspace } from '../../context/WorkspaceContext';
 import { isRecordInTeamScope } from '../../lib/teamScope';
 import { toast } from 'sonner';
 import { recordAuditLog } from '../../lib/auditLogger';
-
 import { isUserVerified } from '../../lib/constants';
 
 interface Project {
@@ -50,12 +65,30 @@ interface SprintGoal {
   target_date: string | null;
 }
 
+interface RawProjectRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  status?: string | null;
+  progress?: number | null;
+  created_at?: string | null;
+  due_date?: string | null;
+  owner_id?: string | null;
+  team_id?: string | null;
+  organization_id?: string | null;
+  github_repo?: string | null;
+}
+
 function parseProjectDate(value: string) {
   return new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
 }
 
 function formatProjectDate(value: string) {
-  return parseProjectDate(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return parseProjectDate(value).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export default function Projects() {
@@ -84,7 +117,9 @@ export default function Projects() {
   const [viewMode, setViewMode] = useState<'grid' | 'board' | 'list' | 'roadmap'>(() => {
     if (typeof window === 'undefined') return 'grid';
     const savedView = localStorage.getItem('pf_projects_view');
-    return savedView === 'board' || savedView === 'list' || savedView === 'roadmap' ? savedView : 'grid';
+    return savedView === 'board' || savedView === 'list' || savedView === 'roadmap'
+      ? savedView
+      : 'grid';
   });
 
   // Creation Modal State
@@ -96,6 +131,8 @@ export default function Projects() {
 
   // Active Context Menu State
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const projectsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roadmapDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -112,13 +149,15 @@ export default function Projects() {
 
       const userMap = new Map((userData || []).map((u) => [u.id, u]));
 
-      const merged: Project[] = (projectData || []).map((p: any) => {
+      const merged: Project[] = ((projectData || []) as RawProjectRow[]).map((p) => {
         const ownerUser = p.owner_id ? userMap.get(p.owner_id) : undefined;
         return {
           id: p.id,
           name: p.name,
           description: p.description ?? undefined,
-          status: (['active', 'completed', 'on_hold'].includes(p.status || '') ? p.status : 'active') as Project['status'],
+          status: (['active', 'completed', 'on_hold'].includes(p.status || '')
+            ? p.status
+            : 'active') as Project['status'],
           progress: p.progress ?? 0,
           created_at: p.created_at || new Date().toISOString(),
           due_date: p.due_date,
@@ -126,12 +165,14 @@ export default function Projects() {
           team_id: p.team_id ?? null,
           organization_id: p.organization_id ?? null,
           github_repo: p.github_repo ?? undefined,
-          owner: ownerUser ? { name: ownerUser.name ?? undefined, avatar: ownerUser.avatar ?? undefined } : undefined,
+          owner: ownerUser
+            ? { name: ownerUser.name ?? undefined, avatar: ownerUser.avatar ?? undefined }
+            : undefined,
         };
       });
 
       setProjects(merged);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching projects:', err);
       toast.error('Failed to load projects');
     } finally {
@@ -171,30 +212,61 @@ export default function Projects() {
     void fetchProjects();
     void fetchRoadmap();
 
+    const scheduleProjectsRefresh = () => {
+      if (projectsDebounceRef.current) clearTimeout(projectsDebounceRef.current);
+      projectsDebounceRef.current = setTimeout(() => {
+        void fetchProjects();
+      }, 200);
+    };
+
+    const scheduleRoadmapRefresh = () => {
+      if (roadmapDebounceRef.current) clearTimeout(roadmapDebounceRef.current);
+      roadmapDebounceRef.current = setTimeout(() => {
+        void fetchRoadmap();
+      }, 200);
+    };
+
     const projectsChannel = supabase
       .channel('projects_live')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'projects' },
-        () => void fetchProjects()
+        scheduleProjectsRefresh
       )
       .subscribe();
 
     const roadmapChannel = supabase
       .channel('project_roadmap_live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_milestones' }, () => void fetchRoadmap())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sprints' }, () => void fetchRoadmap())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'project_milestones' },
+        scheduleRoadmapRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sprints' },
+        scheduleRoadmapRefresh
+      )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(projectsChannel);
-      supabase.removeChannel(roadmapChannel);
+      if (projectsDebounceRef.current) clearTimeout(projectsDebounceRef.current);
+      if (roadmapDebounceRef.current) clearTimeout(roadmapDebounceRef.current);
+      void supabase.removeChannel(projectsChannel);
+      void supabase.removeChannel(roadmapChannel);
     };
   }, [fetchProjects, fetchRoadmap]);
 
   useEffect(() => {
     localStorage.setItem('pf_projects_view', viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    if (!activeMenuId) return;
+    const handleOutsideClick = () => setActiveMenuId(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [activeMenuId]);
 
   const teamScopedProjects = projects.filter((p) => {
     if (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE) {
@@ -214,12 +286,12 @@ export default function Projects() {
   });
 
   const handleOpenCreateModal = () => {
-    // Quota restriction: Unverified users can only own 1 project
     if (!isVerified) {
       const ownedProjects = teamScopedProjects.filter((p) => p.owner_id === currentUser?.id);
       if (ownedProjects.length >= 1) {
         toast.error('Verification Required', {
-          description: 'Unverified accounts are limited to 1 project container. Please verify your email to unlock unlimited projects.',
+          description:
+            'Unverified accounts are limited to 1 project container. Please verify your email to unlock unlimited projects.',
           action: {
             label: 'Verify Now',
             onClick: () => navigate('/settings'),
@@ -256,7 +328,7 @@ export default function Projects() {
 
       const { data, error } = await supabase
         .from('projects')
-        .insert(insertPayload as any)
+        .insert(insertPayload as never)
         .select()
         .single();
 
@@ -274,8 +346,8 @@ export default function Projects() {
       setNewProjectDesc('');
       setNewProjectRepo('');
       void fetchProjects();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to create project');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       setCreating(false);
     }
@@ -289,10 +361,10 @@ export default function Projects() {
         .eq('id', projectId);
 
       if (error) throw error;
-      toast.success(`Project marked as ${newStatus}`);
+      toast.success(`Project marked as ${newStatus.replace('_', ' ')}`);
       void fetchProjects();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update status');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setActiveMenuId(null);
     }
@@ -315,27 +387,26 @@ export default function Projects() {
     }
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectId);
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
 
       if (error) throw error;
       toast.success('Project deleted successfully');
       setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete project');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete project');
     } finally {
       setActiveMenuId(null);
     }
   };
 
   const filteredProjects = teamScopedProjects.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (p.github_repo && p.github_repo.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesFilter = statusFilter === 'all' || p.status === statusFilter;
-    const matchesOwner = !ownerFilter || (ownerFilter === 'unassigned' ? !p.owner_id : p.owner_id === ownerFilter);
+    const matchesOwner =
+      !ownerFilter || (ownerFilter === 'unassigned' ? !p.owner_id : p.owner_id === ownerFilter);
     const dueDate = p.due_date ? parseProjectDate(p.due_date) : null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -343,7 +414,10 @@ export default function Projects() {
       dueDateFilter === 'all' ||
       (dueDateFilter === 'unscheduled' && !dueDate) ||
       (dueDateFilter === 'overdue' && dueDate && dueDate < today && p.status !== 'completed') ||
-      (dueDateFilter === 'upcoming' && dueDate && dueDate >= today && dueDate.getTime() <= today.getTime() + 14 * 86_400_000);
+      (dueDateFilter === 'upcoming' &&
+        dueDate &&
+        dueDate >= today &&
+        dueDate.getTime() <= today.getTime() + 14 * 86_400_000);
     return matchesSearch && matchesFilter && matchesOwner && matchesDueDate;
   });
 
@@ -375,7 +449,8 @@ export default function Projects() {
       .map((milestone) => ({
         id: `milestone-${milestone.id}`,
         projectId: milestone.project_id,
-        projectName: filteredProjects.find((project) => project.id === milestone.project_id)?.name || 'Project',
+        projectName:
+          filteredProjects.find((project) => project.id === milestone.project_id)?.name || 'Project',
         title: milestone.title,
         details: '',
         date: milestone.due_date,
@@ -387,7 +462,8 @@ export default function Projects() {
       .map((sprint) => ({
         id: `sprint-${sprint.id}`,
         projectId: sprint.project_id,
-        projectName: filteredProjects.find((project) => project.id === sprint.project_id)?.name || 'Project',
+        projectName:
+          filteredProjects.find((project) => project.id === sprint.project_id)?.name || 'Project',
         title: sprint.title,
         details: sprint.goal || '',
         date: sprint.target_date,
@@ -399,29 +475,38 @@ export default function Projects() {
     if (!b.date) return -1;
     return parseProjectDate(a.date).getTime() - parseProjectDate(b.date).getTime();
   });
-  const avgProgress = teamScopedProjects.length > 0
-    ? Math.round(teamScopedProjects.reduce((acc, curr) => acc + (curr.progress || 0), 0) / teamScopedProjects.length)
-    : 0;
+  const avgProgress =
+    teamScopedProjects.length > 0
+      ? Math.round(
+          teamScopedProjects.reduce((acc, curr) => acc + (curr.progress || 0), 0) /
+            teamScopedProjects.length
+        )
+      : 0;
 
   return (
-    <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto text-gray-900 dark:text-gray-200 animate-in fade-in duration-300">
-
+    <div className="mx-auto max-w-7xl space-y-8 p-6 text-gray-900 animate-in fade-in duration-300 dark:text-gray-200 md:p-8">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-6">
+      <div className="flex flex-col justify-between gap-4 border-b border-gray-200 pb-6 dark:border-gray-800 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className={`p-3 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
+          <div
+            className={`rounded-2xl border p-3 shadow-sm ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <FolderKanban size={26} />
           </div>
           <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">Projects Workspace</h1>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                Projects Workspace
+              </h1>
               {(activeTeam || (canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE)) && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
-                  {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams ? 'All Teams' : activeTeam?.name}
+                <span className="rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  {selectedTeamId === ALL_TEAMS_SCOPE && canViewAllTeams
+                    ? 'All Teams'
+                    : activeTeam?.name}
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               {canViewAllTeams && selectedTeamId === ALL_TEAMS_SCOPE
                 ? 'Manage branches, automate sprints, and track milestones across all teams.'
                 : activeTeam
@@ -432,43 +517,56 @@ export default function Projects() {
         </div>
 
         <button
+          type="button"
           onClick={handleOpenCreateModal}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl ${theme.btnPrimary} font-bold text-xs shadow-md transition-all active:scale-95`}
+          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold shadow-md transition-all active:scale-95 ${theme.btnPrimary}`}
         >
           <Plus size={16} />
           <span>New Project</span>
-          {!isVerified && <Lock size={12} className="opacity-75 ml-0.5" />}
+          {!isVerified && <Lock size={12} className="ml-0.5 opacity-75" />}
         </button>
       </div>
 
       {/* KPI Metrics Ribbon */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Active Projects</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{activeCount}</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Active Projects
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{activeCount}</h3>
           </div>
-          <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 border border-emerald-200 dark:border-emerald-800/40">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-500 dark:border-emerald-800/40 dark:bg-emerald-950/40">
             <PlayCircle size={20} />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Completed</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{completedCount}</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Completed
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+              {completedCount}
+            </h3>
           </div>
-          <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-500 border border-blue-200 dark:border-blue-800/40">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-2.5 text-blue-500 dark:border-blue-800/40 dark:bg-blue-950/40">
             <CheckCircle2 size={20} />
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <div>
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Avg Progress</span>
-            <h3 className="text-2xl font-black text-gray-900 dark:text-white mt-1">{avgProgress}%</h3>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Avg Progress
+            </span>
+            <h3 className="mt-1 text-2xl font-black text-gray-900 dark:text-white">
+              {avgProgress}%
+            </h3>
           </div>
-          <div className={`p-2.5 rounded-xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30`}>
+          <div
+            className={`rounded-xl border p-2.5 ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+          >
             <Sparkles size={20} />
           </div>
         </div>
@@ -484,12 +582,12 @@ export default function Projects() {
             placeholder="Search projects by name, repo, or description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none ${theme.ringAccent} transition-all shadow-sm`}
+            className={`w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-xs text-gray-900 placeholder-gray-400 shadow-sm outline-none transition-all dark:border-gray-800 dark:bg-[#161b22] dark:text-white dark:placeholder-gray-500 ${theme.ringAccent}`}
           />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-xl">
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-[#161b22]">
             {(['all', 'active', 'completed', 'on_hold'] as const).map((filterKey) => {
               const isActive = statusFilter === filterKey;
               return (
@@ -498,10 +596,10 @@ export default function Projects() {
                   type="button"
                   aria-pressed={isActive}
                   onClick={() => setStatusFilter(filterKey)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-all ${
                     isActive
                       ? `${theme.btnPrimary} shadow-sm`
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                      : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
                   }`}
                 >
                   {filterKey.replace('_', ' ')}
@@ -510,119 +608,170 @@ export default function Projects() {
             })}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="project-owner-filter">Filter by owner</label>
-          <select
-            id="project-owner-filter"
-            value={ownerFilter}
-            onChange={(event) => setOwnerFilter(event.target.value)}
-            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
-          >
-            <option value="">All owners</option>
-            {teamScopedProjects.some((project) => !project.owner_id) && <option value="unassigned">Unassigned</option>}
-            {ownerOptions.map(([ownerId, ownerName]) => (
-              <option key={ownerId} value={ownerId}>{ownerName}</option>
-            ))}
-          </select>
-          <label className="sr-only" htmlFor="project-due-filter">Filter by due date</label>
-          <select
-            id="project-due-filter"
-            value={dueDateFilter}
-            onChange={(event) => setDueDateFilter(event.target.value as typeof dueDateFilter)}
-            className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
-          >
-            <option value="all">Any due date</option>
-            <option value="overdue">Overdue</option>
-            <option value="upcoming">Due in 14 days</option>
-            <option value="unscheduled">No due date</option>
-          </select>
-          <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-[#161b22]" role="group" aria-label="Project view">
-            {([
-              ['grid', 'Card grid', <LayoutGrid size={15} />],
-              ['board', 'Board view', <Columns3 size={15} />],
-              ['list', 'List view', <List size={15} />],
-              ['roadmap', 'Roadmap and goals', <Milestone size={15} />],
-            ] as const).map(([view, label, icon]) => (
-              <button
-                key={view}
-                type="button"
-                aria-label={label}
-                aria-pressed={viewMode === view}
-                onClick={() => setViewMode(view)}
-                className={`min-h-9 min-w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                  viewMode === view
-                    ? `${theme.bgSubtle} ${theme.textAccent}`
-                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
+            <label className="sr-only" htmlFor="project-owner-filter">
+              Filter by owner
+            </label>
+            <select
+              id="project-owner-filter"
+              value={ownerFilter}
+              onChange={(event) => setOwnerFilter(event.target.value)}
+              className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
+            >
+              <option value="">All owners</option>
+              {teamScopedProjects.some((project) => !project.owner_id) && (
+                <option value="unassigned">Unassigned</option>
+              )}
+              {ownerOptions.map(([ownerId, ownerName]) => (
+                <option key={ownerId} value={ownerId}>
+                  {ownerName}
+                </option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor="project-due-filter">
+              Filter by due date
+            </label>
+            <select
+              id="project-due-filter"
+              value={dueDateFilter}
+              onChange={(event) => setDueDateFilter(event.target.value as typeof dueDateFilter)}
+              className="min-h-10 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-800 dark:bg-[#161b22] dark:text-gray-200"
+            >
+              <option value="all">Any due date</option>
+              <option value="overdue">Overdue</option>
+              <option value="upcoming">Due in 14 days</option>
+              <option value="unscheduled">No due date</option>
+            </select>
+            <div
+              className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-[#161b22]"
+              role="group"
+              aria-label="Project view"
+            >
+              {(
+                [
+                  ['grid', 'Card grid', <LayoutGrid size={15} />],
+                  ['board', 'Board view', <Columns3 size={15} />],
+                  ['list', 'List view', <List size={15} />],
+                  ['roadmap', 'Roadmap and goals', <Milestone size={15} />],
+                ] as const
+              ).map(([view, label, icon]) => (
+                <button
+                  key={view}
+                  type="button"
+                  aria-label={label}
+                  aria-pressed={viewMode === view}
+                  onClick={() => setViewMode(view)}
+                  className={`flex min-h-9 min-w-9 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    viewMode === view
+                      ? `${theme.bgSubtle} ${theme.textAccent}`
+                      : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Projects Grid */}
       {loading ? (
-        <div className="py-24 flex flex-col items-center justify-center text-gray-400 space-y-3">
+        <div className="flex flex-col items-center justify-center space-y-3 py-24 text-gray-400">
           <Loader2 size={30} className={`animate-spin ${theme.textAccent}`} />
           <p className="text-xs">Syncing workspace projects...</p>
         </div>
       ) : filteredProjects.length === 0 ? (
-        <div className="py-20 text-center bg-white dark:bg-[#161b22] border border-dashed border-gray-200 dark:border-gray-800 rounded-3xl p-8 space-y-3 shadow-sm">
+        <div className="space-y-3 rounded-3xl border border-dashed border-gray-200 bg-white p-8 py-20 text-center shadow-sm dark:border-gray-800 dark:bg-[#161b22]">
           <FolderKanban size={40} className="mx-auto text-gray-400 dark:text-gray-600" />
           <h3 className="text-base font-bold text-gray-900 dark:text-white">No projects found</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
-            {searchQuery ? 'No projects match your search keywords.' : 'Create your first project to start organizing tasks, code, and sprints.'}
+          <p className="mx-auto max-w-sm text-xs text-gray-500 dark:text-gray-400">
+            {searchQuery
+              ? 'No projects match your search keywords.'
+              : 'Create your first project to start organizing tasks, code, and sprints.'}
           </p>
         </div>
       ) : viewMode === 'roadmap' ? (
         <section aria-label="Project roadmap" className="space-y-3">
           {roadmapError && (
-            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            >
               <span>Some roadmap data could not be loaded.</span>
-              <button type="button" onClick={() => void fetchRoadmap()} className="font-semibold underline underline-offset-2">Try again</button>
+              <button
+                type="button"
+                onClick={() => void fetchRoadmap()}
+                className="font-semibold underline underline-offset-2"
+              >
+                Try again
+              </button>
             </div>
           )}
-          {roadmapItems.length ? roadmapItems.map((item) => (
-            <article
-              key={item.id}
-              className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22] sm:items-center"
-            >
-              <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                item.kind === 'goal'
-                  ? 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300'
-                  : item.kind === 'milestone'
-                  ? `${theme.bgSubtle} ${theme.textAccent}`
-                  : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300'
-              }`}>
-                {item.kind === 'goal' ? <Target size={18} /> : item.kind === 'milestone' ? <Milestone size={18} /> : <CalendarDays size={18} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{item.title}</h2>
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                    {item.kind === 'goal' ? 'Sprint goal' : item.kind === 'milestone' ? item.status.replace('_', ' ') : item.status === 'complete' ? 'Complete' : 'Project deadline'}
-                  </span>
-                </div>
-                {item.details && <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">{item.details}</p>}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/projects/${item.projectId}`)}
-                  className={`mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+          {roadmapItems.length ? (
+            roadmapItems.map((item) => (
+              <article
+                key={item.id}
+                className="flex items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#161b22] sm:items-center"
+              >
+                <span
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    item.kind === 'goal'
+                      ? 'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300'
+                      : item.kind === 'milestone'
+                      ? `${theme.bgSubtle} ${theme.textAccent}`
+                      : 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300'
+                  }`}
                 >
-                  {item.projectName} <ArrowRight size={12} aria-hidden="true" />
-                </button>
-              </div>
-              <time className="ml-auto shrink-0 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
-                {item.date ? formatProjectDate(item.date) : 'No date'}
-              </time>
-            </article>
-          )) : roadmapError ? null : (
+                  {item.kind === 'goal' ? (
+                    <Target size={18} />
+                  ) : item.kind === 'milestone' ? (
+                    <Milestone size={18} />
+                  ) : (
+                    <CalendarDays size={18} />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {item.title}
+                    </h2>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold capitalize text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      {item.kind === 'goal'
+                        ? 'Sprint goal'
+                        : item.kind === 'milestone'
+                        ? item.status.replace('_', ' ')
+                        : item.status === 'complete'
+                        ? 'Complete'
+                        : 'Project deadline'}
+                    </span>
+                  </div>
+                  {item.details && (
+                    <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                      {item.details}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/projects/${item.projectId}`)}
+                    className={`mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+                  >
+                    {item.projectName} <ArrowRight size={12} aria-hidden="true" />
+                  </button>
+                </div>
+                <time className="ml-auto shrink-0 text-right text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {item.date ? formatProjectDate(item.date) : 'No date'}
+                </time>
+              </article>
+            ))
+          ) : roadmapError ? null : (
             <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-12 text-center dark:border-gray-700 dark:bg-[#161b22]">
               <Milestone size={28} className="mx-auto text-gray-400" />
-              <h2 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">No roadmap items yet</h2>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Add milestones or sprint goals to a project to plan the next checkpoints.</p>
+              <h2 className="mt-3 text-sm font-semibold text-gray-900 dark:text-white">
+                No roadmap items yet
+              </h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Add milestones or sprint goals to a project to plan the next checkpoints.
+              </p>
             </div>
           )}
         </section>
@@ -646,10 +795,15 @@ export default function Projects() {
                 className="min-w-0 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-900/50"
               >
                 <div className="mb-3 flex items-center justify-between px-1">
-                  <h2 id={`project-column-${status}`} className="text-xs font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200">
+                  <h2
+                    id={`project-column-${status}`}
+                    className="text-xs font-bold uppercase tracking-wide text-gray-700 dark:text-gray-200"
+                  >
                     {status.replace('_', ' ')}
                   </h2>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">{columnProjects.length}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                    {columnProjects.length}
+                  </span>
                 </div>
                 <div className="space-y-3">
                   {columnProjects.map((project) => (
@@ -663,7 +817,9 @@ export default function Projects() {
                       className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-[#161b22]"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="min-w-0 font-semibold text-sm text-gray-900 dark:text-white">{project.name}</h3>
+                        <h3 className="min-w-0 text-sm font-semibold text-gray-900 dark:text-white">
+                          {project.name}
+                        </h3>
                         <FolderKanban className={theme.textAccent} size={16} aria-hidden="true" />
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
@@ -671,7 +827,11 @@ export default function Projects() {
                       </p>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                         <span className="inline-flex items-center gap-1">
-                          <img src={project.owner?.avatar || '/pfp.jpg'} alt="" className="h-5 w-5 rounded-full object-cover" />
+                          <img
+                            src={project.owner?.avatar || '/pfp.jpg'}
+                            alt=""
+                            className="h-5 w-5 rounded-full object-cover"
+                          />
                           {project.owner?.name || 'Workspace'}
                         </span>
                         <span className="inline-flex items-center gap-1">
@@ -680,10 +840,22 @@ export default function Projects() {
                         </span>
                       </div>
                       <div className="mt-3 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800" role="progressbar" aria-label={`${project.name} progress`} aria-valuenow={project.progress || 0} aria-valuemin={0} aria-valuemax={100}>
-                          <div className={`h-full ${theme.progressBar}`} style={{ width: `${project.progress || 0}%` }} />
+                        <div
+                          className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                          role="progressbar"
+                          aria-label={`${project.name} progress`}
+                          aria-valuenow={project.progress || 0}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <div
+                            className={`h-full ${theme.progressBar}`}
+                            style={{ width: `${project.progress || 0}%` }}
+                          />
                         </div>
-                        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">{project.progress || 0}%</span>
+                        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                          {project.progress || 0}%
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -692,11 +864,18 @@ export default function Projects() {
                       >
                         Open project <ArrowRight size={13} aria-hidden="true" />
                       </button>
-                      <label className="sr-only" htmlFor={`board-status-${project.id}`}>Project status for {project.name}</label>
+                      <label className="sr-only" htmlFor={`board-status-${project.id}`}>
+                        Project status for {project.name}
+                      </label>
                       <select
                         id={`board-status-${project.id}`}
                         value={project.status}
-                        onChange={(event) => void handleStatusChange(project.id, event.target.value as Project['status'])}
+                        onChange={(event) =>
+                          void handleStatusChange(
+                            project.id,
+                            event.target.value as Project['status']
+                          )
+                        }
                         className="ml-3 max-w-36 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] capitalize text-gray-700 outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                       >
                         <option value="active">Active</option>
@@ -706,7 +885,9 @@ export default function Projects() {
                     </article>
                   ))}
                   {columnProjects.length === 0 && (
-                    <p className="rounded-xl border border-dashed border-gray-300 px-3 py-6 text-center text-xs text-gray-400 dark:border-gray-700">No projects in this group.</p>
+                    <p className="rounded-xl border border-dashed border-gray-300 px-3 py-6 text-center text-xs text-gray-400 dark:border-gray-700">
+                      No projects in this group.
+                    </p>
                   )}
                 </div>
               </section>
@@ -718,40 +899,70 @@ export default function Projects() {
           <table className="w-full min-w-[640px] border-collapse text-left text-xs">
             <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-400">
               <tr>
-                <th scope="col" className="px-4 py-3 font-semibold">Project</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Owner</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Status</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Due date</th>
-                <th scope="col" className="px-4 py-3 font-semibold">Progress</th>
-                <th scope="col" className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Project
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Owner
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Status
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Due date
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Progress
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {filteredProjects.map((project) => (
-                <tr key={project.id} className="text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/50">
-                  <th scope="row" className="max-w-[260px] px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                <tr
+                  key={project.id}
+                  className="text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800/50"
+                >
+                  <th
+                    scope="row"
+                    className="max-w-[260px] px-4 py-3 font-semibold text-gray-900 dark:text-white"
+                  >
                     <span className="block truncate">{project.name}</span>
-                    <span className="mt-0.5 block truncate font-normal text-[11px] text-gray-500 dark:text-gray-400">{project.description || 'No description'}</span>
+                    <span className="mt-0.5 block truncate text-[11px] font-normal text-gray-500 dark:text-gray-400">
+                      {project.description || 'No description'}
+                    </span>
                   </th>
                   <td className="px-4 py-3">{project.owner?.name || 'Workspace'}</td>
                   <td className="px-4 py-3 capitalize">{project.status.replace('_', ' ')}</td>
-                  <td className="px-4 py-3">{project.due_date ? formatProjectDate(project.due_date) : '—'}</td>
+                  <td className="px-4 py-3">
+                    {project.due_date ? formatProjectDate(project.due_date) : '—'}
+                  </td>
                   <td className="px-4 py-3">{project.progress || 0}%</td>
                   <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => navigate(`/projects/${project.id}`)} className={`font-semibold ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/projects/${project.id}`)}
+                      className={`font-semibold ${theme.textAccent} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+                    >
                       Open
                     </button>
                   </td>
                 </tr>
               ))}
               {filteredProjects.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">No projects match these filters.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-gray-500 dark:text-gray-400">
+                    No projects match these filters.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((p) => {
             const progressVal = p.progress || 0;
             const isMenuOpen = activeMenuId === p.id;
@@ -759,59 +970,69 @@ export default function Projects() {
             return (
               <div
                 key={p.id}
-                className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800/80 hover:border-gray-300 dark:hover:border-gray-700/80 rounded-3xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative"
+                className="group relative flex flex-col justify-between rounded-3xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-300 hover:border-gray-300 hover:shadow-xl dark:border-gray-800/80 dark:bg-[#161b22] dark:hover:border-gray-700/80"
               >
                 <div className="space-y-4">
                   {/* Top Bar */}
                   <div className="flex items-start justify-between">
-                    <div className={`p-2.5 rounded-2xl ${theme.bgSubtle} ${theme.textAccent} border ${theme.borderAccent}/30 shadow-sm`}>
+                    <div
+                      className={`rounded-2xl border p-2.5 shadow-sm ${theme.bgSubtle} ${theme.textAccent} ${theme.borderAccent}/30`}
+                    >
                       <FolderKanban size={22} />
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        p.status === 'active'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
-                          : p.status === 'completed'
-                          ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
-                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60'
-                      }`}>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          p.status === 'active'
+                            ? 'border border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-400'
+                            : p.status === 'completed'
+                            ? 'border border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-400'
+                            : 'border border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-400'
+                        }`}
+                      >
                         {p.status.replace('_', ' ')}
                       </span>
 
                       {/* Dropdown Options */}
-                      <div className="relative">
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={() => setActiveMenuId(isMenuOpen ? null : p.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors"
+                          aria-label={`Project options for ${p.name}`}
+                          aria-expanded={isMenuOpen}
+                          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-white"
                         >
                           <MoreVertical size={16} />
                         </button>
 
                         {isMenuOpen && (
-                          <div className="absolute right-0 top-7 w-40 bg-white dark:bg-[#0d1117] border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl z-20 py-1.5 text-xs animate-in fade-in zoom-in-95">
+                          <div className="animate-in fade-in zoom-in-95 absolute right-0 top-7 z-20 w-40 rounded-xl border border-gray-200 bg-white py-1.5 text-xs shadow-xl dark:border-gray-800 dark:bg-[#0d1117]">
                             <button
+                              type="button"
                               onClick={() => void handleStatusChange(p.id, 'active')}
-                              className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
                             >
                               <PlayCircle size={13} className="text-emerald-500" /> Mark Active
                             </button>
                             <button
+                              type="button"
                               onClick={() => void handleStatusChange(p.id, 'completed')}
-                              className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
                             >
                               <CheckCircle2 size={13} className="text-blue-500" /> Mark Complete
                             </button>
                             <button
+                              type="button"
                               onClick={() => void handleStatusChange(p.id, 'on_hold')}
-                              className="w-full px-3 py-1.5 text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
                             >
                               <PauseCircle size={13} className="text-amber-500" /> Put on Hold
                             </button>
                             <button
+                              type="button"
                               onClick={() => void handleDeleteProject(p.id)}
-                              className="w-full px-3 py-1.5 text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800 mt-1 pt-1.5"
+                              className="mt-1 flex w-full items-center gap-2 border-t border-gray-100 px-3 py-1.5 pt-1.5 text-left text-rose-600 hover:bg-rose-50 dark:border-gray-800 dark:hover:bg-rose-950/30"
                             >
                               <Trash2 size={13} /> Delete Project
                             </button>
@@ -823,17 +1044,17 @@ export default function Projects() {
 
                   {/* Title & Description */}
                   <div>
-                    <h3 className="text-base font-bold text-gray-900 dark:text-white group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">
+                    <h3 className="text-base font-bold text-gray-900 transition-colors group-hover:text-indigo-500 dark:text-white dark:group-hover:text-indigo-400">
                       {p.name}
                     </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1.5 leading-relaxed">
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                       {p.description || 'No description provided for this project.'}
                     </p>
                   </div>
 
                   {/* Connected GitHub Repository Badge */}
                   {p.github_repo && (
-                    <div className="flex items-center gap-2 text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-[#0d1117] p-2 rounded-xl border border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-2 font-mono text-xs text-gray-500 dark:border-gray-800 dark:bg-[#0d1117] dark:text-gray-400">
                       <Github size={13} className="shrink-0 text-gray-700 dark:text-gray-300" />
                       <span className="truncate">{p.github_repo}</span>
                     </div>
@@ -841,11 +1062,11 @@ export default function Projects() {
 
                   {/* Progress Meter */}
                   <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                    <div className="flex items-center justify-between font-mono text-[11px] text-gray-500 dark:text-gray-400">
                       <span>Velocity</span>
                       <span>{progressVal}%</span>
                     </div>
-                    <div className="w-full bg-gray-100 dark:bg-[#0d1117] h-2 rounded-full overflow-hidden">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-[#0d1117]">
                       <div
                         className={`h-full ${theme.progressBar} transition-all duration-500`}
                         style={{ width: `${progressVal}%` }}
@@ -855,15 +1076,15 @@ export default function Projects() {
                 </div>
 
                 {/* Card Footer: Quick Actions + Deep Links */}
-                <div className="pt-5 mt-5 border-t border-gray-100 dark:border-gray-800/80 space-y-3">
+                <div className="mt-5 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800/80">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <img
                         src={p.owner?.avatar || '/pfp.jpg'}
                         alt={p.owner?.name || 'Owner'}
-                        className="w-6 h-6 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+                        className="h-6 w-6 rounded-full border border-gray-200 object-cover dark:border-gray-700"
                       />
-                      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate max-w-[90px]">
+                      <span className="max-w-[90px] truncate text-xs font-medium text-gray-500 dark:text-gray-400">
                         {p.owner?.name || 'Workspace'}
                       </span>
                     </div>
@@ -876,7 +1097,8 @@ export default function Projects() {
                           localStorage.setItem('pf_selected_project_id', p.id);
                           navigate('/code');
                         }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        aria-label={`Open ${p.name} in Code Studio`}
+                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-indigo-500 dark:hover:bg-gray-800 dark:hover:text-indigo-400"
                         title="Open in Code Studio"
                       >
                         <Code2 size={15} />
@@ -888,15 +1110,17 @@ export default function Projects() {
                           localStorage.setItem('pf_selected_project_id', p.id);
                           navigate('/sprint-planner');
                         }}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-purple-500 dark:hover:text-purple-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        aria-label={`Architect sprint for ${p.name}`}
+                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-purple-500 dark:hover:bg-gray-800 dark:hover:text-purple-400"
                         title="Architect Sprint"
                       >
                         <Sparkles size={15} />
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => navigate(`/projects/${p.id}`)}
-                        className={`flex items-center gap-1 text-xs font-bold ${theme.textAccent} ${theme.textHover} ml-1 transition-colors`}
+                        className={`ml-1 flex items-center gap-1 text-xs font-bold ${theme.textAccent} ${theme.textHover} transition-colors`}
                       >
                         <span>Board</span>
                         <ArrowRight size={13} />
@@ -912,11 +1136,13 @@ export default function Projects() {
 
       {/* New Project Modal */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-md p-6 md:p-8 space-y-5 shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="animate-in fade-in zoom-in-95 w-full max-w-md space-y-5 rounded-3xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-800 dark:bg-[#161b22] md:p-8">
             <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Workspace Project</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Create Workspace Project
+              </h2>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {activeTeam
                   ? `Initialize a milestone container for ${activeTeam.name} with tasks and GitHub linkage.`
                   : 'Initialize a milestone container with tasks and GitHub linkage.'}
@@ -925,51 +1151,57 @@ export default function Projects() {
 
             <form onSubmit={(event) => void handleCreateProject(event)} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Project Name *</label>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Project Name *
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. NextGen Web Platform"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
-                  className={`w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent}`}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs text-gray-900 outline-none dark:border-gray-700 dark:bg-[#0d1117] dark:text-white ${theme.ringAccent}`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Description</label>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Description
+                </label>
                 <textarea
                   rows={3}
                   placeholder="What is the objective of this project milestone?"
                   value={newProjectDesc}
                   onChange={(e) => setNewProjectDesc(e.target.value)}
-                  className={`w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white outline-none ${theme.ringAccent}`}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs text-gray-900 outline-none dark:border-gray-700 dark:bg-[#0d1117] dark:text-white ${theme.ringAccent}`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">GitHub Repository (owner/repo)</label>
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  GitHub Repository (owner/repo)
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. octocat/Hello-World"
                   value={newProjectRepo}
                   onChange={(e) => setNewProjectRepo(e.target.value)}
-                  className={`w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs text-gray-900 dark:text-white outline-none font-mono ${theme.ringAccent}`}
+                  className={`w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 font-mono text-xs text-gray-900 outline-none dark:border-gray-700 dark:bg-[#0d1117] dark:text-white ${theme.ringAccent}`}
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex items-center justify-end gap-2.5 border-t border-gray-100 pt-3 dark:border-gray-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors"
+                  className="rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating || !newProjectName.trim()}
-                  className={`px-5 py-2.5 rounded-xl ${theme.btnPrimary} font-bold text-xs disabled:opacity-50 flex items-center gap-1.5 transition-all shadow-md active:scale-95`}
+                  className={`flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50 ${theme.btnPrimary}`}
                 >
                   {creating && <Loader2 size={13} className="animate-spin" />}
                   <span>Create Project</span>
